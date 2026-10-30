@@ -17,56 +17,173 @@ export class RiverWorld {
       z: 0.2
     };
 
+    this.riverHalfWidth = 16;
+    this.riverSamples = this.buildRiverCenterline();
+
     this.createBanks();
     this.createWater();
     this.createReedsAndVegetation();
     this.createEnvironmentDetails();
     this.createRiverBoundaries(); // East & West natural barriers (rocks, reeds, warning posts)
+    this.createForests();
     this.createAppalledCrowd();
     this.createParticleSystem();
   }
 
-  getCurrentVelocity() {
-    return this.current;
+  // The playable stretch stays perfectly straight so the banks line up with the
+  // boat's collision limits; beyond the barriers the river sweeps away to the
+  // south-west and north-east and disappears into the forest.
+  buildRiverCenterline() {
+    const points = [];
+
+    const westBend = new THREE.CubicBezierCurve3(
+      new THREE.Vector3(-340, 0, 170),
+      new THREE.Vector3(-190, 0, 110),
+      new THREE.Vector3(-90, 0, 0),
+      new THREE.Vector3(-45, 0, 0)
+    );
+    const eastBend = new THREE.CubicBezierCurve3(
+      new THREE.Vector3(45, 0, 0),
+      new THREE.Vector3(95, 0, 0),
+      new THREE.Vector3(170, 0, -40),
+      new THREE.Vector3(340, 0, -200)
+    );
+
+    for (let i = 0; i <= 80; i++) points.push(westBend.getPoint(i / 80));
+    for (let x = -45; x <= 45; x += 2.5) points.push(new THREE.Vector3(x, 0, 0));
+    for (let i = 1; i <= 100; i++) points.push(eastBend.getPoint(i / 100));
+
+    const samples = [];
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const prev = points[Math.max(0, i - 1)];
+      const next = points[Math.min(points.length - 1, i + 1)];
+      const tangent = new THREE.Vector3().subVectors(next, prev);
+      if (tangent.lengthSq() < 1e-6) tangent.set(1, 0, 0);
+      tangent.normalize();
+      // Positive offset points south (+Z), negative points north (-Z)
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      samples.push({ p: p.clone(), t: tangent, n: normal });
+    }
+    return samples;
+  }
+
+  // Flat strip that follows the river centerline between two lateral offsets.
+  buildRibbonGeometry(fromOffset, toOffset, y, across = 1) {
+    const samples = this.riverSamples;
+    const cols = across + 1;
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      for (let j = 0; j < cols; j++) {
+        const offset = fromOffset + ((toOffset - fromOffset) * j) / across;
+        positions.push(s.p.x + s.n.x * offset, y, s.p.z + s.n.z * offset);
+        uvs.push(j / across, i / (samples.length - 1));
+      }
+    }
+
+    for (let i = 0; i < samples.length - 1; i++) {
+      for (let j = 0; j < across; j++) {
+        const a = i * cols + j;
+        const b = a + 1;
+        const c = a + cols;
+        const d = c + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // Vertical face along one river bank (used for the high northern border bank).
+  buildRiverWallGeometry(offset, topY, bottomY) {
+    const samples = this.riverSamples;
+    const positions = [];
+    const indices = [];
+
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      const x = s.p.x + s.n.x * offset;
+      const z = s.p.z + s.n.z * offset;
+      positions.push(x, bottomY, z, x, topY, z);
+      if (i > 0) {
+        const a = (i - 1) * 2;
+        const b = a + 1;
+        const c = i * 2;
+        const d = c + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // One half of the world's land mass: everything on one side of the river
+  // channel, closed off far beyond the fog.
+  buildLandShape(offset, farSide) {
+    const samples = this.riverSamples;
+    const points = samples.map((s) => new THREE.Vector2(
+      s.p.x + s.n.x * offset,
+      -(s.p.z + s.n.z * offset) // shape Y is flipped into world Z
+    ));
+
+    // Close the polygon far away on the same side of the river.
+    points.push(new THREE.Vector2(600, farSide * -600));
+    points.push(new THREE.Vector2(-600, farSide * -600));
+
+    return new THREE.Shape(points);
   }
 
   createBanks() {
-    const bankMaterialNorth = new THREE.MeshLambertMaterial({ color: 0x3d6630 });
-    const bankMaterialSouth = new THREE.MeshLambertMaterial({ color: 0x5a9143 });
-    const dirtMaterial = new THREE.MeshLambertMaterial({ color: 0x543f29 });
+    const northMaterial = new THREE.MeshLambertMaterial({ color: 0x3d6630, side: THREE.DoubleSide });
+    const southMaterial = new THREE.MeshLambertMaterial({ color: 0x4f8339, side: THREE.DoubleSide });
+    const dirtMaterial = new THREE.MeshLambertMaterial({ color: 0x4b3826, side: THREE.DoubleSide });
+    const sandMaterial = new THREE.MeshLambertMaterial({ color: 0xbdb07d, side: THREE.DoubleSide });
 
-    // North Bank Ground (Top of screen, Z <= -16)
-    const northGeo = new THREE.BoxGeometry(90, 6, 25);
-    const northBank = new THREE.Mesh(northGeo, bankMaterialNorth);
-    northBank.position.set(0, 1.5, -28);
+    // Northern bank plateau (high border side)
+    const northGeo = new THREE.ShapeGeometry(this.buildLandShape(-this.riverHalfWidth, -1));
+    northGeo.rotateX(-Math.PI / 2);
+    const northBank = new THREE.Mesh(northGeo, northMaterial);
+    northBank.position.y = 4.5;
     northBank.receiveShadow = true;
-    northBank.castShadow = true;
     this.scene.add(northBank);
 
-    // North Bank Cliff/Dirt Edge
-    const northEdgeGeo = new THREE.BoxGeometry(90, 3, 2);
-    const northEdge = new THREE.Mesh(northEdgeGeo, dirtMaterial);
-    northEdge.position.set(0, 0.5, -16);
-    northEdge.receiveShadow = true;
-    this.scene.add(northEdge);
-
-    // South Bank Ground (Flat recreational bank, top at Y = 0.05 so swimmers are never occluded!)
-    const southGeo = new THREE.BoxGeometry(90, 4, 25);
-    const southBank = new THREE.Mesh(southGeo, bankMaterialSouth);
-    southBank.position.set(0, -1.95, 28);
+    // Southern beach bank (low, where the crowd stands)
+    const southGeo = new THREE.ShapeGeometry(this.buildLandShape(this.riverHalfWidth, 1));
+    southGeo.rotateX(-Math.PI / 2);
+    const southBank = new THREE.Mesh(southGeo, southMaterial);
+    southBank.position.y = 0.05;
     southBank.receiveShadow = true;
-    southBank.castShadow = true;
     this.scene.add(southBank);
 
-    // South Bank Sand/Pebble Shoreline (Flat beach edge, top at Y = 0.02)
-    const sandMaterial = new THREE.MeshLambertMaterial({ color: 0xbdb07d });
-    const southEdgeGeo = new THREE.BoxGeometry(90, 2, 2.5);
-    const southEdge = new THREE.Mesh(southEdgeGeo, sandMaterial);
-    southEdge.position.set(0, -0.98, 16.5);
-    southEdge.receiveShadow = true;
-    this.scene.add(southEdge);
+    // Dirt cliff between the water and the high northern plateau
+    const wallGeo = this.buildRiverWallGeometry(-this.riverHalfWidth, 4.5, -0.6);
+    const wall = new THREE.Mesh(wallGeo, dirtMaterial);
+    wall.receiveShadow = true;
+    this.scene.add(wall);
 
-    // Danger demarcation line along Z = 15.5
+    // Dirt lip on top of the cliff, plus the sandy southern shoreline
+    const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.2, -this.riverHalfWidth, 4.52), dirtMaterial);
+    dirtLip.receiveShadow = true;
+    this.scene.add(dirtLip);
+
+    const sand = new THREE.Mesh(this.buildRibbonGeometry(this.riverHalfWidth, this.riverHalfWidth + 2.6, 0.06), sandMaterial);
+    sand.receiveShadow = true;
+    this.scene.add(sand);
+
+    // Danger demarcation line along Z = 15.4
     const lineGeo = new THREE.PlaneGeometry(80, 0.3);
     const lineMat = new THREE.MeshBasicMaterial({
       color: 0xff2222,
@@ -81,13 +198,9 @@ export class RiverWorld {
   }
 
   createWater() {
-    this.waterWidth = 90;
-    this.waterHeight = 32;
-    const segX = 48;
-    const segZ = 20;
+    const segAcross = 6;
 
-    this.waterGeo = new THREE.PlaneGeometry(this.waterWidth, this.waterHeight, segX, segZ);
-    this.waterGeo.rotateX(-Math.PI / 2);
+    this.waterGeo = this.buildRibbonGeometry(-this.riverHalfWidth, this.riverHalfWidth, 0, segAcross);
     this.waterBasePos = this.waterGeo.attributes.position.clone();
 
     this.waterMat = new THREE.MeshStandardMaterial({
@@ -95,31 +208,32 @@ export class RiverWorld {
       roughness: 0.25,
       metalness: 0.1,
       transparent: true,
-      opacity: 0.88,
-      flatShading: true
+      opacity: 0.9,
+      flatShading: true,
+      side: THREE.DoubleSide
     });
 
     this.waterMesh = new THREE.Mesh(this.waterGeo, this.waterMat);
-    this.waterMesh.position.set(0, 0, 0);
     this.waterMesh.receiveShadow = true;
     this.scene.add(this.waterMesh);
 
-    // Foam strips along the banks
+    // Foam strips that follow both banks around the bends
     const foamMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.45
+      opacity: 0.4,
+      side: THREE.DoubleSide
     });
 
-    const foamNorth = new THREE.Mesh(new THREE.PlaneGeometry(90, 0.8), foamMat);
-    foamNorth.rotation.x = -Math.PI / 2;
-    foamNorth.position.set(0, 0.03, -15.2);
+    const foamNorth = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth, -this.riverHalfWidth + 0.8, 0.04), foamMat);
     this.scene.add(foamNorth);
 
-    const foamSouth = new THREE.Mesh(new THREE.PlaneGeometry(90, 0.8), foamMat);
-    foamSouth.rotation.x = -Math.PI / 2;
-    foamSouth.position.set(0, 0.03, 15.2);
+    const foamSouth = new THREE.Mesh(this.buildRibbonGeometry(this.riverHalfWidth - 0.8, this.riverHalfWidth, 0.04), foamMat);
     this.scene.add(foamSouth);
+  }
+
+  getCurrentVelocity() {
+    return this.current;
   }
 
   createReedsAndVegetation() {
@@ -354,31 +468,6 @@ export class RiverWorld {
   }
 
   createEnvironmentDetails() {
-    const treeMat = new THREE.MeshLambertMaterial({ color: 0x1f4726, flatShading: true });
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3219 });
-    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 2, 5);
-    const foliageGeo = new THREE.ConeGeometry(1.6, 3.8, 6);
-
-    for (let x = -38; x <= 38; x += 6) {
-      if (Math.sin(x * 12.3) > -0.3) {
-        const tree = new THREE.Group();
-        const zOffset = -20 - (Math.abs(Math.sin(x)) * 7);
-
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.y = 4;
-        trunk.castShadow = true;
-        tree.add(trunk);
-
-        const foliage = new THREE.Mesh(foliageGeo, treeMat);
-        foliage.position.y = 6.2;
-        foliage.castShadow = true;
-        tree.add(foliage);
-
-        tree.position.set(x + (Math.cos(x) * 2), 0, zOffset);
-        this.scene.add(tree);
-      }
-    }
-
     const postGeo = new THREE.CylinderGeometry(0.18, 0.18, 3.2, 6);
     const postMat = new THREE.MeshLambertMaterial({ color: 0xee2222 });
     const signGeo = new THREE.BoxGeometry(2.2, 1.1, 0.15);
@@ -409,6 +498,112 @@ export class RiverWorld {
       this.scene.add(buoy);
       this.buoys.push({ mesh: buoy, baseX: buoy.position.x, baseZ: buoy.position.z, seed: i * 2.1 });
     }
+  }
+
+  // Dense mixed forest belts along both banks plus a canopy wall that closes off
+  // the horizon, so the river reads as a winding channel through woodland
+  // instead of a rectangle floating on an empty field.
+  createForests() {
+    const samples = this.riverSamples;
+    const trees = [];
+
+    const plant = (s, side, offset, scale) => {
+      const x = s.p.x + s.n.x * offset * side + (Math.random() - 0.5) * 3.5;
+      const z = s.p.z + s.n.z * offset * side + (Math.random() - 0.5) * 3.5;
+
+      // Keep the mission area readable: no trees on the beach, the patrol path
+      // or in the water.
+      if (Math.abs(x) < 47 && z > -24 && z < 28) return;
+
+      trees.push({
+        x,
+        z,
+        y: side < 0 ? 4.5 : 0.05,
+        scale: scale * (0.75 + Math.random() * 0.7),
+        rotation: Math.random() * Math.PI * 2,
+        pine: Math.random() > 0.22
+      });
+    };
+
+    for (let i = 4; i < samples.length - 4; i += 4) {
+      const s = samples[i];
+      for (const side of [-1, 1]) {
+        // Four rows of forest climbing away from the water
+        for (let row = 0; row < 4; row++) {
+          const offset = (side < 0 ? 24 : 27) + row * 15 + Math.random() * 9;
+          if (Math.random() > 0.82) continue;
+          plant(s, side, offset, 1);
+        }
+        // Sparse taller canopy wall behind the belt
+        if (i % 12 === 0) {
+          plant(s, side, 95 + Math.random() * 40, 1.35);
+        }
+      }
+    }
+
+    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 2.8, 5);
+    const pineGeo = new THREE.ConeGeometry(2.3, 6.4, 7);
+    const pineTopGeo = new THREE.ConeGeometry(1.5, 4.4, 7);
+    const broadleafGeo = new THREE.IcosahedronGeometry(2.5, 0);
+
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3219 });
+    const pineMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const broadleafMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+
+    const pines = trees.filter((t) => t.pine);
+    const broadleaves = trees.filter((t) => !t.pine);
+
+    const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
+    const pineCanopies = new THREE.InstancedMesh(pineGeo, pineMat, pines.length);
+    const pineTops = new THREE.InstancedMesh(pineTopGeo, pineMat, pines.length);
+    const broadleafCanopies = new THREE.InstancedMesh(broadleafGeo, broadleafMat, broadleaves.length);
+
+    const dummy = new THREE.Object3D();
+    const tint = new THREE.Color();
+
+    trees.forEach((t, i) => {
+      dummy.position.set(t.x, t.y + 1.4 * t.scale, t.z);
+      dummy.rotation.set(0, t.rotation, 0);
+      dummy.scale.setScalar(t.scale);
+      dummy.updateMatrix();
+      trunks.setMatrixAt(i, dummy.matrix);
+    });
+
+    pines.forEach((t, i) => {
+      tint.setHSL(0.33 + (Math.random() - 0.5) * 0.03, 0.42, 0.16 + Math.random() * 0.08);
+
+      dummy.position.set(t.x, t.y + 5.2 * t.scale, t.z);
+      dummy.rotation.set(0, t.rotation, 0);
+      dummy.scale.setScalar(t.scale);
+      dummy.updateMatrix();
+      pineCanopies.setMatrixAt(i, dummy.matrix);
+      pineCanopies.setColorAt(i, tint);
+
+      dummy.position.set(t.x, t.y + 7.4 * t.scale, t.z);
+      dummy.scale.setScalar(t.scale * 0.92);
+      dummy.updateMatrix();
+      pineTops.setMatrixAt(i, dummy.matrix);
+      pineTops.setColorAt(i, tint);
+    });
+
+    broadleaves.forEach((t, i) => {
+      tint.setHSL(0.3 + (Math.random() - 0.5) * 0.03, 0.45, 0.2 + Math.random() * 0.07);
+
+      dummy.position.set(t.x, t.y + 5.0 * t.scale, t.z);
+      dummy.rotation.set(0, t.rotation, 0);
+      dummy.scale.set(t.scale * 1.05, t.scale * 0.9, t.scale * 1.05);
+      dummy.updateMatrix();
+      broadleafCanopies.setMatrixAt(i, dummy.matrix);
+      broadleafCanopies.setColorAt(i, tint);
+    });
+
+    [trunks, pineCanopies, pineTops, broadleafCanopies].forEach((mesh) => {
+      mesh.castShadow = true;
+      mesh.receiveShadow = false;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      this.scene.add(mesh);
+    });
   }
 
   createWatchtower(x, z) {

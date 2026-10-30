@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 
+// Wide-angle patrol drone holding a static overwatch over the breach line.
 export class GameRenderer {
   constructor(container) {
     this.container = container;
@@ -10,6 +11,8 @@ export class GameRenderer {
     this.initRenderer();
     this.initCamera();
     this.initLights();
+
+    this.elapsed = 0;
 
     window.addEventListener('resize', () => this.onResize());
   }
@@ -31,26 +34,27 @@ export class GameRenderer {
 
   initCamera() {
     const aspect = window.innerWidth / window.innerHeight;
-    this.frustumSize = 42; // controls zoom level
 
-    this.camera = new THREE.OrthographicCamera(
-      (-this.frustumSize * aspect) / 2,
-      (this.frustumSize * aspect) / 2,
-      this.frustumSize / 2,
-      -this.frustumSize / 2,
-      0.1,
-      500
-    );
+    this.baseFov = 52;
+    this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 0.5, 600);
 
-    // Isometric angle: 45 degrees pitch, slight yaw so we see 3D boat profile clearly
-    // top is -Z (north bank), bottom is +Z (south bank)
-    this.camera.position.set(16, 42, 26);
-    this.camera.lookAt(0, 0, 0);
+    // The drone is flown by someone else: it holds a static overwatch framing
+    // on the southern breach line and only drifts on the wind. It never chases
+    // the patrol boat.
+    this.anchor = new THREE.Vector3(0, 0, 4);
+    this.rigOffset = new THREE.Vector3(13, 36, 30);
+
+    this.camera.position.copy(this.anchor).add(this.rigOffset);
+    this.lookTarget = this.anchor.clone();
+    this.lookTarget.y += 1;
+    this.camera.lookAt(this.lookTarget);
+
+    this.elapsed = 0;
 
     // Screen shake variables
     this.shakeIntensity = 0;
     this.shakeDecay = 0.9;
-    this.baseCameraPos = this.camera.position.clone();
+    this.shakeOffset = new THREE.Vector3();
   }
 
   initLights() {
@@ -78,37 +82,65 @@ export class GameRenderer {
     this.scene.add(this.sun);
   }
 
+  /**
+   * Static overwatch: the rig never tracks the boat. Only a slow wind drift
+   * and a gentle pan keep the feed feeling like a live drone.
+   */
+  updateCamera(dt) {
+    this.elapsed += dt;
+    const t = this.elapsed;
+
+    // Wind pushes the hovering drone around by a metre or two
+    const driftX = Math.sin(t * 0.11) * 1.4 + Math.sin(t * 0.37) * 0.3;
+    const driftZ = Math.cos(t * 0.09) * 1.1 + Math.cos(t * 0.29) * 0.25;
+    const driftY = Math.sin(t * 0.17) * 0.6;
+
+    // The operator keeps the camera on the breach line, with a lazy pan
+    const panX = Math.sin(t * 0.061) * 1.1;
+    const panZ = Math.cos(t * 0.047) * 0.7;
+
+    // Handheld vibration on impacts
+    if (this.shakeIntensity > 0.005) {
+      this.shakeOffset.set(
+        (Math.random() - 0.5) * this.shakeIntensity * 2,
+        (Math.random() - 0.5) * this.shakeIntensity * 2,
+        (Math.random() - 0.5) * this.shakeIntensity * 2
+      );
+      this.shakeIntensity *= Math.pow(this.shakeDecay, dt * 60);
+    } else {
+      this.shakeOffset.set(0, 0, 0);
+      this.shakeIntensity = 0;
+    }
+
+    this.camera.position.set(
+      this.anchor.x + this.rigOffset.x + driftX + this.shakeOffset.x,
+      this.anchor.y + this.rigOffset.y + driftY + this.shakeOffset.y,
+      this.anchor.z + this.rigOffset.z + driftZ + this.shakeOffset.z
+    );
+
+    this.lookTarget.set(
+      this.anchor.x + panX,
+      this.anchor.y + 1,
+      this.anchor.z + panZ
+    );
+
+    this.camera.lookAt(this.lookTarget);
+    // Faint rotor/wind roll
+    this.camera.rotateZ(Math.sin(t * 0.13) * 0.006 + (Math.random() - 0.5) * this.shakeIntensity * 0.02);
+  }
+
   triggerScreenShake(intensity = 0.5) {
     this.shakeIntensity = Math.min(this.shakeIntensity + intensity, 1.2);
   }
 
   onResize() {
     const aspect = window.innerWidth / window.innerHeight;
-    this.camera.left = (-this.frustumSize * aspect) / 2;
-    this.camera.right = (this.frustumSize * aspect) / 2;
-    this.camera.top = this.frustumSize / 2;
-    this.camera.bottom = -this.frustumSize / 2;
+    this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
-
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
-  render(dt) {
-    if (this.shakeIntensity > 0.005) {
-      const offsetX = (Math.random() - 0.5) * this.shakeIntensity * 2;
-      const offsetY = (Math.random() - 0.5) * this.shakeIntensity * 2;
-      const offsetZ = (Math.random() - 0.5) * this.shakeIntensity * 2;
-      this.camera.position.set(
-        this.baseCameraPos.x + offsetX,
-        this.baseCameraPos.y + offsetY,
-        this.baseCameraPos.z + offsetZ
-      );
-      this.shakeIntensity *= Math.pow(this.shakeDecay, dt * 60);
-    } else {
-      this.camera.position.copy(this.baseCameraPos);
-      this.shakeIntensity = 0;
-    }
-
+  render() {
     this.renderer.render(this.scene, this.camera);
   }
 }
