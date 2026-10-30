@@ -348,7 +348,7 @@ export class Boat {
   }
 
   getWhackHitbox() {
-    if (!this.isSlapping || this.slapTime < 0.05 || this.slapTime > 0.26) {
+    if (!this.isSlapping || this.slapTime < 0.02 || this.slapTime > 0.32) {
       return null;
     }
 
@@ -358,17 +358,16 @@ export class Boat {
     const hitCenter = this.position.clone().add(bladeOffset);
     return {
       center: hitCenter,
-      radius: 2.6
+      radius: 2.8 // generous reach
     };
   }
 
   getMotorHitbox() {
-    // Generous rear propeller reach for rewarding motor kills!
     const motorOffset = new THREE.Vector3(-2.1, 0, 0);
     motorOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.angle);
     return {
       center: this.position.clone().add(motorOffset),
-      radius: 1.8
+      radius: 2.2 // reliable propeller reach
     };
   }
 
@@ -377,7 +376,7 @@ export class Boat {
     hullOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.angle);
     return {
       center: this.position.clone().add(hullOffset),
-      radius: 2.2
+      radius: 2.6 // reliable hull contact
     };
   }
 

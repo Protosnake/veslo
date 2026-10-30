@@ -4,31 +4,42 @@ import { RiverWorld } from './world/River.js';
 import { Boat } from './entities/Boat.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { sound } from './systems/Audio.js';
+import { rankSystem } from './systems/RankSystem.js';
+import { logger } from './systems/Logger.js';
 
 class Game {
   constructor() {
     this.container = document.getElementById('canvas-container');
     this.state = 'MENU'; // 'MENU' | 'PLAYING' | 'GAMEOVER'
 
-    // DOM UI elements
-    this.hudScore = document.getElementById('hud-score');
-    this.hudHighScore = document.getElementById('hud-high-score');
-    this.hudMultiplier = document.getElementById('hud-multiplier');
-    this.hudSmacked = document.getElementById('hud-smacked');
-    this.slapDot = document.getElementById('slap-dot');
+    // Minimalist Rank HUD elements
+    this.hudRankBadge = document.getElementById('hud-rank-badge');
+    this.hudRankTitle = document.getElementById('hud-rank-title');
+    this.hudScorePill = document.getElementById('hud-score-pill');
+    this.hudRankBar = document.getElementById('hud-rank-bar');
+    this.hudRankNext = document.getElementById('hud-rank-next');
 
+    // Modals
     this.startModal = document.getElementById('start-modal');
     this.startBtn = document.getElementById('start-btn');
     this.gameOverModal = document.getElementById('game-over-modal');
     this.gameOverTitle = document.getElementById('game-over-title');
     this.gameOverSubtitle = document.getElementById('game-over-subtitle');
+    this.finalRankBadge = document.getElementById('final-rank-badge');
+    this.finalRankTitle = document.getElementById('final-rank-title');
+    this.finalRankScore = document.getElementById('final-rank-score');
     this.restartBtn = document.getElementById('restart-btn');
-    this.finalScore = document.getElementById('final-score');
-    this.finalSmacked = document.getElementById('final-smacked');
+
+    // Debug toggle button
+    this.debugToggleBtn = document.getElementById('debug-toggle-btn');
+    if (this.debugToggleBtn) {
+      this.debugToggleBtn.addEventListener('click', () => {
+        logger.toggle();
+      });
+    }
 
     // Storage
     this.highScore = parseInt(localStorage.getItem('veslo_high_score') || '0', 10);
-    this.hudHighScore.textContent = this.highScore;
 
     // Core 3D engine
     this.renderer = new GameRenderer(this.container);
@@ -62,11 +73,11 @@ class Game {
     this.clock = new THREE.Clock();
 
     this.initEvents();
+    this.updateHUD();
     this.animate();
   }
 
   initEvents() {
-    // Keyboard inputs
     window.addEventListener('keydown', (e) => {
       sound.init();
 
@@ -94,7 +105,6 @@ class Game {
       if (e.code === 'KeyD' || e.code === 'ArrowRight') this.input.right = false;
     });
 
-    // Mouse movement to project water cursor
     window.addEventListener('mousemove', (e) => {
       this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -106,17 +116,15 @@ class Game {
       }
     });
 
-    // Mouse down / click to slap
     window.addEventListener('mousedown', (e) => {
       sound.init();
-      if (e.button === 0) { // Left click
+      if (e.button === 0) {
         if (this.state === 'PLAYING') {
           this.boat.triggerSlap();
         }
       }
     });
 
-    // Buttons
     this.startBtn.addEventListener('click', () => {
       sound.init();
       this.startGame();
@@ -134,7 +142,9 @@ class Game {
     this.gameOverModal.classList.add('hidden');
     this.boat.reset();
     this.smugglerManager.reset();
+    rankSystem.reset();
     this.updateHUD();
+    logger.log('GAME', 'Patrol mission started');
   }
 
   restartGame() {
@@ -149,13 +159,18 @@ class Game {
     } else {
       this.renderer.triggerScreenShake(0.65);
     }
+
     this.world.triggerCrowdReaction();
     this.updateHUD();
     this.createFloatingScore(worldPos, text, type);
+
+    logger.log('COMBAT', `Smuggler neutralized via ${type}`, {
+      points,
+      totalScore: this.smugglerManager.score
+    });
   }
 
   createFloatingScore(worldPos, text, type = 'whack') {
-    // Project 3D coordinate to 2D screen coordinate
     const vector = worldPos.clone();
     vector.y += 1.0;
     vector.project(this.renderer.camera);
@@ -184,18 +199,12 @@ class Game {
     sound.playRam();
     sound.playGameOver();
 
-    if (this.gameOverTitle) this.gameOverTitle.textContent = "BOAT CRASHED ON SHORE!";
+    logger.log('CRASH', reason);
+
+    if (this.gameOverTitle) this.gameOverTitle.textContent = "ЧОВЕН ВРІЗАВСЯ В БЕРЕГ!";
     if (this.gameOverSubtitle) this.gameOverSubtitle.textContent = reason;
 
-    // Save high score
-    if (this.smugglerManager.score > this.highScore) {
-      this.highScore = this.smugglerManager.score;
-      localStorage.setItem('veslo_high_score', this.highScore.toString());
-      this.hudHighScore.textContent = this.highScore;
-    }
-
-    this.finalScore.textContent = this.smugglerManager.score;
-    this.finalSmacked.textContent = this.smugglerManager.totalSmacked;
+    this.handleGameOverRanks();
 
     setTimeout(() => {
       this.gameOverModal.classList.remove('hidden');
@@ -208,33 +217,80 @@ class Game {
     this.renderer.triggerScreenShake(0.8);
     this.world.triggerCrowdReaction();
 
-    if (this.gameOverTitle) this.gameOverTitle.textContent = "BORDER BREACHED!";
-    if (this.gameOverSubtitle) this.gameOverSubtitle.textContent = "A smuggler reached the southern shore. Mission Failed.";
+    logger.log('BREACH', 'Smuggler reached shore!');
+
+    if (this.gameOverTitle) this.gameOverTitle.textContent = "КОРДОН ПРОРВАНО!";
+    if (this.gameOverSubtitle) this.gameOverSubtitle.textContent = "Порушник переплив річку. Місію провалено.";
 
     if (breachedSmuggler && breachedSmuggler.position) {
       this.createFloatingScore(breachedSmuggler.position, "ПРОРИВ КОРДОНУ! ⚠️", "shred");
     }
 
-    // Save high score
-    if (this.smugglerManager.score > this.highScore) {
-      this.highScore = this.smugglerManager.score;
-      localStorage.setItem('veslo_high_score', this.highScore.toString());
-      this.hudHighScore.textContent = this.highScore;
-    }
-
-    this.finalScore.textContent = this.smugglerManager.score;
-    this.finalSmacked.textContent = this.smugglerManager.totalSmacked;
+    this.handleGameOverRanks();
 
     setTimeout(() => {
       this.gameOverModal.classList.remove('hidden');
     }, 1200);
   }
 
+  handleGameOverRanks() {
+    const score = this.smugglerManager.score;
+    if (score > this.highScore) {
+      this.highScore = score;
+      localStorage.setItem('veslo_high_score', this.highScore.toString());
+    }
+
+    const rankInfo = rankSystem.getRankForScore(score);
+    if (this.finalRankBadge) this.finalRankBadge.textContent = rankInfo.current.badge;
+    if (this.finalRankTitle) this.finalRankTitle.textContent = rankInfo.current.title;
+    if (this.finalRankScore) this.finalRankScore.textContent = `Фінальний рахунок: ${score} очок`;
+  }
+
   updateHUD() {
-    this.hudScore.textContent = this.smugglerManager.score;
-    this.hudSmacked.textContent = this.smugglerManager.totalSmacked;
-    const mult = this.smugglerManager.getSpeedMultiplier().toFixed(1);
-    this.hudMultiplier.textContent = `${mult}x`;
+    const score = this.smugglerManager.score;
+    const rankInfo = rankSystem.getRankForScore(score);
+    const progress = rankSystem.getProgress(score);
+
+    // Update Minimalist Rank HUD
+    if (this.hudRankBadge) this.hudRankBadge.textContent = rankInfo.current.badge;
+    if (this.hudRankTitle) this.hudRankTitle.textContent = rankInfo.current.title;
+    if (this.hudScorePill) this.hudScorePill.textContent = `${score} ОЧКІВ`;
+    if (this.hudRankBar) this.hudRankBar.style.width = `${(progress * 100).toFixed(1)}%`;
+
+    if (this.hudRankNext) {
+      if (rankInfo.next) {
+        this.hudRankNext.textContent = `НАСТУПНЕ ЗВАННЯ: ${rankInfo.next.title.toUpperCase()} (${rankInfo.next.minScore})`;
+      } else {
+        this.hudRankNext.textContent = `МАКСИМАЛЬНЕ ВІЙСЬКОВЕ ЗВАННЯ ДПСУ!`;
+      }
+    }
+
+    // Check if player just reached a new rank!
+    const newRank = rankSystem.checkRankUp(score);
+    if (newRank) {
+      sound.playAlert();
+      this.showRankUpBanner(newRank);
+      logger.log('RANK_UP', `Promoted to ${newRank.title}!`, { score });
+    }
+  }
+
+  showRankUpBanner(rank) {
+    const banner = document.createElement('div');
+    banner.className = 'rank-up-popup';
+    banner.innerHTML = `
+      <div style="font-size: 13px; letter-spacing: 2px; color: #a4ceb2; font-weight: 800; text-transform: uppercase;">
+        ПІДВИЩЕННЯ У ЗВАННІ ДПСУ!
+      </div>
+      <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 6px;">
+        <span style="font-size: 36px;">${rank.badge}</span>
+        <span style="font-size: 26px; font-weight: 900; color: #ffd000; letter-spacing: 1px;">${rank.title}</span>
+      </div>
+    `;
+    document.body.appendChild(banner);
+
+    setTimeout(() => {
+      if (banner.parentNode) banner.parentNode.removeChild(banner);
+    }, 2300);
   }
 
   animate() {
@@ -242,29 +298,22 @@ class Game {
 
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
-    // Slap recharge indicator dot
-    if (this.slapDot) {
-      if (this.boat.slapCooldown > 0 || this.boat.isSlapping) {
-        this.slapDot.classList.add('recharging');
-      } else {
-        this.slapDot.classList.remove('recharging');
-      }
-    }
-
     if (this.state === 'PLAYING') {
       this.boat.update(dt, this.input);
       this.smugglerManager.update(dt, this.boat);
     } else {
-      // Gentle idle boat bobbing when on menu
       this.boat.update(dt, { forward: false, backward: false, left: false, right: false });
     }
 
     this.world.update(dt);
     this.renderer.render(dt);
+
+    // Update debug panel & logger
+    const rankInfo = rankSystem.getRankForScore(this.smugglerManager.score);
+    logger.update(this.boat, this.smugglerManager, this.smugglerManager.score, rankInfo.current.title);
   }
 }
 
-// Start game instance on DOM load
 window.addEventListener('DOMContentLoaded', () => {
   new Game();
 });

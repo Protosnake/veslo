@@ -75,7 +75,7 @@ export class SmugglerManager {
       if (!s.isDead && s.state === 'swimming') {
         // Priority 1: Oar Whack (+100 pts)
         if (whackHitbox) {
-          const distWhack = s.position.distanceTo(whackHitbox.center);
+          const distWhack = Math.hypot(s.position.x - whackHitbox.center.x, s.position.z - whackHitbox.center.z);
           if (distWhack <= whackHitbox.radius) {
             s.smack();
             this.totalSmacked++;
@@ -87,7 +87,7 @@ export class SmugglerManager {
         }
 
         // Priority 2: Outboard Engine / Propeller Chop (+500 pts!)
-        const distMotor = s.position.distanceTo(motorHitbox.center);
+        const distMotor = Math.hypot(s.position.x - motorHitbox.center.x, s.position.z - motorHitbox.center.z);
         if (distMotor <= motorHitbox.radius) {
           s.shred();
           this.totalSmacked++;
@@ -98,7 +98,7 @@ export class SmugglerManager {
         }
 
         // Priority 3: Boat Hull Ramming (+50 pts)
-        const distHull = s.position.distanceTo(hullHitbox.center);
+        const distHull = Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z);
         if (distHull <= hullHitbox.radius) {
           s.ram();
           this.totalSmacked++;

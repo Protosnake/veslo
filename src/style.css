@@ -1,8 +1,8 @@
 :root {
   --primary-color: #ffd000;
   --accent-red: #ff3344;
-  --bg-dark: rgba(18, 26, 32, 0.88);
-  --border-patrol-green: #29472e;
+  --bg-dark: rgba(14, 22, 17, 0.90);
+  --border-patrol-green: #3c6b45;
 }
 
 * {
@@ -43,121 +43,132 @@ html, body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 20px;
+  padding: 16px 20px;
 }
 
-/* Header HUD */
-.hud-header {
+/* Minimalist Centered Rank HUD (Only Ranking & Progress) */
+.hud-header-minimal {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  justify-content: center;
+  align-items: center;
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
 }
 
-.hud-panel {
+.hud-rank-card {
   background: var(--bg-dark);
-  border: 2px solid #3c5643;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(0, 0, 0, 0.3);
-  border-radius: 10px;
-  padding: 12px 20px;
-  backdrop-filter: blur(6px);
-}
-
-.score-box {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.score-label {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: #a0c2a8;
-}
-
-.score-value {
-  font-size: 38px;
-  font-weight: 900;
-  color: var(--primary-color);
-  text-shadow: 0 2px 8px rgba(255, 208, 0, 0.4);
-  line-height: 1.1;
-}
-
-.high-score-val {
-  font-size: 14px;
-  color: #92b59b;
-  margin-top: 2px;
-}
-
-/* Military Rank Box (Fibonacci Progression) */
-.rank-panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 190px;
-  gap: 4px;
+  border: 2px solid var(--border-patrol-green);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.3);
+  border-radius: 14px;
+  padding: 10px 22px;
+  backdrop-filter: blur(8px);
+  min-width: 320px;
+  max-width: 440px;
+  width: 90%;
 }
 
 .rank-top {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
 }
 
 .rank-badge-icon {
-  font-size: 26px;
+  font-size: 36px;
   line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
 }
 
-.rank-info {
+.rank-info-group {
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
-.rank-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  color: #7fa689;
-  text-transform: uppercase;
+.rank-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
 }
 
 .rank-name {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 900;
-  color: #ffd000;
-  letter-spacing: 0.8px;
+  color: var(--primary-color);
+  letter-spacing: 1px;
   text-transform: uppercase;
+  text-shadow: 0 2px 6px rgba(255, 208, 0, 0.3);
+}
+
+.rank-score-pill {
+  font-size: 13px;
+  font-weight: 800;
+  color: #c9e3cf;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
 }
 
 .rank-bar-bg {
   width: 100%;
-  height: 6px;
-  background: rgba(0, 0, 0, 0.45);
-  border-radius: 4px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 6px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  margin-top: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: 5px;
 }
 
 .rank-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #ffd000, #ff8800);
-  border-radius: 4px;
-  transition: width 0.3s ease;
+  border-radius: 6px;
+  transition: width 0.35s ease;
 }
 
 .rank-next {
   font-size: 11px;
   color: #8fa895;
-  font-weight: 600;
+  font-weight: 700;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+
+/* Footer Control Hints */
+.hud-footer {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.control-pill {
+  background: rgba(14, 22, 17, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 30px;
+  padding: 8px 24px;
+  font-size: 13px;
+  letter-spacing: 0.8px;
+  color: #c9e0d1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  backdrop-filter: blur(6px);
+}
+
+.control-pill kbd {
+  background: #25382a;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid #4a6652;
+  color: #ffd000;
+  font-weight: bold;
 }
 
 .debug-btn {
-  background: rgba(40, 60, 48, 0.8);
+  background: rgba(40, 60, 48, 0.9);
   border: 1px solid #4ade80;
   color: #4ade80;
   border-radius: 6px;
@@ -179,9 +190,9 @@ html, body {
   top: 18%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.7);
-  background: linear-gradient(135deg, rgba(20, 35, 24, 0.95), rgba(10, 20, 14, 0.95));
+  background: linear-gradient(135deg, rgba(20, 35, 24, 0.96), rgba(10, 20, 14, 0.96));
   border: 2px solid #ffd000;
-  box-shadow: 0 0 30px rgba(255, 208, 0, 0.6);
+  box-shadow: 0 0 35px rgba(255, 208, 0, 0.6);
   border-radius: 14px;
   padding: 16px 36px;
   text-align: center;
@@ -196,133 +207,6 @@ html, body {
   30% { transform: translate(-50%, -50%) scale(1.0); }
   80% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
   100% { opacity: 0; transform: translate(-50%, -80%) scale(0.9); }
-}
-
-/* Game Over Military Rank Banner */
-.game-over-rank-box {
-  background: rgba(0, 0, 0, 0.4);
-  border: 2px solid #3d6b46;
-  border-radius: 12px;
-  padding: 14px 20px;
-  margin-bottom: 20px;
-}
-
-.game-over-rank-sub {
-  font-size: 11px;
-  letter-spacing: 2px;
-  font-weight: 800;
-  color: #8fa895;
-  text-transform: uppercase;
-}
-
-.game-over-rank-main {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 6px;
-}
-
-.hud-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-.life-badge {
-  background: rgba(220, 40, 40, 0.25);
-  border: 2px solid var(--accent-red);
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  color: #ff6b78;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  animation: pulse-danger 2s infinite ease-in-out;
-}
-
-@keyframes pulse-danger {
-  0%, 100% { border-color: var(--accent-red); box-shadow: 0 0 5px rgba(255, 51, 68, 0.4); }
-  50% { border-color: #ff99a4; box-shadow: 0 0 16px rgba(255, 51, 68, 0.7); }
-}
-
-.speed-meter {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #a4ceb2;
-}
-
-.speed-meter span {
-  color: #ffd000;
-  font-weight: 800;
-}
-
-.hud-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.slap-indicator {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-
-.slap-ready-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #3aff66;
-  box-shadow: 0 0 10px #3aff66;
-  transition: all 0.15s ease;
-}
-
-.slap-ready-dot.recharging {
-  background: #ff5533;
-  box-shadow: none;
-  opacity: 0.5;
-}
-
-/* Footer Control Hints */
-.hud-footer {
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.control-pill {
-  background: rgba(18, 26, 32, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 30px;
-  padding: 8px 24px;
-  font-size: 13px;
-  letter-spacing: 1px;
-  color: #c9e0d1;
-  display: flex;
-  gap: 16px;
-  backdrop-filter: blur(4px);
-}
-
-.control-pill kbd {
-  background: #2b3d30;
-  padding: 2px 7px;
-  border-radius: 5px;
-  border: 1px solid #4a6652;
-  color: #ffd000;
-  font-weight: bold;
 }
 
 /* Floating Points Popup (+100 / +500 / +50) */
@@ -351,22 +235,10 @@ html, body {
 }
 
 @keyframes floatUpAndFade {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -20%) scale(0.5);
-  }
-  20% {
-    opacity: 1;
-    transform: translate(-50%, -60%) scale(1.3);
-  }
-  80% {
-    opacity: 1;
-    transform: translate(-50%, -100%) scale(1.0);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -140%) scale(0.8);
-  }
+  0% { opacity: 0; transform: translate(-50%, -20%) scale(0.5); }
+  20% { opacity: 1; transform: translate(-50%, -60%) scale(1.3); }
+  80% { opacity: 1; transform: translate(-50%, -100%) scale(1.0); }
+  100% { opacity: 0; transform: translate(-50%, -140%) scale(0.8); }
 }
 
 /* Modal Overlay (Start & Game Over Screens) */
@@ -425,6 +297,30 @@ html, body {
   text-shadow: 0 4px 15px rgba(255, 51, 68, 0.6);
 }
 
+.game-over-rank-box {
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid #3d6b46;
+  border-radius: 14px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+}
+
+.game-over-rank-sub {
+  font-size: 11px;
+  letter-spacing: 2px;
+  font-weight: 800;
+  color: #8fa895;
+  text-transform: uppercase;
+}
+
+.game-over-rank-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -434,24 +330,6 @@ html, body {
   border-radius: 12px;
   margin-bottom: 24px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: #88a892;
-}
-
-.stat-val {
-  font-size: 28px;
-  font-weight: 800;
-  color: #ffffff;
 }
 
 .rule-highlight {
