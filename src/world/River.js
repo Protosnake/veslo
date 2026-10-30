@@ -11,6 +11,12 @@ export class RiverWorld {
     this.crowdList = [];
     this.crowdShockTime = 0;
 
+    // Shared river current (world units/sec). Weather can later modify this object.
+    this.current = {
+      x: 0.1,
+      z: 0.2
+    };
+
     this.createBanks();
     this.createWater();
     this.createReedsAndVegetation();
@@ -18,6 +24,10 @@ export class RiverWorld {
     this.createRiverBoundaries(); // East & West natural barriers (rocks, reeds, warning posts)
     this.createAppalledCrowd();
     this.createParticleSystem();
+  }
+
+  getCurrentVelocity() {
+    return this.current;
   }
 
   createBanks() {
@@ -120,22 +130,35 @@ export class RiverWorld {
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x737678, flatShading: true });
 
     const clumpPositions = [
-      { x: -28, z: -15.2 }, { x: -18, z: -15.3 }, { x: -6, z: -15.1 },
-      { x: 6, z: -15.3 }, { x: 18, z: -15.2 }, { x: 28, z: -15.1 },
+      // Dense north-shore reed belt
+      { x: -31, z: -15.3 }, { x: -25, z: -15.1 }, { x: -19, z: -15.4 },
+      { x: -13, z: -15.2 }, { x: -6, z: -14.9 }, { x: 0, z: -15.2 },
+      { x: 6, z: -14.8 }, { x: 13, z: -15.3 }, { x: 19, z: -15.1 },
+      { x: 25, z: -15.4 }, { x: 31, z: -15.2 }, { x: -28, z: -14.7 },
+      { x: 9, z: -14.5 }, { x: 22, z: -14.8 },
+      // Second lush row leaning into the water
+      { x: -33, z: -14.4 }, { x: -22, z: -14.3 }, { x: -10, z: -14.2 },
+      { x: 2, z: -14.4 }, { x: 15, z: -14.2 }, { x: 27, z: -14.3 },
+      // Reeds on the north bank itself, hiding enemies as they walk in
+      { x: -28, z: -17.1, y: 4.5 }, { x: -20, z: -18.0, y: 4.5 },
+      { x: -12, z: -16.8, y: 4.5 }, { x: -4, z: -17.8, y: 4.5 },
+      { x: 4, z: -16.9, y: 4.5 }, { x: 12, z: -18.1, y: 4.5 },
+      { x: 20, z: -17.0, y: 4.5 }, { x: 28, z: -17.9, y: 4.5 },
+      // South shore waterline
       { x: -26, z: 15.1 }, { x: -14, z: 15.2 }, { x: -2, z: 15.0 },
       { x: 12, z: 15.3 }, { x: 22, z: 15.1 }, { x: 29, z: 15.2 }
     ];
 
     clumpPositions.forEach((pos, cIndex) => {
       const clump = new THREE.Group();
-      clump.position.set(pos.x, 0, pos.z);
+      clump.position.set(pos.x, pos.y || 0, pos.z);
 
-      const stalkCount = 7 + Math.floor(Math.sin(cIndex * 3) * 3 + 3);
+      const stalkCount = 11 + (pos.y ? 6 : 0) + Math.floor(Math.sin(cIndex * 3) * 3 + 3);
       for (let i = 0; i < stalkCount; i++) {
         const stalkGroup = new THREE.Group();
-        const height = 1.8 + Math.random() * 1.3;
-        const ox = (Math.random() - 0.5) * 2.2;
-        const oz = (Math.random() - 0.5) * 1.0;
+        const height = (pos.y ? 2.8 : 2.1) + Math.random() * (pos.y ? 1.8 : 1.6);
+        const ox = (Math.random() - 0.5) * 2.6;
+        const oz = (Math.random() - 0.5) * 1.4;
 
         const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, height, 4), stalkMat);
         stalk.position.y = height / 2;
@@ -171,27 +194,99 @@ export class RiverWorld {
       if (Math.random() > 0.3) {
         const rockSize = 0.35 + Math.random() * 0.4;
         const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rockSize, 0), rockMat);
-        rock.position.set(pos.x + (Math.random() - 0.5) * 1.5, 0.1, pos.z + (Math.random() - 0.5) * 0.6);
+        rock.position.set(pos.x + (Math.random() - 0.5) * 1.5, (pos.y || 0) + 0.1, pos.z + (Math.random() - 0.5) * 0.6);
         rock.rotation.set(Math.random(), Math.random(), Math.random());
         rock.castShadow = true;
         this.scene.add(rock);
       }
 
-      for (let l = 0; l < 2; l++) {
-        const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.02, 6), leafMat);
-        const pzOffset = pos.z < 0 ? 0.9 : -0.9;
-        pad.position.set(pos.x + (Math.random() - 0.5) * 2.0, 0.03, pos.z + pzOffset + (Math.random() - 0.5) * 0.5);
-        this.scene.add(pad);
+      if (!pos.y) {
+        for (let l = 0; l < 2; l++) {
+          const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.02, 6), leafMat);
+          const pzOffset = pos.z < 0 ? 0.9 : -0.9;
+          pad.position.set(pos.x + (Math.random() - 0.5) * 2.0, 0.03, pos.z + pzOffset + (Math.random() - 0.5) * 0.5);
+          this.scene.add(pad);
 
-        if (l === 0) {
-          const flower = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.15, 5), flowerMat);
-          flower.position.set(pad.position.x, 0.1, pad.position.z);
-          this.scene.add(flower);
+          if (l === 0) {
+            const flower = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.15, 5), flowerMat);
+            flower.position.set(pad.position.x, 0.1, pad.position.z);
+            this.scene.add(flower);
+          }
         }
       }
 
       this.scene.add(clump);
     });
+
+    // Extra scattered reeds fill out the shoreline into a dense, natural belt
+    const extraStalkGeo = new THREE.CylinderGeometry(0.045, 0.07, 1, 4);
+    const extraHeadGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.45, 5);
+
+    const addExtraReed = (x, y, z, sizeScale = 1) => {
+      const group = new THREE.Group();
+      group.position.set(x, y, z);
+
+      const height = (1.7 + Math.random() * 1.8) * sizeScale;
+      const stalk = new THREE.Mesh(extraStalkGeo, Math.random() > 0.5 ? stalkMat : leafMat);
+      stalk.position.y = height / 2;
+      stalk.scale.y = height;
+      stalk.rotation.y = Math.random() * Math.PI;
+      stalk.castShadow = true;
+      group.add(stalk);
+
+      if (Math.random() > 0.7) {
+        const head = new THREE.Mesh(extraHeadGeo, cattailMat);
+        head.position.y = height * 0.84;
+        head.castShadow = true;
+        group.add(head);
+      }
+
+      this.scene.add(group);
+      this.reedsList.push({
+        group,
+        baseRotZ: 0,
+        seed: x * 1.7 + z * 2.3
+      });
+    };
+
+    // Dense rows leaning into the water along the north shore
+    for (let row = 0; row < 4; row++) {
+      const zBase = -14.4 + row * 0.52;
+      for (let x = -40; x <= 40; x += 2.3 + Math.random() * 1.2) {
+        addExtraReed(
+          x + (Math.random() - 0.5) * 1.2,
+          0,
+          zBase + (Math.random() - 0.5) * 0.5,
+          0.85 + Math.random() * 0.5
+        );
+      }
+    }
+
+    // Taller clumps on the north bank behind the walking path
+    for (let row = 0; row < 2; row++) {
+      const zBase = -17.2 - row * 1.1;
+      for (let x = -36; x <= 36; x += 2.8 + Math.random() * 1.4) {
+        addExtraReed(
+          x + (Math.random() - 0.5) * 1.4,
+          4.5,
+          zBase + (Math.random() - 0.5) * 0.7,
+          1.15 + Math.random() * 0.45
+        );
+      }
+    }
+
+    // Softer reed fringe on the south shore
+    for (let row = 0; row < 2; row++) {
+      const zBase = 14.6 + row * 0.55;
+      for (let x = -38; x <= 38; x += 3.1 + Math.random() * 1.4) {
+        addExtraReed(
+          x + (Math.random() - 0.5) * 1.3,
+          0,
+          zBase + (Math.random() - 0.5) * 0.45,
+          0.9 + Math.random() * 0.45
+        );
+      }
+    }
   }
 
   createRiverBoundaries() {

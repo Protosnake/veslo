@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 
 export default defineConfig({
+  server: {
+    port: 5174
+  },
   plugins: [
     {
       name: 'backend-debugger-observability',

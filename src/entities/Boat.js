@@ -14,14 +14,15 @@ export class Boat {
     this.angularVelocity = 0;
     this.speed = 0;
 
-    // Responsive performance params (fast forward & powerful reverse for motor kills!)
+    // Heavier, momentum-driven handling
     this.maxSpeed = 26;
-    this.maxReverseSpeed = 24; // fast reverse so player easily catches up for motor kills!
-    this.acceleration = 46;
-    this.reverseAcceleration = 44;
-    this.turnSpeed = 6.4; // fast, snappy steering
-    this.drag = 3.0;
-    this.turnDrag = 5.4;
+    this.maxReverseSpeed = this.maxSpeed * 0.5; // reverse is half as fast as forward
+    this.acceleration = 12;
+    this.reverseAcceleration = this.acceleration * 0.5;
+    this.turnSpeed = 5.2;
+    this.forwardDrag = 0.32; // low longitudinal drag keeps the boat coasting
+    this.lateralDrag = 1.1; // low side grip lets the stern slide out in turns
+    this.turnDrag = 2.6;
 
     // Whack (Весло) state
     this.isSlapping = false;
@@ -410,24 +411,52 @@ export class Boat {
       }
     }
 
-    // Fast, responsive steering angular physics
-    this.angularVelocity += steer * this.turnSpeed * dt;
+    // Rudder authority builds up with boat speed: you cannot pivot in place
+    const speedFactor = Math.min(1, Math.abs(this.speed) / (this.maxSpeed * 0.5));
+    const steerAuthority = 0.2 + 0.8 * speedFactor;
+    this.angularVelocity += steer * this.turnSpeed * steerAuthority * dt;
     this.angularVelocity -= this.angularVelocity * this.turnDrag * dt;
     this.angle += this.angularVelocity * dt;
 
-    if (throttle > 0) {
-      this.speed += throttle * this.acceleration * dt;
-    } else if (throttle < 0) {
-      this.speed += throttle * this.reverseAcceleration * dt;
-    }
-
-    this.speed -= this.speed * this.drag * dt;
-    this.speed = Math.max(-this.maxReverseSpeed, Math.min(this.maxSpeed, this.speed));
-
     const forwardX = Math.cos(this.angle);
     const forwardZ = -Math.sin(this.angle);
-    this.position.x += forwardX * this.speed * dt;
-    this.position.z += forwardZ * this.speed * dt;
+    const sideX = Math.sin(this.angle);
+    const sideZ = Math.cos(this.angle);
+
+    // Split momentum into hull-aligned and sideways components
+    let forwardSpeed = this.velocity.x * forwardX + this.velocity.z * forwardZ;
+    let lateralSpeed = this.velocity.x * sideX + this.velocity.z * sideZ;
+
+    if (throttle > 0) {
+      forwardSpeed += throttle * this.acceleration * dt;
+    } else if (throttle < 0) {
+      forwardSpeed += throttle * this.reverseAcceleration * dt;
+    }
+
+    // Water resists sideways sliding less than forward motion, so turns drift
+    forwardSpeed -= forwardSpeed * this.forwardDrag * dt;
+    lateralSpeed -= lateralSpeed * this.lateralDrag * dt;
+
+    forwardSpeed = Math.max(-this.maxReverseSpeed, Math.min(this.maxSpeed, forwardSpeed));
+    lateralSpeed = Math.max(-this.maxSpeed * 0.8, Math.min(this.maxSpeed * 0.8, lateralSpeed));
+
+    this.speed = forwardSpeed;
+    this.velocity.set(
+      forwardX * forwardSpeed + sideX * lateralSpeed,
+      0,
+      forwardZ * forwardSpeed + sideZ * lateralSpeed
+    );
+
+    // Momentum carries the boat: it does not stop or turn on a dime
+    this.position.x += this.velocity.x * dt;
+    this.position.z += this.velocity.z * dt;
+
+    // River current advection (shared config so weather can change it later)
+    if (this.world.getCurrentVelocity) {
+      const current = this.world.getCurrentVelocity();
+      this.position.x += current.x * dt;
+      this.position.z += current.z * dt;
+    }
 
     // Check if boat hit land or barrier (hitting boundaries triggers Game Over once)
     const hitNorthBank = this.position.z <= -14.6;
@@ -438,6 +467,7 @@ export class Boat {
     if (!this.isCrashed && (hitNorthBank || hitSouthBank || hitWestBarrier || hitEastBarrier)) {
       this.isCrashed = true;
       this.speed = 0;
+      this.velocity.set(0, 0, 0);
       this.angularVelocity = 0;
       if (this.onLandCrash) {
         let reason = 'CRASHED INTO RIVERBANK!';
@@ -515,6 +545,7 @@ export class Boat {
         this.oarPivot.rotation.set(0.5, 0, -0.4);
       }
     } else {
+      this.oarPivot.rotation.y = 0;
       this.oarPivot.rotation.z = -0.4 + Math.sin(this.world.time * 3) * 0.05;
       this.oarPivot.rotation.x = 0.5 + Math.cos(this.world.time * 2) * 0.03;
     }

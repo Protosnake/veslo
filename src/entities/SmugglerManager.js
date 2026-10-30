@@ -65,14 +65,14 @@ export class SmugglerManager {
       s.update(dt, boat);
 
       // 1-life sudden death check
-      if (s.reachedSouth && !s.isDead) {
+      if (s.state === 'swimming' && s.reachedSouth && !s.isDead) {
         this.isRunning = false;
         sound.playGameOver();
         this.onGameOver(s);
         return;
       }
 
-      if (!s.isDead) {
+      if (!s.isDead && s.state === 'swimming') {
         // Priority 1: Oar Whack (+100 pts)
         if (whackHitbox) {
           const distWhack = s.position.distanceTo(whackHitbox.center);

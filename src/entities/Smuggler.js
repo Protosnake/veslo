@@ -25,7 +25,8 @@ export class Smuggler {
     this.baseSpeed = baseSpeed;
     this.currentSpeed = baseSpeed;
 
-    this.position = new THREE.Vector3(startX, 0, -17.5);
+    // Spawn on the north bank and walk into the reeds before entering the water
+    this.position = new THREE.Vector3(startX, 4.5, -20 + Math.random() * 1.5);
     this.targetZ = 16.5;
 
     // AI & Smooth Movement
@@ -34,7 +35,14 @@ export class Smuggler {
     this.isPanicking = false;
     this.currentHeading = Math.PI / 2; // facing south
 
-    // State
+    // State: walking -> hidden in reeds -> swimming
+    this.state = 'walking';
+    this.walkPhase = Math.random() * Math.PI * 2;
+    this.walkSpeed = 1.4 + Math.random() * 0.5;
+    this.reedLineZ = -16.4;
+    this.emergeZ = -14.7;
+    this.hideDelay = 0;
+
     this.isDead = false;
     this.deathTimer = 0;
     this.deathType = 'smack'; // 'smack' | 'ram' | 'shred'
@@ -45,29 +53,31 @@ export class Smuggler {
 
   createModel() {
     this.group = new THREE.Group();
+    this.swimmerGroup = new THREE.Group();
+    this.group.add(this.swimmerGroup);
 
     // 1. Swimmer Head
     this.head = new THREE.Mesh(SHARED_GEO.head, SKIN_MAT);
     this.head.position.set(0, 0.28, 0);
     this.head.castShadow = true;
-    this.group.add(this.head);
+    this.swimmerGroup.add(this.head);
 
     // Swimming Cap / Mask
     const capColor = CAP_COLORS[Math.floor(Math.random() * CAP_COLORS.length)];
     const capMat = new THREE.MeshLambertMaterial({ color: capColor });
     const cap = new THREE.Mesh(SHARED_GEO.cap, capMat);
     cap.position.set(0, 0.3, 0);
-    this.group.add(cap);
+    this.swimmerGroup.add(cap);
 
     // Snorkel Tube
     const tube1 = new THREE.Mesh(SHARED_GEO.snorkelTube, SNORKEL_MAT);
     tube1.position.set(0.3, 0.55, -0.05);
     tube1.rotation.z = -0.2;
-    this.group.add(tube1);
+    this.swimmerGroup.add(tube1);
 
     const tubeTip = new THREE.Mesh(SHARED_GEO.snorkelTip, TIP_MAT);
     tubeTip.position.set(0.35, 0.8, -0.05);
-    this.group.add(tubeTip);
+    this.swimmerGroup.add(tubeTip);
 
     // 2. Contraband Bundle
     const bagColor = BAG_COLORS[Math.floor(Math.random() * BAG_COLORS.length)];
@@ -75,25 +85,125 @@ export class Smuggler {
     this.bag = new THREE.Mesh(SHARED_GEO.bag, bagMat);
     this.bag.position.set(0.48, 0.14, -0.45);
     this.bag.castShadow = true;
-    this.group.add(this.bag);
+    this.swimmerGroup.add(this.bag);
 
     const tape1 = new THREE.Mesh(SHARED_GEO.tape, TAPE_MAT);
     tape1.position.set(0.48, 0.15, -0.45);
-    this.group.add(tape1);
+    this.swimmerGroup.add(tape1);
 
     // 3. Swimming Arms
     this.armL = new THREE.Mesh(SHARED_GEO.arm, SKIN_MAT);
     this.armL.rotation.z = Math.PI / 3;
     this.armL.position.set(-0.35, 0.12, 0.1);
-    this.group.add(this.armL);
+    this.swimmerGroup.add(this.armL);
 
     this.armR = new THREE.Mesh(SHARED_GEO.arm, SKIN_MAT);
     this.armR.rotation.z = -Math.PI / 3;
     this.armR.position.set(0.35, 0.12, 0.1);
-    this.group.add(this.armR);
+    this.swimmerGroup.add(this.armR);
+
+    this.createWalkerModel();
+    this.swimmerGroup.visible = false;
 
     this.group.position.copy(this.position);
     this.scene.add(this.group);
+  }
+
+  createWalkerModel() {
+    this.walkerGroup = new THREE.Group();
+
+    const suitMat = new THREE.MeshLambertMaterial({ color: 0x1b2a24, flatShading: true });
+    const bagColor = BAG_COLORS[Math.floor(Math.random() * BAG_COLORS.length)];
+    const bagMat = new THREE.MeshLambertMaterial({ color: bagColor, flatShading: true });
+    const capMat = new THREE.MeshLambertMaterial({ color: 0x151515 });
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.72, 0.32), suitMat);
+    torso.position.set(0, 1.12, 0);
+    torso.castShadow = true;
+    this.walkerGroup.add(torso);
+
+    const head = new THREE.Mesh(SHARED_GEO.head, SKIN_MAT);
+    head.position.set(0, 1.72, 0);
+    head.castShadow = true;
+    this.walkerGroup.add(head);
+
+    const cap = new THREE.Mesh(SHARED_GEO.cap, capMat);
+    cap.position.set(0, 1.74, 0);
+    this.walkerGroup.add(cap);
+
+    const bag = new THREE.Mesh(SHARED_GEO.bag, bagMat);
+    bag.position.set(0, 1.05, -0.3);
+    bag.scale.set(0.8, 0.8, 0.7);
+    bag.castShadow = true;
+    this.walkerGroup.add(bag);
+
+    this.walkLegL = new THREE.Group();
+    this.walkLegL.position.set(-0.14, 0.76, 0);
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.76, 0.2), suitMat);
+    legL.position.set(0, -0.38, 0);
+    legL.castShadow = true;
+    this.walkLegL.add(legL);
+    this.walkerGroup.add(this.walkLegL);
+
+    this.walkLegR = new THREE.Group();
+    this.walkLegR.position.set(0.14, 0.76, 0);
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.76, 0.2), suitMat);
+    legR.position.set(0, -0.38, 0);
+    legR.castShadow = true;
+    this.walkLegR.add(legR);
+    this.walkerGroup.add(this.walkLegR);
+
+    this.walkArmL = new THREE.Group();
+    this.walkArmL.position.set(-0.33, 1.4, 0);
+    const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.66, 5), suitMat);
+    armL.position.set(0, -0.33, 0);
+    armL.castShadow = true;
+    this.walkArmL.add(armL);
+    this.walkerGroup.add(this.walkArmL);
+
+    this.walkArmR = new THREE.Group();
+    this.walkArmR.position.set(0.33, 1.4, 0);
+    const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.66, 5), suitMat);
+    armR.position.set(0, -0.33, 0);
+    armR.castShadow = true;
+    this.walkArmR.add(armR);
+    this.walkerGroup.add(this.walkArmR);
+
+    this.group.add(this.walkerGroup);
+  }
+
+  updateWalking(dt) {
+    this.walkPhase += dt * (4 + this.walkSpeed * 2);
+
+    const stride = Math.sin(this.walkPhase);
+    this.walkLegL.rotation.x = stride * 0.65;
+    this.walkLegR.rotation.x = -stride * 0.65;
+    this.walkArmL.rotation.x = -stride * 0.5;
+    this.walkArmR.rotation.x = stride * 0.5;
+    this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.04;
+
+    this.position.z += this.walkSpeed * dt;
+    this.position.y = 4.5;
+    this.group.position.copy(this.position);
+    this.group.rotation.y = 0;
+
+    if (this.position.z >= this.reedLineZ) {
+      this.state = 'hidden';
+      this.hideDelay = 0.5 + Math.random() * 0.4;
+      this.group.visible = false;
+      this.walkerGroup.visible = false;
+      this.world.emitParticle(
+        this.position.x,
+        this.position.y + 1.2,
+        this.position.z,
+        0,
+        0.4,
+        0,
+        0x8ea85a,
+        0.7,
+        0.7
+      );
+    }
   }
 
   smack() {
@@ -152,6 +262,26 @@ export class Smuggler {
       return;
     }
 
+    if (this.state === 'walking') {
+      this.updateWalking(dt);
+      return;
+    }
+
+    if (this.state === 'hidden') {
+      this.hideDelay -= dt;
+      if (this.hideDelay <= 0) {
+        this.state = 'swimming';
+        this.group.visible = true;
+        this.swimmerGroup.visible = true;
+        this.walkerGroup.visible = false;
+        this.position.set(this.position.x, 0, this.emergeZ);
+        this.group.position.copy(this.position);
+        this.group.rotation.set(0, 0, 0);
+        this.world.emitSplash(this.position.x, this.position.z, 10, 0xdff2fc);
+      }
+      return;
+    }
+
     // Detection radius and evasion
     const distToBoat = this.position.distanceTo(boat.position);
     const detectionRadius = 6.5;
@@ -187,6 +317,13 @@ export class Smuggler {
     if (len > 0.001) {
       this.position.x += (moveX / len) * this.currentSpeed * dt;
       this.position.z += (moveZ / len) * this.currentSpeed * dt;
+    }
+
+    // River current advection (shared config so weather can change it later)
+    if (this.world.getCurrentVelocity) {
+      const current = this.world.getCurrentVelocity();
+      this.position.x += current.x * dt;
+      this.position.z += current.z * dt;
     }
 
     // Clamp inside river boundaries
