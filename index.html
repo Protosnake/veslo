@@ -10,11 +10,79 @@
     <!-- Three.js Canvas Container -->
     <div id="canvas-container"></div>
 
+    <!-- Drone Camera Viewfinder -->
+    <div id="drone-osd" class="drone-osd">
+      <div class="osd-scanlines"></div>
+      <div class="osd-grade"></div>
+      <div class="osd-vignette"></div>
+
+      <!-- Viewfinder frame -->
+      <div class="osd-frame">
+        <span class="osd-corner tl"></span>
+        <span class="osd-corner tr"></span>
+        <span class="osd-corner bl"></span>
+        <span class="osd-corner br"></span>
+        <span class="osd-edge-tick left"></span>
+        <span class="osd-edge-tick right"></span>
+      </div>
+
+      <!-- Top telemetry bar -->
+      <div class="osd-topbar">
+        <div class="osd-topbar-side">
+          <span class="osd-strong">DRONE D-07</span>
+          <span class="osd-sep">//</span>
+          <span class="osd-dim">BORDER PATROL</span>
+        </div>
+        <div class="osd-topbar-center">
+          <span class="osd-dim">UPLINK</span>
+          <span class="osd-ok">STABLE</span>
+          <span class="osd-sep">·</span>
+          <span class="osd-dim">5.8 GHz</span>
+        </div>
+        <div class="osd-topbar-side osd-right">
+          <span class="osd-rec"><span class="osd-rec-dot"></span>REC</span>
+          <span class="osd-timecode" id="osd-timecode">00:00:00:00</span>
+          <span class="osd-sep">·</span>
+          <span class="osd-dim">4K 60FPS</span>
+        </div>
+      </div>
+
+      <!-- Heading tape -->
+      <div class="osd-heading">
+        <div class="osd-heading-window">
+          <div class="osd-heading-tape" id="osd-heading-tape"></div>
+          <div class="osd-heading-caret"></div>
+        </div>
+        <div class="osd-heading-val" id="osd-heading-val">000°</div>
+      </div>
+
+      <!-- Alert banner -->
+      <div class="osd-alert" id="osd-alert">UPLINK ESTABLISHED</div>
+
+      <!-- Bottom telemetry -->
+      <div class="osd-block osd-bottom-left">
+        <div class="osd-readout"><span class="k">ALT</span><span class="v" id="osd-alt">34.0</span><span class="u">M</span></div>
+        <div class="osd-readout"><span class="k">SPD</span><span class="v" id="osd-spd">00.0</span><span class="u">KN</span></div>
+        <div class="osd-readout"><span class="k">HDG</span><span class="v" id="osd-hdg">000</span><span class="u">°</span></div>
+        <div class="osd-battery">
+          <span class="k">BAT</span>
+          <div class="osd-battery-bar"><div class="osd-battery-fill" id="osd-battery-fill"></div></div>
+          <span class="v" id="osd-battery-val">100%</span>
+        </div>
+      </div>
+
+      <div class="osd-block osd-bottom-right">
+        <div class="osd-line"><span class="k">GPS</span> <span id="osd-gps">46.61 N / 30.72 E</span></div>
+        <div class="osd-line"><span class="k">WIND</span> 03 KT <span class="osd-sep">·</span> <span class="k">SAT</span> <span class="osd-ok">12</span></div>
+        <div class="osd-line"><span class="k">THREATS</span> <span id="osd-threat-count" class="osd-warn">0</span></div>
+      </div>
+    </div>
+
     <!-- UI Overlay Layer -->
     <div id="ui-layer">
-      <!-- Minimalist Military Rank HUD (Clean & Uncluttered) -->
-      <div class="hud-header-minimal">
-        <div class="hud-rank-card">
+      <!-- Merged rank + score HUD -->
+      <div class="hud-header">
+        <div class="hud-panel rank-panel">
           <div class="rank-top">
             <span class="rank-badge-icon" id="hud-rank-badge">🪖</span>
             <div class="rank-info-group">
@@ -27,7 +95,16 @@
               </div>
               <div class="rank-next" id="hud-rank-next">НАСТУПНЕ ЗВАННЯ: СОЛДАТ (500)</div>
             </div>
+            <div class="score-inline">
+              <span class="score-label">Score</span>
+              <span class="score-value" id="hud-score">0</span>
+              <span class="high-score-val">Best: <span id="hud-high-score">0</span></span>
+            </div>
           </div>
+          <div class="rank-bar-bg">
+            <div class="rank-bar-fill" id="hud-rank-bar" style="width: 0%;"></div>
+          </div>
+          <div class="rank-next" id="hud-rank-next">НАСТУПНЕ: СОЛДАТ (500)</div>
         </div>
       </div>
 
@@ -45,8 +122,9 @@
     <!-- Start / Instruction Modal -->
     <div class="modal-overlay" id="start-modal">
       <div class="modal-card">
+        <div class="modal-eyebrow"><span class="osd-rec-dot"></span> DRONE D-07 · UPLINK READY</div>
         <h1 class="modal-title">ВЕСЛО</h1>
-        <div class="modal-subtitle">Прикордонний Річковий Патруль ДПСУ</div>
+        <div class="modal-subtitle">Border River Patrol &bull; Live Aerial Feed</div>
 
         <div class="rule-highlight">
           ⚠️ <strong>БОЙОВЕ ЗАВДАННЯ:</strong> Захистити кордон від порушників!
@@ -68,15 +146,16 @@
           </div>
         </div>
 
-        <button class="action-btn" id="start-btn">ПОЧАТИ ПАТРУЛЬ</button>
+        <button class="action-btn" id="start-btn">LAUNCH DRONE</button>
       </div>
     </div>
 
     <!-- Game Over Modal -->
     <div class="modal-overlay hidden" id="game-over-modal">
       <div class="modal-card">
-        <h1 class="modal-title game-over-banner" id="game-over-title">КОРДОН ПРОРВАНО!</h1>
-        <div class="modal-subtitle" id="game-over-subtitle">Порушник переплив річку. Місію провалено.</div>
+        <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> FEED INTERRUPTED · SIGNAL LOST</div>
+        <h1 class="modal-title game-over-banner" id="game-over-title">BORDER BREACHED!</h1>
+        <div class="modal-subtitle" id="game-over-subtitle">A smuggler reached the southern shore. Mission Failed.</div>
 
         <!-- Final Military Rank Achieved Card -->
         <div class="game-over-rank-box">
@@ -90,7 +169,18 @@
           </div>
         </div>
 
-        <button class="action-btn" id="restart-btn">ГРАТИ ЗНОВУ</button>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Final Score</span>
+            <span class="stat-val" id="final-score" style="color: #ffd000;">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Smugglers Smacked</span>
+            <span class="stat-val" id="final-smacked">0</span>
+          </div>
+        </div>
+
+        <button class="action-btn" id="restart-btn">REDEPLOY DRONE</button>
       </div>
     </div>
 
