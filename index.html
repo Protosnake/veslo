@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ВЕСЛО (Veslo) - Border River Patrol</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <!-- Three.js Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay Layer -->
+    <div id="ui-layer">
+      <!-- Header HUD -->
+      <div class="hud-header">
+        <div class="hud-panel score-box">
+          <span class="score-label">Score</span>
+          <span class="score-value" id="hud-score">0</span>
+          <span class="high-score-val">Best: <span id="hud-high-score">0</span></span>
+        </div>
+
+        <!-- Military Rank Box (Fibonacci Progression, Private starts at 500) -->
+        <div class="hud-panel rank-panel">
+          <div class="rank-top">
+            <span class="rank-badge-icon" id="hud-rank-badge">🪖</span>
+            <div class="rank-info">
+              <span class="rank-label">ЗВАННЯ ДПСУ</span>
+              <span class="rank-name" id="hud-rank-title">РЕКРУТ</span>
+            </div>
+          </div>
+          <div class="rank-bar-bg">
+            <div class="rank-bar-fill" id="hud-rank-bar" style="width: 0%;"></div>
+          </div>
+          <div class="rank-next" id="hud-rank-next">НАСТУПНЕ: СОЛДАТ (500)</div>
+        </div>
+
+        <div class="hud-center">
+          <div class="life-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+            1 LIFE &bull; ZERO TOLERANCE
+          </div>
+          <div class="speed-meter">
+            ENEMY SPEED: <span id="hud-multiplier">1.0x</span>
+          </div>
+        </div>
+
+        <div class="hud-panel hud-right">
+          <div class="slap-indicator">
+            <div class="slap-ready-dot" id="slap-dot"></div>
+            <span>ВЕСЛО (READY)</span>
+          </div>
+          <div style="font-size: 12px; color: #8fa895;">
+            SMACKED: <span id="hud-smacked" style="color: #fff; font-weight: bold;">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Control Hints -->
+      <div class="hud-footer">
+        <div class="control-pill">
+          <span><kbd>W</kbd>/<kbd>S</kbd> Throttle / Reverse</span>
+          <span><kbd>A</kbd>/<kbd>D</kbd> Steer</span>
+          <span><kbd>SPACE</kbd> or <kbd>Left Click</kbd> <strong>SLAP (ВЕСЛО)</strong></span>
+          <button id="debug-toggle-btn" class="debug-btn">🐞 DEBUG</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start / Instruction Modal -->
+    <div class="modal-overlay" id="start-modal">
+      <div class="modal-card">
+        <h1 class="modal-title">ВЕСЛО</h1>
+        <div class="modal-subtitle">Border River Patrol &bull; Intercept The Smugglers</div>
+
+        <div class="rule-highlight">
+          ⚠️ <strong>RULES OF ENGAGEMENT:</strong> Smugglers are crossing the border river!
+          If even <strong>ONE</strong> reaches the beach, or you <strong>CRASH INTO THE SHORE</strong>, it is game over!
+        </div>
+
+        <div class="stats-grid" style="text-align: left; font-size: 13px; line-height: 1.5; color: #c0dbc7;">
+          <div>
+            <strong>🛶 Oar Smack (ВЕСЛО):</strong> <span style="color:#ffd000; font-weight:bold;">+100 PTS</span><br/>
+            Hit Space or Left Click to swing the paddle!
+          </div>
+          <div>
+            <strong>💥 Hull Ram:</strong> <span style="color:#55e6ff; font-weight:bold;">+50 PTS</span><br/>
+            Ram them directly with the boat.
+          </div>
+          <div style="grid-column: span 2; background: rgba(255, 51, 68, 0.15); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 51, 68, 0.3);">
+            <strong>🔥 Outboard Motor Shred:</strong> <span style="color:#ff3344; font-weight:900;">+500 PTS</span><br/>
+            Full power reverse into a swimmer with the rear propeller! Unlocks Private rank instantly!
+          </div>
+        </div>
+
+        <button class="action-btn" id="start-btn">PATROL THE RIVER</button>
+      </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div class="modal-overlay hidden" id="game-over-modal">
+      <div class="modal-card">
+        <h1 class="modal-title game-over-banner" id="game-over-title">BORDER BREACHED!</h1>
+        <div class="modal-subtitle" id="game-over-subtitle">A smuggler reached the southern shore. Mission Failed.</div>
+
+        <!-- Final Military Rank Achieved Card -->
+        <div class="game-over-rank-box">
+          <span class="game-over-rank-sub">ПІДСУМКОВЕ ВІЙСЬКОВЕ ЗВАННЯ ДПСУ</span>
+          <div class="game-over-rank-main">
+            <span id="final-rank-badge" style="font-size: 38px;">🎖️</span>
+            <div>
+              <div id="final-rank-title" style="font-size: 26px; font-weight: 900; color: #ffd000; letter-spacing: 1px;">СОЛДАТ</div>
+              <div id="final-rank-en" style="font-size: 13px; color: #9bbfa2;">Private</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Final Score</span>
+            <span class="stat-val" id="final-score" style="color: #ffd000;">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Smugglers Smacked</span>
+            <span class="stat-val" id="final-smacked">0</span>
+          </div>
+        </div>
+
+        <button class="action-btn" id="restart-btn">PLAY AGAIN</button>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
