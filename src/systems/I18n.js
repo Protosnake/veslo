@@ -132,8 +132,8 @@ const translations = {
     // ── Resolution Fallback ──
     'error.resolution.eyebrow': 'ПОТОЧНИЙ РЕЖИМ НЕ ПІДТРИМУЄТЬСЯ',
     'error.resolution.title': 'РОЗДІЛЬНІСТЬ НЕ ПІДТРИМУЄТЬСЯ',
-    'error.resolution.subtitle': 'Для гри Veslo потрібен екран із співвідношенням сторін 16:9.',
-    'error.resolution.hint': 'Перемкніть дисплей на 1920×1080 (Full HD) або інший режим 16:9 і перезавантажте сторінку.',
+    'error.resolution.subtitle': 'Для гри Veslo потрібен екран із співвідношенням сторін 16:9 або ширшим.',
+    'error.resolution.hint': 'Розгорніть вікно або перемкніть дисплей на 1920×1080 (Full HD) чи ширший режим і перезавантажте сторінку.',
   },
 
   en: {
@@ -263,8 +263,8 @@ const translations = {
     // ── Resolution Fallback ──
     'error.resolution.eyebrow': 'CURRENT MODE UNSUPPORTED',
     'error.resolution.title': 'RESOLUTION NOT SUPPORTED',
-    'error.resolution.subtitle': 'Veslo requires a 16:9 display.',
-    'error.resolution.hint': 'Switch your display to 1920×1080 (Full HD) or another 16:9 mode, then reload the page.',
+    'error.resolution.subtitle': 'Veslo requires a 16:9 or wider display.',
+    'error.resolution.hint': 'Maximize the window or switch your display to 1920×1080 (Full HD) or a wider mode, then reload the page.',
   }
 };
 

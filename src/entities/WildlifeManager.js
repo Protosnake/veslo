@@ -120,7 +120,7 @@ export class WildlifeManager {
           creature.position.z - hullHitbox.center.z
         );
         if (distHull <= hullHitbox.radius * 0.75 + creature.radius) {
-          creature.dive();
+          creature.dive(boat.position);
           continue;
         }
 

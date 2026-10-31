@@ -48,6 +48,7 @@ class WildlifeCreature {
     this.panicTimer = 0;
     this.panicDirX = 0;
     this.panicDirZ = 0;
+    this.diveTarget = null;
 
     this.group = new THREE.Group();
     this.group.scale.setScalar(this.baseScale);
@@ -173,17 +174,42 @@ class WildlifeCreature {
     this.slitherPhase = Math.random() * Math.PI * 2;
   }
 
-  dive() {
+  dive(avoidPoint = null) {
     if (this.isDead || this.isFinished || this.isDiving || this.diveCooldown > 0) return false;
 
     this.isDiving = true;
     this.diveTimer = 1.2 + Math.random() * 0.8;
     this.group.visible = false;
+    this.diveTarget = null;
+
+    if (avoidPoint) {
+      const dx = this.position.x - avoidPoint.x;
+      const side = Math.abs(dx) > 0.5
+        ? Math.sign(dx)
+        : (Math.random() < 0.5 ? -1 : 1);
+      let targetX = avoidPoint.x + side * (8 + Math.random() * 3);
+      if (targetX < -29 || targetX > 29) {
+        targetX = avoidPoint.x - side * (8 + Math.random() * 3);
+      }
+      targetX = THREE.MathUtils.clamp(targetX, -29, 29);
+
+      const dirZ = Math.sign(this.crossZ - this.position.z) || 1;
+      const zMin = Math.min(this.startZ, this.crossZ) + 0.4;
+      const zMax = Math.max(this.startZ, this.crossZ) - 0.4;
+      const targetZ = THREE.MathUtils.clamp(
+        this.position.z + dirZ * (1.6 + Math.random() * 2.4),
+        zMin,
+        zMax
+      );
+
+      this.diveTarget = { x: targetX, z: targetZ };
+      this.baseX = targetX;
+    }
 
     sound.playWildlifeDiveIn();
 
     if (this.world.emitSplash) {
-      this.world.emitSplash(this.position.x, this.position.z, 10, 0xdff2fc);
+      this.world.emitSplash(this.position.x, this.position.z, 3, 0xdff2fc);
     }
     return true;
   }
@@ -209,11 +235,34 @@ class WildlifeCreature {
 
   updateDive(dt) {
     this.diveTimer -= dt;
-    const dirZ = Math.sign(this.crossZ - this.position.z);
-    this.position.z += dirZ * this.speed * 0.35 * dt;
+
+    if (this.diveTarget) {
+      const dx = this.diveTarget.x - this.position.x;
+      const dz = this.diveTarget.z - this.position.z;
+      const distance = Math.hypot(dx, dz);
+      const step = this.speed * 3.5 * dt;
+
+      if (distance > step && distance > 0.001) {
+        this.position.x += (dx / distance) * step;
+        this.position.z += (dz / distance) * step;
+      } else {
+        this.position.x = this.diveTarget.x;
+        this.position.z = this.diveTarget.z;
+      }
+    } else {
+      const dirZ = Math.sign(this.crossZ - this.position.z);
+      this.position.z += dirZ * this.speed * 0.35 * dt;
+    }
+
     this.position.x = THREE.MathUtils.clamp(this.position.x, -29, 29);
 
     if (this.diveTimer <= 0) {
+      if (this.diveTarget) {
+        this.position.x = this.diveTarget.x;
+        this.position.z = this.diveTarget.z;
+        this.diveTarget = null;
+      }
+
       this.isDiving = false;
       this.diveCooldown = 0.5;
       this.group.visible = true;
@@ -222,7 +271,7 @@ class WildlifeCreature {
       sound.playWildlifeDiveOut();
 
       if (this.world.emitSplash) {
-        this.world.emitSplash(this.position.x, this.position.z, 10, 0xdff2fc);
+        this.world.emitSplash(this.position.x, this.position.z, 3, 0xdff2fc);
       }
     }
   }

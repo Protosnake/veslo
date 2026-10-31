@@ -102,21 +102,21 @@ function requestGameFullscreen() {
 
 const SUPPORTED_ASPECT = 16 / 9;
 
-function getScreenAspect() {
-  const width = (window.screen && window.screen.width) || window.innerWidth;
-  const height = (window.screen && window.screen.height) || window.innerHeight;
-  return width / height;
+function getViewportAspect() {
+  return window.innerWidth / window.innerHeight;
 }
 
 function isSupportedDesktopResolution() {
   if (isTouchDevice()) return true;
-  return Math.abs(getScreenAspect() - SUPPORTED_ASPECT) <= 0.06;
+  // Ultrawide displays are fine: the camera widens the horizontal view
+  // instead of cropping. Only block windows narrower than 16:9.
+  return getViewportAspect() >= SUPPORTED_ASPECT - 0.06;
 }
 
 function showUnsupportedResolution() {
   if (document.getElementById('resolution-modal')) return;
-  const width = (window.screen && window.screen.width) || window.innerWidth;
-  const height = (window.screen && window.screen.height) || window.innerHeight;
+  const width = window.innerWidth;
+  const height = window.innerHeight;
   const ratio = (width / height).toFixed(2);
 
   const overlay = document.createElement('div');
