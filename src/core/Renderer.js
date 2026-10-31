@@ -8,15 +8,6 @@ export class WebGLUnavailableError extends Error {
   }
 }
 
-function isTouchDevice() {
-  return (
-    window.matchMedia('(any-pointer: coarse)').matches ||
-    navigator.maxTouchPoints > 0 ||
-    'ontouchstart' in window ||
-    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-  );
-}
-
 function detectWebGL() {
   try {
     const canvas = document.createElement('canvas');
@@ -33,7 +24,7 @@ function detectWebGL() {
   }
 }
 
-// Wide-angle patrol drone holding a static overwatch over the breach line.
+// Wide-angle patrol drone tracking the boat over the breach line.
 export class GameRenderer {
   constructor(container) {
     this.container = container;
@@ -90,52 +81,44 @@ export class GameRenderer {
   initCamera() {
     const aspect = window.innerWidth / window.innerHeight;
 
-    this.baseFov = 52;
-    this.baseAspect = 16 / 9;
-    this.isTouch = isTouchDevice();
-
-    // Mobile framing tests, selectable with ?cam=follow|moderate
-    const MOBILE_CAMERAS = {
-      follow: { hfov: 76, rig: [0, 22, 30], follow: true },
-      moderate: { hfov: 72, rig: [0, 36, 30], follow: false }
-    };
-    const params = new URLSearchParams(window.location.search);
-    const requested = params.get('cam');
-    this.cameraMode = this.isTouch
-      ? (MOBILE_CAMERAS[requested] ? requested : 'follow')
-      : 'desktop';
-    this.mobileCamera = MOBILE_CAMERAS[this.cameraMode] || null;
+    // One rig for every platform. Centered behind the boat, sized for the
+    // mobile framing that is now the primary target.
+    this.horizontalFov = 76;
 
     // Quick dev tuning: ?y=24 lowers/raises the drone, ?look=3 tilts it up,
-    // ?fov=80 zooms out further.
+    // ?fov=80 zooms out further, ?aim=1.4 changes how hard the gimbal trails
+    // (lower = more lag), ?drone=8 changes how tightly the body follows.
+    const params = new URLSearchParams(window.location.search);
     const rigY = parseFloat(params.get('y'));
     const lookY = parseFloat(params.get('look'));
     const fovOverride = parseFloat(params.get('fov'));
-    if (this.mobileCamera && Number.isFinite(rigY)) {
-      this.mobileCamera.rig[1] = THREE.MathUtils.clamp(rigY, 14, 44);
+    const aimParam = parseFloat(params.get('aim'));
+    const droneParam = parseFloat(params.get('drone'));
+    if (Number.isFinite(rigY)) {
+      this.rigY = THREE.MathUtils.clamp(rigY, 14, 44);
     }
-    if (this.mobileCamera && Number.isFinite(fovOverride)) {
-      this.mobileCamera.hfov = THREE.MathUtils.clamp(fovOverride, 40, 100);
+    if (Number.isFinite(fovOverride)) {
+      this.horizontalFov = THREE.MathUtils.clamp(fovOverride, 40, 100);
     }
+    this.aimStiffness = Number.isFinite(aimParam)
+      ? THREE.MathUtils.clamp(aimParam, 0.2, 12)
+      : 1.4;
+    this.droneStiffness = Number.isFinite(droneParam)
+      ? THREE.MathUtils.clamp(droneParam, 0.2, 12)
+      : 8;
     this.lookHeight = Number.isFinite(lookY)
       ? THREE.MathUtils.clamp(lookY, -1, 10)
       : 1;
 
-    // Desktop keeps the original angled overwatch. Mobile uses a centered rig
-    // so zooming doesn't push one bank off-screen.
-    this.touchHorizontalFov = this.mobileCamera ? this.mobileCamera.hfov : 78.5;
     this.baseAnchor = new THREE.Vector3(0, 0, 4);
     this.anchor = this.baseAnchor.clone();
-    this.rigOffset = new THREE.Vector3(
-      ...(this.mobileCamera ? this.mobileCamera.rig : [13, 36, 30])
-    );
-    this.followEnabled = Boolean(this.mobileCamera && this.mobileCamera.follow);
+    this.rigOffset = new THREE.Vector3(0, this.rigY ?? 22, 30);
     this.followTarget = new THREE.Vector3(0, 0, 4);
     this.followLook = new THREE.Vector3(0, 0, 4);
     this.followLookTarget = new THREE.Vector3(0, 0, 4);
 
     this.fovHOverride = null;
-    this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 0.5, 600);
+    this.camera = new THREE.PerspectiveCamera(52, aspect, 0.5, 600);
     this.applyResponsiveFov();
 
     this.camera.position.copy(this.anchor).add(this.rigOffset);
@@ -154,10 +137,6 @@ export class GameRenderer {
     this.manualCamera = false;
     this.manualPosition = new THREE.Vector3();
     this.manualLook = new THREE.Vector3();
-
-    if (this.isTouch) {
-      console.info(`[camera] mobile mode: ${this.cameraMode}`);
-    }
   }
 
   setFollowTarget(x, z) {
@@ -168,6 +147,7 @@ export class GameRenderer {
     this.followTarget.set(x, 0, z);
     this.followLook.set(x, 0, z);
     this.followLookTarget.set(x, 0, z);
+    this.anchor.set(x, 0, z);
   }
 
   getGameplayPose() {
@@ -216,15 +196,12 @@ export class GameRenderer {
   }
 
   /**
-   * Preserve the 16:9 horizontal framing on narrower screens (phones in
-   * portrait, 16:10 laptops). Without this the drone feed loses the river
-   * banks on either side and the game becomes unplayable.
+   * The camera holds a fixed horizontal field of view on every aspect ratio,
+   * so phones and desktop see the same slice of river. Vertical FOV is derived
+   * from the current aspect.
    */
   getGameplayHorizontalFov() {
-    if (this.isTouch) return this.touchHorizontalFov;
-    return THREE.MathUtils.radToDeg(
-      2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(this.baseFov) / 2) * this.baseAspect)
-    );
+    return this.horizontalFov;
   }
 
   setHorizontalFovOverride(hFov) {
@@ -239,35 +216,21 @@ export class GameRenderer {
 
   applyResponsiveFov() {
     const aspect = window.innerWidth / window.innerHeight;
-
-    if (this.fovHOverride != null) {
-      const hFov = THREE.MathUtils.degToRad(this.fovHOverride);
-      const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
-      this.camera.fov = THREE.MathUtils.radToDeg(vFov);
-      this.camera.updateProjectionMatrix();
-      return;
-    }
-
-    if (this.isTouch) {
-      const hFov = THREE.MathUtils.degToRad(this.touchHorizontalFov);
-      const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
-      this.camera.fov = THREE.MathUtils.radToDeg(vFov);
-    } else if (aspect >= this.baseAspect) {
-      this.camera.fov = this.baseFov;
-    } else {
-      const hFov = 2 * Math.atan(
-        Math.tan(THREE.MathUtils.degToRad(this.baseFov) / 2) * this.baseAspect
-      );
-      const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
-      this.camera.fov = THREE.MathUtils.radToDeg(vFov);
-    }
-
+    const hFov = THREE.MathUtils.degToRad(
+      this.fovHOverride != null ? this.fovHOverride : this.horizontalFov
+    );
+    const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
+    this.camera.fov = THREE.MathUtils.radToDeg(vFov);
     this.camera.updateProjectionMatrix();
   }
 
   /**
-   * Static overwatch: the rig never tracks the boat. Only a slow wind drift
-   * and a gentle pan keep the feed feeling like a live drone.
+   * The drone follows the boat, but like a real operator it only reacts to
+   * where the boat has already been: it cannot predict the next turn. The rig
+   * therefore sits slightly behind the boat and the gimbal trails further
+   * still, then both ease in smoothly once the boat slows or stops. No
+   * velocity feed-forward and no overshoot, so the trail reads as deliberate
+   * lag rather than rubberbanding.
    */
   updateCamera(dt) {
     this.elapsed += dt;
@@ -280,8 +243,12 @@ export class GameRenderer {
       return;
     }
 
-    // The drone body is fixed; only its gimbal turns to keep the boat framed.
-    const aimSmooth = 1 - Math.exp(-dt * 8);
+    // Drone body follows promptly; the gimbal lags much further behind.
+    const anchorSmooth = 1 - Math.exp(-dt * this.droneStiffness);
+    this.anchor.x += (this.followTarget.x - this.anchor.x) * anchorSmooth;
+    this.anchor.z += (this.followTarget.z - this.anchor.z) * anchorSmooth;
+
+    const aimSmooth = 1 - Math.exp(-dt * this.aimStiffness);
     this.followLook.x += (this.followTarget.x - this.followLook.x) * aimSmooth;
     this.followLook.z += (this.followTarget.z - this.followLook.z) * aimSmooth;
 

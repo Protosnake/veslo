@@ -1150,9 +1150,7 @@ class Game {
 
     this.renderer.setFollowTarget(
       this.boat.position.x,
-      this.boat.position.z,
-      this.boat.velocity.x,
-      this.boat.velocity.z
+      this.boat.position.z
     );
     this.renderer.updateCamera(dt);
 
