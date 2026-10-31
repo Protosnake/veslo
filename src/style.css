@@ -1056,6 +1056,205 @@ html, body {
 }
 
 /* ============================================================
+   BATTERY LOW / FEED LOSS
+   ============================================================ */
+#canvas-container.feed-degraded {
+  filter: saturate(0.62) contrast(1.18) brightness(0.9) blur(0.6px);
+}
+
+.osd-degrade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+  mix-blend-mode: screen;
+  transition: opacity 0.45s linear;
+}
+
+.drone-osd.low-battery .osd-degrade {
+  animation: osdNoiseShift 0.22s steps(2) infinite;
+}
+
+.osd-battery-warning {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(42vmin, 360px);
+  height: min(42vmin, 360px);
+  transform: translate(-50%, -50%) scale(0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 3px solid var(--osd-danger);
+  background: rgba(120, 0, 8, 0.2);
+  box-shadow: 0 0 36px rgba(255, 45, 60, 0.55), inset 0 0 50px rgba(255, 45, 60, 0.28);
+  color: var(--osd-danger);
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 40;
+}
+
+.drone-osd.low-battery .osd-battery-warning {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(1);
+  animation: batteryBoxPulse 1s ease-in-out infinite;
+}
+
+.osd-battery-warning-title {
+  font-size: clamp(16px, 2.6vmin, 26px);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-shadow: 0 0 16px rgba(255, 45, 60, 0.9);
+}
+
+.osd-battery-warning-val {
+  font-size: clamp(30px, 6vmin, 62px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 22px rgba(255, 45, 60, 0.9);
+}
+
+.drone-osd.low-battery .osd-battery-bar {
+  border-color: var(--osd-danger);
+  box-shadow: 0 0 10px rgba(255, 77, 94, 0.55);
+}
+
+.drone-osd.low-battery .osd-battery-fill {
+  background: var(--osd-danger);
+  animation: batteryPulse 0.85s ease-in-out infinite;
+}
+
+.drone-osd.low-battery .osd-battery .v {
+  color: var(--osd-danger);
+  text-shadow: 0 0 10px rgba(255, 77, 94, 0.9);
+  animation: batteryPulse 0.85s ease-in-out infinite;
+}
+
+.osd-signal-loss {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  background: #040404;
+  pointer-events: none;
+}
+
+.drone-osd.signal-lost .osd-signal-loss {
+  display: block;
+}
+
+.osd-snow {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  opacity: 0.92;
+  animation: osdSnowShift 0.14s steps(1) infinite;
+}
+
+.osd-signal-loss::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.3) 0 2px,
+    transparent 2px 4px
+  );
+  opacity: 0.5;
+}
+
+.osd-signal-loss-bar {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  padding: 12px 28px;
+  border: 2px solid var(--osd-danger);
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--osd-danger);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.36em;
+  text-shadow: 0 0 16px rgba(255, 45, 60, 0.9);
+  white-space: nowrap;
+  animation: signalLostBlink 0.8s steps(2) infinite;
+}
+
+.osd-battery-recharged {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  z-index: 60;
+  padding: 16px 34px;
+  border: 2px solid #6dff9b;
+  background: rgba(3, 24, 12, 0.86);
+  color: #a8ffc4;
+  font-size: clamp(14px, 2.4vmin, 22px);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  white-space: nowrap;
+  text-align: center;
+  text-shadow: 0 0 18px rgba(109, 255, 155, 0.9);
+  box-shadow: 0 0 34px rgba(109, 255, 155, 0.35), inset 0 0 28px rgba(109, 255, 155, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.drone-osd.battery-recharged .osd-battery-recharged {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+@keyframes osdNoiseShift {
+  0% { background-position: 0 0; }
+  20% { background-position: -37px 21px; }
+  40% { background-position: 52px -34px; }
+  60% { background-position: -18px -61px; }
+  80% { background-position: 73px 45px; }
+  100% { background-position: -52px 17px; }
+}
+
+@keyframes osdSnowShift {
+  0% { background-position: 0 0; }
+  25% { background-position: -70px 45px; }
+  50% { background-position: 90px -60px; }
+  75% { background-position: -40px -90px; }
+  100% { background-position: 60px 80px; }
+}
+
+@keyframes batteryPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px rgba(255, 77, 94, 0.5); }
+  50% { opacity: 0.35; box-shadow: 0 0 14px rgba(255, 77, 94, 1); }
+}
+
+@keyframes batteryBoxPulse {
+  0%, 100% {
+    box-shadow: 0 0 22px rgba(255, 45, 60, 0.45), inset 0 0 40px rgba(255, 45, 60, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 55px rgba(255, 45, 60, 0.85), inset 0 0 70px rgba(255, 45, 60, 0.4);
+  }
+}
+
+@keyframes signalLostBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ============================================================
    HUD RESTYLE — projected into the viewfinder
    ============================================================ */
 .hud-panel {

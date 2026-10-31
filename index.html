@@ -26,6 +26,7 @@
       <div class="osd-scanlines"></div>
       <div class="osd-grade"></div>
       <div class="osd-vignette"></div>
+      <div class="osd-degrade" id="osd-degrade"></div>
 
       <!-- Viewfinder frame -->
       <div class="osd-frame">
@@ -81,6 +82,21 @@
         <div class="osd-line"><span class="k" data-i18n="osd.wind">WIND</span> 03 KT <span class="osd-sep">·</span> <span class="k" data-i18n="osd.sat">SAT</span> <span class="osd-ok">12</span></div>
         <div class="osd-line"><span class="k" data-i18n="osd.threats">THREATS</span> <span id="osd-threat-count" class="osd-warn">0</span></div>
       </div>
+
+      <!-- Low battery warning -->
+      <div class="osd-battery-warning" id="osd-battery-warning">
+        <span class="osd-battery-warning-title" data-i18n="osd.alert.batteryLow">LOW BATTERY</span>
+        <span class="osd-battery-warning-val" id="osd-battery-warning-val">20%</span>
+      </div>
+
+      <!-- Feed lost / TV snow -->
+      <div class="osd-signal-loss" id="osd-signal-loss">
+        <div class="osd-snow"></div>
+        <div class="osd-signal-loss-bar"><span data-i18n="osd.alert.signalLost">SIGNAL LOST</span></div>
+      </div>
+
+      <!-- Battery swapped -->
+      <div class="osd-battery-recharged" id="osd-battery-recharged" data-i18n="osd.alert.batteryRecharged">BATTERY RECHARGED</div>
     </div>
 
     <!-- UI Overlay Layer -->

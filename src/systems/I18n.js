@@ -36,6 +36,8 @@ const translations = {
     'osd.alert.uplinkEstablished': 'ЗВ`ЯЗОК ВСТАНОВЛЕНО',
     'osd.alert.uplinkActive': 'ЗВ`ЯЗОК ВСТАНОВЛЕНО - ВИХОДИШ НА ПОЗИЦIЮ',
     'osd.alert.batteryCritical': 'НИЗЬКИЙ ЗАРЯД БАТАРЕЇ',
+    'osd.alert.batteryLow': 'НИЗЬКИЙ ЗАРЯД',
+    'osd.alert.batteryRecharged': 'БАТАРЕЮ ЗАРЯДЖЕНО',
     'osd.alert.signalLost': 'ЗВ`ЯЗОК ВТРАЧЕНО',
 
     // ── HUD ──
@@ -167,6 +169,8 @@ const translations = {
     'osd.alert.uplinkEstablished': 'UPLINK ESTABLISHED',
     'osd.alert.uplinkActive': 'UPLINK ESTABLISHED · PATROL ACTIVE',
     'osd.alert.batteryCritical': 'BATTERY CRITICAL',
+    'osd.alert.batteryLow': 'LOW BATTERY',
+    'osd.alert.batteryRecharged': 'BATTERY RECHARGED',
     'osd.alert.signalLost': 'SIGNAL LOST',
 
     // ── HUD ──

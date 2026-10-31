@@ -176,6 +176,8 @@ class Game {
       fps: document.getElementById('osd-fps'),
       batteryFill: document.getElementById('osd-battery-fill'),
       batteryVal: document.getElementById('osd-battery-val'),
+      batteryWarningVal: document.getElementById('osd-battery-warning-val'),
+      degrade: document.getElementById('osd-degrade'),
       gps: document.getElementById('osd-gps'),
       threatCount: document.getElementById('osd-threat-count'),
       alert: document.getElementById('osd-alert')
@@ -183,6 +185,9 @@ class Game {
 
     this.missionTime = 0;
     this.battery = 100;
+    this.batteryDead = false;
+    this.batteryDeadTimer = 0;
+    this.rechargedTimer = 0;
     this.fps = 0;
     this.fpsFrames = 0;
     this.fpsElapsed = 0;
@@ -517,8 +522,15 @@ class Game {
     // Fresh drone feed for the new mission
     this.missionTime = 0;
     this.battery = 100;
+    this.batteryDead = false;
+    this.batteryDeadTimer = 0;
+    this.rechargedTimer = 0;
     this.prevThreatCount = 0;
     this.lowBatteryWarned = false;
+    if (this.osd.root) {
+      this.osd.root.classList.remove('low-battery', 'signal-lost', 'battery-recharged');
+    }
+    if (this.container) this.container.classList.remove('feed-degraded');
 
     this.startIntro();
   }
@@ -1014,6 +1026,31 @@ class Game {
     if (this.osd.fps) this.osd.fps.textContent = String(this.fps);
   }
 
+  updateBattery(dt) {
+    if (this.rechargedTimer > 0) {
+      this.rechargedTimer = Math.max(0, this.rechargedTimer - dt);
+    }
+
+    if (this.batteryDead) {
+      this.batteryDeadTimer += dt;
+      if (this.batteryDeadTimer >= 5) {
+        this.battery = 100;
+        this.batteryDead = false;
+        this.batteryDeadTimer = 0;
+        this.rechargedTimer = 3;
+        this.lowBatteryWarned = false;
+      }
+      return;
+    }
+
+    this.battery = Math.max(0, this.battery - dt * (100 / 60));
+    if (this.battery > 0) return;
+
+    this.battery = 0;
+    this.batteryDead = true;
+    this.batteryDeadTimer = 0;
+  }
+
   updateOSD() {
     if (!this.osd.root) return;
     const playing = this.state === 'PLAYING';
@@ -1040,14 +1077,29 @@ class Game {
     }
 
     const batteryPct = Math.round(this.battery);
+    const lowBattery = playing && !this.batteryDead && this.battery <= 20;
     if (this.osd.batteryFill) {
       this.osd.batteryFill.style.width = `${batteryPct}%`;
-      this.osd.batteryFill.classList.toggle('low', batteryPct < 25);
+      this.osd.batteryFill.classList.toggle('low', this.battery <= 20);
     }
     if (this.osd.batteryVal) this.osd.batteryVal.textContent = `${batteryPct}%`;
-    this.osd.root.classList.toggle('low-battery', playing && batteryPct < 25);
+    if (this.osd.batteryWarningVal) {
+      this.osd.batteryWarningVal.textContent = `${batteryPct}%`;
+    }
+    if (this.osd.degrade) {
+      const degradation = lowBattery ? 0.1 + ((20 - batteryPct) / 20) * 0.55 : 0;
+      this.osd.degrade.style.opacity = degradation.toFixed(3);
+    }
+    if (this.container) this.container.classList.toggle('feed-degraded', lowBattery);
 
-    if (playing && batteryPct < 20 && !this.lowBatteryWarned) {
+    this.osd.root.classList.toggle('low-battery', lowBattery);
+    this.osd.root.classList.toggle('signal-lost', playing && this.batteryDead);
+    this.osd.root.classList.toggle(
+      'battery-recharged',
+      playing && this.rechargedTimer > 0
+    );
+
+    if (lowBattery && !this.lowBatteryWarned) {
       this.lowBatteryWarned = true;
       this.showOsdAlert(t('osd.alert.batteryCritical'), 'danger', 2.2);
     }
@@ -1090,7 +1142,7 @@ class Game {
       if (!portraitLocked) this.updateIntro(dt);
     } else if (this.state === 'PLAYING' && !portraitLocked) {
       this.missionTime += dt;
-      this.battery = Math.max(6, this.battery - dt * 0.22);
+      this.updateBattery(dt);
       this.boat.update(dt, this.input);
       this.smugglerManager.update(dt, this.boat, this.wildlifeManager.creatures);
       this.wildlifeManager.update(dt, this.boat, this.smugglerManager.smugglers);
