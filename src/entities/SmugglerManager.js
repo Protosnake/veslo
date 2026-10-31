@@ -104,7 +104,7 @@ export class SmugglerManager {
     this.spawnTimer = 9 + Math.random() * 4;
   }
 
-  update(dt, boat) {
+  update(dt, boat, wildlife = null) {
     if (!this.isRunning) return;
 
     // Spawn timer
@@ -131,7 +131,7 @@ export class SmugglerManager {
     // Update active smugglers & check collisions
     for (let i = this.smugglers.length - 1; i >= 0; i--) {
       const s = this.smugglers[i];
-      s.update(dt, boat);
+      s.update(dt, boat, wildlife);
 
       // 1-life sudden death check
       if (s.state === 'swimming' && s.reachedSouth && !s.isDead) {

@@ -18,6 +18,8 @@ const TIP_MAT = new THREE.MeshBasicMaterial({ color: 0xff3300 });
 const TAPE_MAT = new THREE.MeshBasicMaterial({ color: 0xffea00 });
 const CAP_COLORS = [0x222222, 0xd82b2b, 0x1e3f66, 0x5a189a];
 const BAG_COLORS = [0x785633, 0x3d352e, 0x24422e];
+const WILDLIFE_SCARE_RADIUS = 5;
+const WILDLIFE_SCARE_DURATION = 1.5;
 
 export class Smuggler {
   constructor(scene, riverWorld, startX, baseSpeed, spawnDistanceOffset = 0, options = {}) {
@@ -53,6 +55,10 @@ export class Smuggler {
       const startZ = -20 + Math.random() * 1.5;
       this.position = new THREE.Vector3(startX, riverWorld.northBankY ?? 4.5, startZ);
     }
+    this.walkTarget = this.position.clone();
+    this.laneOffset = this.pathOffset;
+    this.laneMergeDistance = this.pathDistance;
+    this.waitTimer = 0;
     this.targetZ = 16.5;
 
     // AI & Smooth Movement
@@ -60,9 +66,13 @@ export class Smuggler {
     this.wobbleFreq = 1.8 + Math.random() * 1.2;
     this.isPanicking = false;
     this.currentHeading = Math.PI / 2; // facing south
+    this.wildlifeScareTimer = 0;
+    this.wildlifeScareX = 0;
+    this.wildlifeScareZ = 0;
 
     // State: walking -> hidden in reeds -> swimming
     this.state = 'walking';
+    this.disembark = null;
     this.walkPhase = Math.random() * Math.PI * 2;
     this.walkSpeed = this.path ? 4.2 + Math.random() * 0.9 : 1.4 + Math.random() * 0.5;
     this.reedLineZ = this.path ? this.path.reedLineZ : -16.4;
@@ -230,18 +240,41 @@ export class Smuggler {
     }
   }
 
+  findNearbyWildlife(wildlife) {
+    if (!wildlife || !wildlife.length) return null;
+
+    let nearest = null;
+    let nearestDistanceSq = WILDLIFE_SCARE_RADIUS * WILDLIFE_SCARE_RADIUS;
+
+    for (let i = 0; i < wildlife.length; i++) {
+      const creature = wildlife[i];
+      if (creature.isDead || creature.isDiving || creature.isFinished) continue;
+
+      const dx = this.position.x - creature.position.x;
+      const dz = this.position.z - creature.position.z;
+      const distanceSq = dx * dx + dz * dz;
+
+      if (distanceSq < nearestDistanceSq) {
+        nearest = creature;
+        nearestDistanceSq = distanceSq;
+      }
+    }
+
+    return nearest;
+  }
+
   chooseEmergeX(boat) {
     const minX = -27;
     const maxX = 27;
-    const minDistance = 6;
-    const maxDistance = 13;
+    const minDistance = 15;
+    const maxDistance = 24;
     const boatX = boat ? boat.position.x : 0;
     const boatZ = boat ? boat.position.z : 0;
-    const preferredSide = Math.sign(this.path.x - boatX) || (Math.random() > 0.5 ? 1 : -1);
+    const preferredSide = Math.sign(-boatX) || (Math.random() > 0.5 ? 1 : -1);
     const candidates = [];
 
     for (let i = 0; i < 12; i++) {
-      const side = i < 9 ? preferredSide : -preferredSide;
+      const side = i < 10 ? preferredSide : -preferredSide;
       const distance = minDistance + Math.random() * (maxDistance - minDistance);
       candidates.push({
         x: THREE.MathUtils.clamp(boatX + side * distance, minX, maxX),
@@ -254,16 +287,131 @@ export class Smuggler {
       candidate.distance = Math.hypot(candidate.x - boatX, this.emergeZ - boatZ);
     }
 
-    const safe = candidates.filter((candidate) => candidate.distance >= minDistance);
-    if (safe.length) {
-      return safe[Math.floor(Math.random() * safe.length)].x;
-    }
-
     let farthest = candidates[0];
     for (let i = 1; i < candidates.length; i++) {
       if (candidates[i].distance > farthest.distance) farthest = candidates[i];
     }
-    return farthest.x;
+
+    const farCandidates = candidates.filter(
+      (candidate) => candidate.distance >= Math.max(minDistance, farthest.distance * 0.8)
+    );
+    return farCandidates[Math.floor(Math.random() * farCandidates.length)].x;
+  }
+
+  beginDisembark(startPosition, options = {}) {
+    const frame = this.path && this.path.frameAt
+      ? this.path.frameAt(this.pathDistance)
+      : null;
+    const side = options.side >= 0 ? 1 : -1;
+    const headingEnd = frame ? frame.heading : 0;
+
+    if (frame && Number.isFinite(options.exitOffset)) {
+      const exitOffset = options.exitOffset;
+      this.pathOffset = exitOffset;
+      this.walkTarget.set(
+        frame.x + frame.nx * exitOffset,
+        frame.y,
+        frame.z + frame.nz * exitOffset
+      );
+      this.laneOffset = Number.isFinite(options.laneOffset)
+        ? options.laneOffset
+        : exitOffset;
+      this.laneMergeDistance = Number.isFinite(options.laneMergeDistance)
+        ? options.laneMergeDistance
+        : this.pathDistance;
+    }
+
+    this.state = 'disembarking';
+    this.disembark = {
+      time: -(options.delay || 0),
+      duration: options.duration || 0.82,
+      start: startPosition.clone(),
+      side,
+      headingStart: headingEnd + side * (Math.PI / 2),
+      headingEnd,
+      hold: options.hold || 0
+    };
+
+    this.walkerGroup.visible = true;
+    this.swimmerGroup.visible = false;
+    this.group.position.copy(this.disembark.start);
+    this.group.rotation.set(0, this.disembark.headingStart, 0);
+  }
+
+  updateDisembark(dt) {
+    const d = this.disembark;
+    d.time += dt;
+    if (d.time < 0) {
+      this.group.position.copy(d.start);
+      return;
+    }
+
+    const k = Math.min(1, d.time / d.duration);
+    const eased = k * k * (3 - 2 * k);
+    const target = this.walkTarget;
+
+    this.walkPhase += dt * (6 + this.walkSpeed * 1.6);
+    const stride = Math.sin(this.walkPhase);
+    this.walkLegL.rotation.x = stride * 0.78;
+    this.walkLegR.rotation.x = -stride * 0.78;
+    this.walkArmL.rotation.x = -stride * 0.58;
+    this.walkArmR.rotation.x = stride * 0.58;
+    this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.05;
+
+    this.position.set(
+      THREE.MathUtils.lerp(d.start.x, target.x, eased),
+      THREE.MathUtils.lerp(d.start.y, target.y, eased) + Math.sin(k * Math.PI) * 0.15,
+      THREE.MathUtils.lerp(d.start.z, target.z, eased)
+    );
+    this.group.position.copy(this.position);
+
+    let headingDiff = d.headingEnd - d.headingStart;
+    while (headingDiff > Math.PI) headingDiff -= Math.PI * 2;
+    while (headingDiff < -Math.PI) headingDiff += Math.PI * 2;
+    this.group.rotation.y = d.headingStart + headingDiff * eased;
+
+    if (k >= 1) {
+      this.state = d.hold > 0 ? 'waiting' : 'walking';
+      this.waitTimer = d.hold;
+      this.disembark = null;
+      this.position.copy(target);
+      this.group.position.copy(this.position);
+      this.group.rotation.set(0, d.headingEnd, 0);
+      for (let i = 0; i < 3; i++) {
+        this.world.emitParticle(
+          target.x + (Math.random() - 0.5) * 0.4,
+          target.y + 0.08,
+          target.z + (Math.random() - 0.5) * 0.4,
+          0,
+          0.35 + Math.random() * 0.3,
+          0,
+          0x8d8271,
+          0.6 + Math.random() * 0.4,
+          0.45 + Math.random() * 0.2
+        );
+      }
+    }
+  }
+
+  waitForDoors(dt) {
+    this.waitTimer -= dt;
+    this.walkPhase += dt * 2.2;
+    this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.02;
+    this.walkArmL.rotation.x = Math.sin(this.walkPhase) * 0.12;
+    this.walkArmR.rotation.x = -Math.sin(this.walkPhase) * 0.12;
+
+    if (this.waitTimer <= 0) {
+      this.state = 'walking';
+    }
+  }
+
+  skipDisembark() {
+    if (this.state !== 'disembarking' && this.state !== 'waiting') return;
+    this.state = 'walking';
+    this.disembark = null;
+    this.waitTimer = 0;
+    this.position.copy(this.walkTarget);
+    this.group.position.copy(this.position);
   }
 
   updateWalking(dt, boat) {
@@ -276,29 +424,21 @@ export class Smuggler {
     this.walkArmR.rotation.x = stride * 0.5;
     this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.04;
 
-    let stepSpeed = this.walkSpeed;
-    let lateralOffset = this.pathOffset;
+    const stepSpeed = this.walkSpeed;
+    if (
+      Number.isFinite(this.laneOffset) &&
+      this.pathDistance >= this.laneMergeDistance
+    ) {
+      const laneDelta = this.laneOffset - this.pathOffset;
+      if (Math.abs(laneDelta) > 0.001) {
+        this.pathOffset += laneDelta * Math.min(1, dt * 2.4);
+      }
+    }
+    const lateralOffset = this.pathOffset;
     let reachedEnd = false;
 
     if (this.path && this.path.frameAt) {
       let frame = this.path.frameAt(this.pathDistance);
-
-      if (boat) {
-        const boatNearMouth = Math.hypot(
-          boat.position.x - this.path.x,
-          boat.position.z - this.path.emergeZ
-        ) < 11;
-
-        if (boatNearMouth) {
-          const side = Math.sign(
-            (frame.x - boat.position.x) * frame.nx +
-            (frame.z - boat.position.z) * frame.nz
-          ) || (this.pathOffset >= 0 ? 1 : -1);
-
-          lateralOffset = side * this.path.halfWidth * 0.65;
-          stepSpeed *= 0.55;
-        }
-      }
 
       this.pathDistance = Math.min(this.path.length, this.pathDistance + stepSpeed * dt);
       frame = this.path.frameAt(this.pathDistance);
@@ -312,19 +452,6 @@ export class Smuggler {
       this.group.rotation.y = frame.heading;
       reachedEnd = this.pathDistance >= this.path.length - 0.02;
     } else {
-      let targetX = this.position.x;
-
-      if (boat) {
-        const boatNearMouth = Math.hypot(boat.position.x, boat.position.z + 14) < 9.5;
-
-        if (boatNearMouth) {
-          const side = Math.sign(-boat.position.x) || 1;
-          targetX = this.position.x + side * 1.0;
-          stepSpeed *= 0.55;
-        }
-      }
-
-      this.position.x += (targetX - this.position.x) * Math.min(1, dt * 4);
       this.position.z += stepSpeed * dt;
       this.position.y = this.world.northBankY ?? 4.5;
       this.resolveRockCollisions();
@@ -336,7 +463,6 @@ export class Smuggler {
     if (reachedEnd) {
       this.state = 'hidden';
       this.hideDelay = 0.5 + Math.random() * 0.4;
-      this.emergeX = this.chooseEmergeX(boat);
       this.group.visible = false;
       this.walkerGroup.visible = false;
       this.world.emitParticle(
@@ -379,7 +505,7 @@ export class Smuggler {
     this.world.emitSplash(this.position.x, this.position.z, 20, 0xffffff);
   }
 
-  update(dt, boat) {
+  update(dt, boat, wildlife = null) {
     if (this.isDead) {
       this.deathTimer += dt;
 
@@ -409,6 +535,16 @@ export class Smuggler {
       return;
     }
 
+    if (this.state === 'disembarking') {
+      this.updateDisembark(dt);
+      return;
+    }
+
+    if (this.state === 'waiting') {
+      this.waitForDoors(dt);
+      return;
+    }
+
     if (this.state === 'walking') {
       this.updateWalking(dt, boat);
       return;
@@ -417,6 +553,7 @@ export class Smuggler {
     if (this.state === 'hidden') {
       this.hideDelay -= dt;
       if (this.hideDelay <= 0) {
+        this.emergeX = this.chooseEmergeX(boat);
         this.state = 'swimming';
         this.group.visible = true;
         this.swimmerGroup.visible = true;
@@ -458,6 +595,33 @@ export class Smuggler {
       this.isPanicking = false;
       this.armL.rotation.x = Math.sin(this.world.time * 6) * 0.4;
       this.armR.rotation.x = -Math.sin(this.world.time * 6) * 0.4;
+    }
+
+    const nearbyWildlife = this.findNearbyWildlife(wildlife);
+    if (nearbyWildlife) {
+      const awayX = this.position.x - nearbyWildlife.position.x;
+      const awayZ = this.position.z - nearbyWildlife.position.z;
+      const awayDist = Math.hypot(awayX, awayZ);
+
+      if (awayDist > 0.001) {
+        this.wildlifeScareX = awayX / awayDist;
+        this.wildlifeScareZ = awayZ / awayDist;
+      } else {
+        this.wildlifeScareX = 0;
+        this.wildlifeScareZ = -1;
+      }
+
+      this.wildlifeScareTimer = WILDLIFE_SCARE_DURATION;
+    } else if (this.wildlifeScareTimer > 0) {
+      this.wildlifeScareTimer = Math.max(0, this.wildlifeScareTimer - dt);
+    }
+
+    if (this.wildlifeScareTimer > 0) {
+      moveX = this.wildlifeScareX;
+      moveZ = this.wildlifeScareZ;
+
+      this.armL.rotation.x = Math.sin(this.world.time * 14) * 0.7;
+      this.armR.rotation.x = -Math.sin(this.world.time * 14) * 0.7;
     }
 
     // Normalize

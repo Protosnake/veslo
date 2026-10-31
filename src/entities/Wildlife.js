@@ -45,6 +45,9 @@ class WildlifeCreature {
     this.diveTimer = 0;
     this.diveCooldown = 0;
     this.rippleTimer = 0;
+    this.panicTimer = 0;
+    this.panicDirX = 0;
+    this.panicDirZ = 0;
 
     this.group = new THREE.Group();
     this.group.scale.setScalar(this.baseScale);
@@ -185,6 +188,25 @@ class WildlifeCreature {
     return true;
   }
 
+  scareFrom(x, z) {
+    if (this.isDead || this.isFinished || this.isDiving) return false;
+
+    const dx = this.position.x - x;
+    const dz = this.position.z - z;
+    const distance = Math.hypot(dx, dz);
+
+    if (distance > 0.001) {
+      this.panicDirX = dx / distance;
+      this.panicDirZ = dz / distance;
+    } else {
+      this.panicDirX = 0;
+      this.panicDirZ = Math.sign(this.position.z - this.crossZ) || 1;
+    }
+
+    this.panicTimer = 2;
+    return true;
+  }
+
   updateDive(dt) {
     this.diveTimer -= dt;
     const dirZ = Math.sign(this.crossZ - this.position.z);
@@ -242,17 +264,31 @@ class WildlifeCreature {
     }
 
     const time = this.world.time;
-    const dirZ = Math.sign(this.crossZ - this.position.z);
-    const targetX = this.baseX + Math.sin(time * 1.25 + this.wobbleSeed) * 2.2;
-    const dx = targetX - this.position.x;
-    const dz = dirZ * 1.6;
-    const len = Math.hypot(dx, dz) || 1;
+    let moveX;
+    let moveZ;
+    let moveSpeed = this.speed;
 
-    this.position.x += (dx / len) * this.speed * dt;
-    this.position.z += (dz / len) * this.speed * dt;
+    if (this.panicTimer > 0) {
+      this.panicTimer = Math.max(0, this.panicTimer - dt);
+      moveX = this.panicDirX;
+      moveZ = this.panicDirZ;
+      moveSpeed *= 2;
+    } else {
+      const dirZ = Math.sign(this.crossZ - this.position.z);
+      const targetX = this.baseX + Math.sin(time * 1.25 + this.wobbleSeed) * 2.2;
+      const dx = targetX - this.position.x;
+      const dz = dirZ * 1.6;
+      const len = Math.hypot(dx, dz) || 1;
+      moveX = dx / len;
+      moveZ = dz / len;
+    }
+
+    const moveLen = Math.hypot(moveX, moveZ) || 1;
+    this.position.x += (moveX / moveLen) * moveSpeed * dt;
+    this.position.z += (moveZ / moveLen) * moveSpeed * dt;
     this.position.x = THREE.MathUtils.clamp(this.position.x, -29, 29);
 
-    const targetHeading = Math.atan2(dx, dz);
+    const targetHeading = Math.atan2(moveX, moveZ);
     let diff = targetHeading - this.heading;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;

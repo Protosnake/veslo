@@ -1,6 +1,8 @@
 import { Frog, Snake } from './Wildlife.js';
 import { sound } from '../systems/Audio.js';
 
+const SMUGGLER_SCARE_RADIUS = 4;
+
 export class WildlifeManager {
   constructor(scene, riverWorld, onKill) {
     this.scene = scene;
@@ -60,7 +62,32 @@ export class WildlifeManager {
     }
   }
 
-  update(dt, boat) {
+  scareFromSmugglers(creature, smugglers) {
+    if (!smugglers || !smugglers.length) return;
+
+    let nearest = null;
+    let nearestDistanceSq = SMUGGLER_SCARE_RADIUS * SMUGGLER_SCARE_RADIUS;
+
+    for (let i = 0; i < smugglers.length; i++) {
+      const smuggler = smugglers[i];
+      if (smuggler.isDead || smuggler.state !== 'swimming') continue;
+
+      const dx = creature.position.x - smuggler.position.x;
+      const dz = creature.position.z - smuggler.position.z;
+      const distanceSq = dx * dx + dz * dz;
+
+      if (distanceSq < nearestDistanceSq) {
+        nearest = smuggler;
+        nearestDistanceSq = distanceSq;
+      }
+    }
+
+    if (nearest) {
+      creature.scareFrom(nearest.position.x, nearest.position.z);
+    }
+  }
+
+  update(dt, boat, smugglers = []) {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0 && this.creatures.length < this.maxActive) {
       this.spawnCreature();
@@ -74,6 +101,7 @@ export class WildlifeManager {
     for (let i = this.creatures.length - 1; i >= 0; i--) {
       const creature = this.creatures[i];
       creature.update(dt);
+      this.scareFromSmugglers(creature, smugglers);
 
       if (!creature.isDead && !creature.isFinished && !creature.isDiving) {
         if (whackHitbox) {

@@ -181,6 +181,8 @@ class Game {
       vanDrop: 0,
       vanSpeed: 0,
       vanHideTimer: 0,
+      exhaustTimer: 0,
+      doorClosePlayed: false,
       fovH: 50,
       startPose: { position: new THREE.Vector3(), look: new THREE.Vector3() },
       targetPose: { position: new THREE.Vector3(), look: new THREE.Vector3() }
@@ -233,6 +235,8 @@ class Game {
         e.preventDefault();
         if (this.state === 'PLAYING') {
           this.boat.triggerSlap();
+        } else if (this.state === 'INTRO') {
+          this.skipIntro();
         } else if (this.state === 'MENU') {
           this.startGame();
         } else if (this.state === 'GAMEOVER') {
@@ -261,6 +265,10 @@ class Game {
 
     window.addEventListener('mousedown', (e) => {
       if (e.button === 0) sound.init();
+    });
+
+    window.addEventListener('pointerdown', () => {
+      if (this.state === 'INTRO') this.skipIntro();
     });
 
     this.startBtn.addEventListener('click', () => {
@@ -300,81 +308,100 @@ class Game {
   }
 
   initTouchControls() {
-    const joystick = document.getElementById('touch-joystick');
-    const stickKnob = document.getElementById('touch-stick-knob');
+    const throttle = document.getElementById('touch-throttle');
+    const throttleTrack = document.getElementById('touch-throttle-track');
+    const throttleKnob = document.getElementById('touch-throttle-knob');
 
-    if (joystick && stickKnob) {
-      const base = joystick.querySelector('.joystick-base') || joystick;
+    if (throttle && throttleTrack && throttleKnob) {
       let pointerId = null;
 
-      const applyStick = (clientX, clientY) => {
-        const rect = base.getBoundingClientRect();
-        const knobSize = stickKnob.offsetWidth || 58;
-        const radius = Math.max(1, rect.width / 2 - knobSize / 2 - 4);
-        const centerX = rect.left + rect.width / 2;
+      const applyThrottle = (clientY) => {
+        const rect = throttleTrack.getBoundingClientRect();
+        const knobSize = throttleKnob.offsetHeight || 58;
+        const limit = Math.max(1, rect.height / 2 - knobSize / 2 - 4);
         const centerY = rect.top + rect.height / 2;
 
-        let dx = clientX - centerX;
         let dy = clientY - centerY;
-        const distance = Math.hypot(dx, dy);
-        if (distance > radius) {
-          dx = (dx / distance) * radius;
-          dy = (dy / distance) * radius;
-        }
+        if (dy > limit) dy = limit;
+        else if (dy < -limit) dy = -limit;
 
-        stickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+        throttleKnob.style.transform = `translateY(${dy}px)`;
 
+        // Up = forward throttle, down = reverse, spring back to neutral.
         const deadzone = 0.12;
-        const shape = (value) => {
-          const magnitude = Math.abs(value);
-          if (magnitude < deadzone) return 0;
-          return Math.sign(value) * ((magnitude - deadzone) / (1 - deadzone));
-        };
-
-        // Same mapping as WASD: vertical = throttle / reverse,
-        // horizontal = granular left / right steering.
-        this.input.throttleAxis = shape(-dy / radius);
-        this.input.steerAxis = shape(-dx / radius);
-        joystick.classList.add('is-active');
+        const value = -dy / limit;
+        const magnitude = Math.abs(value);
+        this.input.throttleAxis = magnitude < deadzone
+          ? 0
+          : Math.sign(value) * ((magnitude - deadzone) / (1 - deadzone));
+        throttle.classList.add('is-active');
       };
 
-      const releaseStick = () => {
+      const releaseThrottle = () => {
         pointerId = null;
-        joystick.classList.remove('is-active');
-        stickKnob.style.transform = '';
+        throttle.classList.remove('is-active');
+        throttleKnob.style.transform = '';
         this.input.throttleAxis = 0;
-        this.input.steerAxis = 0;
       };
 
-      base.addEventListener('pointerdown', (e) => {
+      throttleTrack.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         sound.init();
         pointerId = e.pointerId;
-        joystick.classList.add('is-active');
-        if (base.setPointerCapture) {
-          try { base.setPointerCapture(e.pointerId); } catch {}
+        throttle.classList.add('is-active');
+        if (throttleTrack.setPointerCapture) {
+          try { throttleTrack.setPointerCapture(e.pointerId); } catch {}
         }
-        applyStick(e.clientX, e.clientY);
+        applyThrottle(e.clientY);
       });
 
-      base.addEventListener('pointermove', (e) => {
+      throttleTrack.addEventListener('pointermove', (e) => {
         if (e.pointerId !== pointerId) return;
         e.preventDefault();
-        applyStick(e.clientX, e.clientY);
+        applyThrottle(e.clientY);
       });
 
-      const endStick = (e) => {
+      const endThrottle = (e) => {
         if (pointerId != null && e.pointerId !== pointerId) return;
-        releaseStick();
+        releaseThrottle();
       };
 
-      base.addEventListener('pointerup', endStick);
-      base.addEventListener('pointercancel', endStick);
-      base.addEventListener('lostpointercapture', releaseStick);
-      base.addEventListener('contextmenu', (e) => e.preventDefault());
+      throttleTrack.addEventListener('pointerup', endThrottle);
+      throttleTrack.addEventListener('pointercancel', endThrottle);
+      throttleTrack.addEventListener('lostpointercapture', releaseThrottle);
+      throttleTrack.addEventListener('contextmenu', (e) => e.preventDefault());
 
-      this.touchStick = { release: releaseStick };
+      this.touchThrottle = { release: releaseThrottle };
     }
+
+    const bindSteer = (id, prop) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+
+      const press = (e) => {
+        e.preventDefault();
+        sound.init();
+        this.input[prop] = true;
+        btn.classList.add('is-pressed');
+        if (btn.setPointerCapture && e.pointerId != null) {
+          try { btn.setPointerCapture(e.pointerId); } catch {}
+        }
+      };
+
+      const release = () => {
+        this.input[prop] = false;
+        btn.classList.remove('is-pressed');
+      };
+
+      btn.addEventListener('pointerdown', press);
+      btn.addEventListener('pointerup', release);
+      btn.addEventListener('pointercancel', release);
+      btn.addEventListener('lostpointercapture', release);
+      btn.addEventListener('contextmenu', (e) => e.preventDefault());
+    };
+
+    bindSteer('touch-left', 'left');
+    bindSteer('touch-right', 'right');
 
     const hitBtn = document.getElementById('touch-hit');
     if (!hitBtn) return;
@@ -415,7 +442,7 @@ class Game {
     this.input.steerAxis = 0;
     this.input.throttleAxis = 0;
     this.input.mouseThrust = false;
-    if (this.touchStick) this.touchStick.release();
+    if (this.touchThrottle) this.touchThrottle.release();
     document.querySelectorAll('.touch-btn.is-pressed').forEach((btn) => {
       btn.classList.remove('is-pressed');
     });
@@ -465,6 +492,8 @@ class Game {
     intro.vanDrop = dropDistance;
     intro.vanStart = path.introVanStartDistance ?? 0;
     intro.vanSpeed = (intro.vanDrop - intro.vanStart) / intro.vanDuration;
+    intro.exhaustTimer = 0;
+    intro.doorClosePlayed = false;
 
     // Fixed high drone POV over the north plateau, framed on the drop point.
     intro.startPose.position.set(
@@ -481,7 +510,12 @@ class Game {
 
     this.minivan.show();
     this.minivan.setPose(path.frameAt(intro.vanStart), 0);
+    this.minivan.doorOpen = 0;
+    this.minivan.closeDoors();
     this.minivan.update(0, 0);
+    sound.startVanEngine();
+    sound.updateVanEngine(0.25);
+    sound.playExhaustPuff();
   }
 
   updateIntro(dt) {
@@ -489,6 +523,8 @@ class Game {
     intro.time += dt;
     const t = intro.time;
     const path = this.world.gravelPath;
+    const spawnTime = intro.vanDuration + 0.55;
+    const doorCloseTime = intro.vanDuration + 1.55;
 
     if (path && path.frameAt) {
       if (t <= intro.vanDuration) {
@@ -499,22 +535,29 @@ class Game {
         const frame = path.frameAt(distance);
         this.minivan.setPose(frame, lateral);
         this.minivan.update(dt, intro.vanSpeed);
+        this.updateVanExhaust(dt, 1);
+        sound.updateVanEngine(0.9);
       } else {
         const stopFrame = path.frameAt(intro.vanDrop);
         this.minivan.setPose(stopFrame, 2.6);
         this.minivan.update(dt, 0);
+        this.updateVanExhaust(dt, 0.2);
+        sound.updateVanEngine(0.18);
       }
     }
 
-    if (!intro.spawned && t >= intro.vanDuration + 0.25) {
-      intro.spawned = true;
-      for (const offset of [-1.35, 1.35]) {
-        this.smugglerManager.spawnSmugglerAt(
-          intro.vanDrop - Math.random() * 0.8,
-          offset
-        );
+    if (t >= doorCloseTime) {
+      this.minivan.closeDoors();
+      if (!intro.doorClosePlayed) {
+        intro.doorClosePlayed = true;
+        sound.playVanDoorClose();
       }
-      this.smugglerManager.beginAfterIntro();
+    } else if (t >= intro.vanDuration) {
+      this.minivan.openDoors();
+    }
+
+    if (!intro.spawned && t >= spawnTime) {
+      this.spawnIntroSmugglers();
     }
 
     this.smugglerManager.updateIntro(dt, this.boat);
@@ -540,10 +583,75 @@ class Game {
     }
   }
 
+  spawnIntroSmugglers() {
+    const intro = this.intro;
+    if (intro.spawned) return;
+    intro.spawned = true;
+
+    const vanLateral = 2.6;
+    [-1, 1].forEach((side, index) => {
+      const laneOffset = side * 1.2;
+      const smuggler = this.smugglerManager.spawnSmugglerAt(
+        intro.vanDrop - 1.65,
+        laneOffset
+      );
+      smuggler.beginDisembark(this.minivan.getDoorWorldPosition(side), {
+        delay: index * 0.12,
+        side,
+        laneOffset,
+        laneMergeDistance: intro.vanDrop + 3.4,
+        hold: 0.62,
+        exitOffset: vanLateral + side * 1.55
+      });
+    });
+
+    this.smugglerManager.beginAfterIntro();
+  }
+
+  skipIntro() {
+    if (this.state !== 'INTRO') return;
+
+    this.spawnIntroSmugglers();
+    for (const smuggler of this.smugglerManager.smugglers) {
+      smuggler.skipDisembark();
+    }
+
+    this.minivan.hide();
+    sound.stopVanEngine();
+    this.finishIntro();
+  }
+
+  updateVanExhaust(dt, intensity = 1) {
+    const intro = this.intro;
+    intro.exhaustTimer -= dt;
+    if (intro.exhaustTimer > 0) return;
+
+    intro.exhaustTimer = intensity > 0.5
+      ? 0.06 + Math.random() * 0.05
+      : 0.28 + Math.random() * 0.14;
+
+    const p = this.minivan.getExhaustWorldPosition();
+    const count = intensity > 0.5 ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      this.world.emitParticle(
+        p.x + (Math.random() - 0.5) * 0.14,
+        p.y + Math.random() * 0.06,
+        p.z + (Math.random() - 0.5) * 0.14,
+        (Math.random() - 0.5) * 0.25,
+        0.45 + Math.random() * 0.5,
+        (Math.random() - 0.5) * 0.25,
+        i === 0 ? 0x3f4448 : 0x6b7176,
+        0.55 + Math.random() * 0.45,
+        0.8 + Math.random() * 0.5
+      );
+    }
+  }
+
   finishIntro() {
     this.state = 'PLAYING';
     document.body.classList.remove('intro');
     this.intro.vanHideTimer = 1.0;
+    sound.stopVanEngine();
     this.renderer.clearManualCamera();
     this.renderer.clearHorizontalFovOverride();
     this.clearInput();
@@ -568,7 +676,10 @@ class Game {
       Math.abs(this.vanScreenPos.y) > 1 ||
       this.vanScreenPos.z > 1;
 
-    if (offscreen) this.minivan.hide();
+    if (offscreen) {
+      this.minivan.hide();
+      sound.stopVanEngine();
+    }
   }
 
   restartGame() {
@@ -826,7 +937,20 @@ class Game {
     if (!this.osd.headingTape || !this.headingPxPerDeg) return;
     const windowWidth = 260; // matches .osd-heading-window width
     const x = windowWidth / 2 - (heading + 360) * this.headingPxPerDeg;
-    this.osd.headingTape.style.transform = `translateX(${x}px)`;
+    this.osd.headingTape.style.transform = `translate3d(${x}px, 0, 0)`;
+  }
+
+  updateHeading() {
+    const heading = this.getCameraHeading();
+    const headingText = String(Math.round(heading) % 360).padStart(3, '0');
+
+    if (headingText !== this.lastHeadingText) {
+      this.lastHeadingText = headingText;
+      if (this.osd.hdg) this.osd.hdg.textContent = headingText;
+      if (this.osd.headingVal) this.osd.headingVal.textContent = `${headingText}°`;
+    }
+
+    this.updateHeadingTape(heading);
   }
 
   updateFps(rawDt) {
@@ -858,12 +982,6 @@ class Game {
     if (this.osd.spd) {
       this.osd.spd.textContent = (Math.abs(this.boat.speed) * 1.94).toFixed(1).padStart(4, '0');
     }
-
-    const heading = this.getCameraHeading();
-    const headingText = String(Math.round(heading) % 360).padStart(3, '0');
-    if (this.osd.hdg) this.osd.hdg.textContent = headingText;
-    if (this.osd.headingVal) this.osd.headingVal.textContent = `${headingText}°`;
-    this.updateHeadingTape(heading);
 
     if (this.osd.gps) {
       const lat = 46.61 + this.boat.position.z * 0.0008;
@@ -924,8 +1042,8 @@ class Game {
       this.missionTime += dt;
       this.battery = Math.max(6, this.battery - dt * 0.22);
       this.boat.update(dt, this.input);
-      this.smugglerManager.update(dt, this.boat);
-      this.wildlifeManager.update(dt, this.boat);
+      this.smugglerManager.update(dt, this.boat, this.wildlifeManager.creatures);
+      this.wildlifeManager.update(dt, this.boat, this.smugglerManager.smugglers);
     } else if (this.state !== 'PAUSED') {
       this.boat.update(dt, this.idleInput);
     }
@@ -943,6 +1061,10 @@ class Game {
       this.boat.velocity.z
     );
     this.renderer.updateCamera(dt);
+
+    // The compass tape must follow the camera every frame to stay smooth;
+    // it is a single GPU-composited transform, so this is cheap.
+    this.updateHeading();
 
     // DOM telemetry only needs a low refresh rate; updating a dozen text nodes
     // and styles every frame causes avoidable layout/paint work.

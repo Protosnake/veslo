@@ -3,6 +3,17 @@
   --accent-red: #ff3344;
   --bg-dark: rgba(14, 22, 17, 0.90);
   --border-patrol-green: #3c6b45;
+
+  /* Fluid mobile overlay scale (viewport-relative) */
+  --ctl-inset-x: clamp(30px, 5vw, 64px);
+  --ctl-inset-bottom: clamp(32px, 12vmin, 72px);
+  --ctl-gap: clamp(8px, 1.6vmin, 14px);
+  --throttle-w: clamp(60px, 19vmin, 100px);
+  --throttle-h: clamp(104px, 38vmin, 200px);
+  --throttle-knob: clamp(44px, 15vmin, 74px);
+  --steer-size: clamp(54px, 19vmin, 88px);
+  --hit-size: clamp(64px, 24vmin, 112px);
+  --pause-size: clamp(34px, 4.8vw, 48px);
 }
 
 * {
@@ -733,19 +744,20 @@ html, body {
 /* Heading tape */
 .osd-heading {
   position: absolute;
-  top: 50px;
+  top: 3px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  z-index: 2;
 }
 
 .osd-heading-window {
   position: relative;
   width: 260px;
-  height: 24px;
+  height: 22px;
   overflow: hidden;
   border-bottom: 1px solid rgba(141, 255, 176, 0.3);
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
@@ -1163,11 +1175,11 @@ html, body {
   display: none;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--ctl-gap);
   padding:
-    0 max(20px, env(safe-area-inset-right))
-    max(20px, env(safe-area-inset-bottom))
-    max(20px, env(safe-area-inset-left));
+    0 max(var(--ctl-inset-x), env(safe-area-inset-right))
+    max(var(--ctl-inset-bottom), env(safe-area-inset-bottom))
+    max(var(--ctl-inset-x), env(safe-area-inset-left));
   pointer-events: none;
 }
 
@@ -1175,60 +1187,71 @@ html, body {
   display: flex;
 }
 
-.touch-joystick,
+.touch-throttle,
 .touch-action {
   pointer-events: auto;
 }
 
-.touch-joystick {
+.touch-throttle {
   touch-action: none;
 }
 
-.joystick-base {
+.throttle-track {
   position: relative;
-  width: 148px;
-  height: 148px;
-  border-radius: 50%;
+  width: var(--throttle-w);
+  height: var(--throttle-h);
+  border-radius: calc(var(--throttle-w) / 2);
   border: 1px solid rgba(141, 255, 176, 0.4);
-  background: radial-gradient(circle at 50% 42%, rgba(141, 255, 176, 0.1), rgba(4, 14, 9, 0.58) 68%);
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(141, 255, 176, 0.14) 0%,
+      rgba(4, 14, 9, 0.58) 48%,
+      rgba(4, 14, 9, 0.58) 52%,
+      rgba(255, 90, 90, 0.12) 100%
+    );
   box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.45), 0 6px 18px rgba(0, 0, 0, 0.35);
   touch-action: none;
 }
 
-.joystick-tick {
+.throttle-track::before {
+  content: '';
   position: absolute;
-  background: rgba(141, 255, 176, 0.38);
-}
-
-.joystick-tick.north,
-.joystick-tick.south {
-  left: 50%;
-  width: 1px;
-  height: 10px;
-  transform: translateX(-50%);
-}
-
-.joystick-tick.north { top: 9px; }
-.joystick-tick.south { bottom: 9px; }
-
-.joystick-tick.east,
-.joystick-tick.west {
   top: 50%;
-  width: 10px;
+  left: 50%;
+  width: 34px;
   height: 1px;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
+  background: rgba(141, 255, 176, 0.4);
 }
 
-.joystick-tick.east { right: 9px; }
-.joystick-tick.west { left: 9px; }
+.throttle-mark {
+  position: absolute;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+}
 
-.joystick-knob {
+.throttle-mark.forward {
+  top: 12px;
+  border-bottom: 8px solid rgba(141, 255, 176, 0.55);
+}
+
+.throttle-mark.reverse {
+  bottom: 12px;
+  border-top: 8px solid rgba(255, 120, 120, 0.55);
+}
+
+.throttle-knob {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 58px;
-  height: 58px;
-  margin: -29px 0 0 -29px;
+  width: var(--throttle-knob);
+  height: var(--throttle-knob);
+  margin: calc(var(--throttle-knob) * -0.5) 0 0 calc(var(--throttle-knob) * -0.5);
   border-radius: 50%;
   border: 1px solid rgba(141, 255, 176, 0.8);
   background: radial-gradient(circle at 50% 35%, rgba(141, 255, 176, 0.38), rgba(4, 14, 9, 0.82));
@@ -1238,11 +1261,11 @@ html, body {
   transition: transform 0.16s ease-out;
 }
 
-.touch-joystick.is-active .joystick-knob {
+.touch-throttle.is-active .throttle-knob {
   transition: none;
 }
 
-.joystick-knob::after {
+.throttle-knob::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -1286,15 +1309,38 @@ html, body {
 
 .touch-action {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--ctl-gap);
+}
+
+.touch-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ctl-gap);
+}
+
+.touch-steer-btn {
+  width: var(--steer-size);
+  height: var(--steer-size);
+  border-radius: 50%;
+  color: var(--osd-bright);
+}
+
+.steer-glyph {
+  font-size: clamp(26px, 10vmin, 46px);
+  font-weight: 900;
+  line-height: 1;
+  transform: translateY(-2px);
 }
 
 .touch-hit {
   flex-direction: column;
   gap: 1px;
-  width: 96px;
-  height: 96px;
+  width: var(--hit-size);
+  height: var(--hit-size);
   border-radius: 50%;
   border-color: rgba(255, 208, 0, 0.55);
   color: var(--primary-color);
@@ -1309,13 +1355,13 @@ html, body {
 }
 
 .touch-hit-label {
-  font-size: 17px;
+  font-size: clamp(12px, 4.2vmin, 20px);
   font-weight: 900;
   letter-spacing: 0.14em;
 }
 
 .touch-hit-sub {
-  font-size: 8px;
+  font-size: clamp(6px, 2vmin, 10px);
   letter-spacing: 0.2em;
   color: rgba(255, 208, 0, 0.65);
 }
@@ -1331,14 +1377,14 @@ body.intro .mobile-pause-btn {
 /* Mobile pause button */
 .mobile-pause-btn {
   position: absolute;
-  top: calc(max(10px, env(safe-area-inset-top)) + 42px);
-  right: max(14px, env(safe-area-inset-right));
+  top: calc(max(10px, env(safe-area-inset-top)) + clamp(44px, 12vmin, 72px));
+  right: max(clamp(40px, 6.2vw, 80px), env(safe-area-inset-right));
   z-index: 30;
   display: none;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: var(--pause-size);
+  height: var(--pause-size);
   padding: 0;
   border-radius: 50%;
   border: 1px solid rgba(141, 255, 176, 0.45);
@@ -1715,15 +1761,24 @@ body.intro .mobile-pause-btn {
 }
 
 @media (max-height: 520px) {
-  .joystick-base {
-    width: 118px;
+  .throttle-track {
+    width: 64px;
     height: 118px;
   }
 
-  .joystick-knob {
+  .throttle-knob {
     width: 48px;
     height: 48px;
     margin: -24px 0 0 -24px;
+  }
+
+  .touch-steer-btn {
+    width: 64px;
+    height: 64px;
+  }
+
+  .steer-glyph {
+    font-size: 34px;
   }
 
   .touch-hit {
@@ -1733,9 +1788,9 @@ body.intro .mobile-pause-btn {
 
   .touch-controls {
     padding:
-      0 max(14px, env(safe-area-inset-right))
-      max(12px, env(safe-area-inset-bottom))
-      max(14px, env(safe-area-inset-left));
+      0 max(40px, env(safe-area-inset-right))
+      max(48px, env(safe-area-inset-bottom))
+      max(40px, env(safe-area-inset-left));
   }
 
   .touch-device .hud-header {

@@ -9,6 +9,9 @@ class SoundSystem {
     this.engineOsc = null;
     this.engineGain = null;
     this.engineRunning = false;
+    this.vanEngineOscs = null;
+    this.vanEngineGain = null;
+    this.vanEngineRunning = false;
     this.wildlifeSample = null;
     this.wildlifePromise = null;
     this.wildlifeSource = null;
@@ -118,6 +121,152 @@ class SoundSystem {
       const targetGain = 0.04 + throttle * 0.09;
       this.engineOsc.frequency.setTargetAtTime(targetFreq, t, 0.08);
       this.engineGain.gain.setTargetAtTime(targetGain, t, 0.08);
+    } catch (e) {}
+  }
+
+  startVanEngine() {
+    if (!this.ctx || this.vanEngineRunning) return;
+    try {
+      const t = this.ctx.currentTime;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.018, t + 0.7);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(230, t);
+
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(54, t);
+
+      const sub = this.ctx.createOscillator();
+      sub.type = 'square';
+      sub.frequency.setValueAtTime(27, t);
+
+      const subGain = this.ctx.createGain();
+      subGain.gain.setValueAtTime(0.45, t);
+
+      osc.connect(filter);
+      sub.connect(subGain);
+      subGain.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(t);
+      sub.start(t);
+
+      this.vanEngineOscs = [osc, sub];
+      this.vanEngineGain = gain;
+      this.vanEngineRunning = true;
+    } catch (e) {}
+  }
+
+  updateVanEngine(intensity = 0) {
+    if (!this.ctx || !this.vanEngineOscs || !this.vanEngineGain || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+      const freq = 46 + intensity * 30;
+      this.vanEngineOscs[0].frequency.setTargetAtTime(freq, t, 0.15);
+      this.vanEngineOscs[1].frequency.setTargetAtTime(freq * 0.5, t, 0.15);
+      this.vanEngineGain.gain.setTargetAtTime(0.02 + intensity * 0.055, t, 0.2);
+    } catch (e) {}
+  }
+
+  stopVanEngine() {
+    if (!this.ctx || !this.vanEngineRunning) return;
+    const t = this.ctx.currentTime;
+    const oscs = this.vanEngineOscs;
+    try {
+      if (this.vanEngineGain) {
+        this.vanEngineGain.gain.cancelScheduledValues(t);
+        this.vanEngineGain.gain.setTargetAtTime(0.0001, t, 0.09);
+      }
+      if (oscs) {
+        for (const osc of oscs) {
+          try { osc.stop(t + 0.45); } catch (e) {}
+        }
+      }
+    } catch (e) {}
+    this.vanEngineOscs = null;
+    this.vanEngineGain = null;
+    this.vanEngineRunning = false;
+  }
+
+  playVanDoorClose() {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+
+      const thud = this.ctx.createOscillator();
+      const thudGain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(420, t);
+
+      thud.type = 'sine';
+      thud.frequency.setValueAtTime(120, t);
+      thud.frequency.exponentialRampToValueAtTime(46, t + 0.2);
+      thudGain.gain.setValueAtTime(0.24, t);
+      thudGain.gain.exponentialRampToValueAtTime(0.005, t + 0.22);
+
+      thud.connect(filter);
+      filter.connect(thudGain);
+      thudGain.connect(this.ctx.destination);
+      thud.start(t);
+      thud.stop(t + 0.24);
+
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.12);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.03));
+      }
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+      const nFilter = this.ctx.createBiquadFilter();
+      nFilter.type = 'bandpass';
+      nFilter.frequency.setValueAtTime(1700, t + 0.09);
+      nFilter.Q.setValueAtTime(2.4, t);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.0001, t);
+      nGain.gain.setValueAtTime(0.13, t + 0.09);
+      nGain.gain.exponentialRampToValueAtTime(0.004, t + 0.2);
+
+      noise.connect(nFilter);
+      nFilter.connect(nGain);
+      nGain.connect(this.ctx.destination);
+      noise.start(t + 0.08);
+    } catch (e) {}
+  }
+
+  playExhaustPuff() {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.22);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        const env = Math.exp(-i / (this.ctx.sampleRate * 0.06));
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(300, t);
+      filter.frequency.exponentialRampToValueAtTime(90, t + 0.22);
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.11, t);
+      gain.gain.exponentialRampToValueAtTime(0.003, t + 0.22);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      noise.start(t);
     } catch (e) {}
   }
 

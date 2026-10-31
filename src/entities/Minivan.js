@@ -6,6 +6,9 @@ export class Minivan {
     this.group = new THREE.Group();
     this.group.visible = false;
     this.wheels = [];
+    this.doors = [];
+    this.doorOpen = 0;
+    this.doorTarget = 0;
 
     this.build();
     scene.add(this.group);
@@ -50,6 +53,46 @@ export class Minivan {
     const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.56, 0.08), windowMat);
     rearGlass.position.set(0, 1.76, -1.48);
     this.group.add(rearGlass);
+
+    const doorMat = new THREE.MeshStandardMaterial({
+      color: 0xc3cbd2,
+      roughness: 0.62,
+      metalness: 0.14
+    });
+    const doorGapMat = new THREE.MeshBasicMaterial({ color: 0x0d1114 });
+    const handleMat = new THREE.MeshLambertMaterial({ color: 0x2a3137 });
+
+    const doorPanelGeo = new THREE.BoxGeometry(0.06, 0.96, 1.12);
+    const doorGlassGeo = new THREE.BoxGeometry(0.02, 0.5, 0.9);
+    const doorGapGeo = new THREE.BoxGeometry(0.02, 1.02, 1.16);
+    const handleGeo = new THREE.BoxGeometry(0.045, 0.09, 0.22);
+
+    for (const side of [-1, 1]) {
+      const gap = new THREE.Mesh(doorGapGeo, doorGapMat);
+      gap.position.set(side * 1.062, 1.02, -0.54);
+      this.group.add(gap);
+
+      // Rear passenger doors hinge at their front edge and swing outward.
+      const door = new THREE.Group();
+      door.position.set(side * 1.08, 0, 0.02);
+      door.userData.side = side;
+
+      const panel = new THREE.Mesh(doorPanelGeo, doorMat);
+      panel.position.set(0, 1.02, -0.56);
+      panel.castShadow = true;
+      door.add(panel);
+
+      const glass = new THREE.Mesh(doorGlassGeo, windowMat);
+      glass.position.set(side * 0.04, 1.64, -0.56);
+      door.add(glass);
+
+      const handle = new THREE.Mesh(handleGeo, handleMat);
+      handle.position.set(side * 0.036, 1.16, -0.94);
+      door.add(handle);
+
+      this.group.add(door);
+      this.doors.push(door);
+    }
 
     const bumperFront = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.3, 0.28), lowerMat);
     bumperFront.position.set(0, 0.56, 2.22);
@@ -106,6 +149,35 @@ export class Minivan {
     for (const wheel of this.wheels) {
       wheel.rotation.x += spin;
     }
+
+    this.doorOpen = THREE.MathUtils.damp(this.doorOpen, this.doorTarget, 9, dt);
+    const eased = this.doorOpen * this.doorOpen * (3 - 2 * this.doorOpen);
+    for (const door of this.doors) {
+      const side = door.userData.side || 1;
+      door.rotation.y = -side * 1.25 * eased;
+    }
+  }
+
+  openDoors() {
+    this.doorTarget = 1;
+  }
+
+  closeDoors() {
+    this.doorTarget = 0;
+  }
+
+  getDoorWorldPosition(side = 1) {
+    this.group.updateMatrixWorld(true);
+    return this.group.localToWorld(
+      new THREE.Vector3(side * 1.32, 0, -0.5)
+    );
+  }
+
+  getExhaustWorldPosition() {
+    this.group.updateMatrixWorld(true);
+    return this.group.localToWorld(
+      new THREE.Vector3(0.72, 0.3, -2.24)
+    );
   }
 
   show() {
