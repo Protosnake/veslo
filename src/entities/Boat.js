@@ -361,7 +361,7 @@ export class Boat {
 
     this.isSlapping = true;
     this.slapTime = 0;
-    this.slapCooldown = 0.32;
+    this.slapCooldown = 0.5;
     sound.playWhoosh();
     return true;
   }

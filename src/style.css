@@ -1172,7 +1172,6 @@ html, body {
 .drone-osd.low-battery .osd-battery .v {
   color: var(--osd-danger);
   text-shadow: 0 0 10px rgba(255, 77, 94, 0.9);
-  animation: batteryPulse 0.85s ease-in-out infinite;
 }
 
 .osd-signal-loss {
@@ -2033,4 +2032,21 @@ body.intro .mobile-pause-btn {
   .touch-device .hud-header {
     bottom: max(6px, env(safe-area-inset-bottom));
   }
+}
+
+/* Keep the battery readout visible on touch devices */
+.touch-device .osd-top-left {
+  display: block;
+  top: calc(env(safe-area-inset-top) + 62px);
+  left: calc(env(safe-area-inset-left) + 24px);
+  z-index: 70;
+  text-shadow: 0 1px 3px #000, 0 0 6px #000;
+}
+
+.touch-device .osd-top-left .osd-readout {
+  display: none;
+}
+
+.touch-device .osd-top-left .osd-battery {
+  margin-top: 0;
 }

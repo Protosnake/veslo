@@ -13,7 +13,35 @@ const SHARED_GEO = {
   arm: new THREE.CylinderGeometry(0.08, 0.08, 0.6, 5)
 };
 
-const SHARED_BLOOD_GEO = new THREE.CircleGeometry(0.65, 16);
+function createBloodGeometry() {
+  const baseRadius = 0.65;
+  const geometry = new THREE.CircleGeometry(baseRadius, 28);
+  const position = geometry.attributes.position;
+  const phaseA = Math.random() * Math.PI * 2;
+  const phaseB = Math.random() * Math.PI * 2;
+
+  for (let i = 1; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const angle = Math.atan2(y, x);
+    const radius = baseRadius * (
+      0.9 +
+      Math.sin(angle * 3 + phaseA) * 0.14 +
+      Math.sin(angle * 7 + phaseB) * 0.08
+    );
+    position.setXY(i, Math.cos(angle) * radius, Math.sin(angle) * radius);
+  }
+
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+const BLOOD_GEOMETRIES = [
+  createBloodGeometry(),
+  createBloodGeometry(),
+  createBloodGeometry()
+];
 
 const SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xdeb887 });
 const SNORKEL_MAT = new THREE.MeshLambertMaterial({ color: 0xffee00 });
@@ -509,6 +537,11 @@ export class Smuggler {
     this.deathTimer = 0;
     this.deathDuration = 5;
     this.corpseHit = false;
+    if (this.bloodPuddle) {
+      this.scene.remove(this.bloodPuddle);
+      this.bloodPuddle.material.dispose();
+      this.bloodPuddle = null;
+    }
     this.world.emitSplash(this.position.x, this.position.z, 22, 0xffffff);
   }
 
@@ -553,10 +586,11 @@ export class Smuggler {
       depthWrite: false,
       side: THREE.DoubleSide
     });
-    this.bloodPuddle = new THREE.Mesh(SHARED_BLOOD_GEO, material);
+    const geometry = BLOOD_GEOMETRIES[Math.floor(Math.random() * BLOOD_GEOMETRIES.length)];
+    this.bloodPuddle = new THREE.Mesh(geometry, material);
     this.bloodPuddle.rotation.x = -Math.PI / 2;
     this.bloodPuddle.position.set(this.position.x, 0.06, this.position.z);
-    this.bloodPuddle.scale.setScalar(0.45);
+    this.bloodPuddle.scale.setScalar(0.9);
     this.scene.add(this.bloodPuddle);
   }
 
@@ -571,7 +605,7 @@ export class Smuggler {
       if (this.bloodPuddle) {
         const grow = Math.min(1, this.deathTimer * 2.5);
         const fade = Math.min(1, Math.max(0, (this.deathDuration - this.deathTimer) / 1.2));
-        this.bloodPuddle.scale.setScalar(0.45 + grow * 0.35);
+        this.bloodPuddle.scale.setScalar(0.9 + grow * 0.7);
         this.bloodPuddle.material.opacity = 0.75 * fade;
       }
       return;

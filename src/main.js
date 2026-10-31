@@ -332,7 +332,12 @@ class Game {
       if (e.code === 'Space') {
         e.preventDefault();
         if (this.state === 'PLAYING') {
+          if (e.repeat) return;
           this.triggerStrike();
+          clearInterval(this.keyHitRepeatTimer);
+          this.keyHitRepeatTimer = setInterval(() => {
+            if (this.state === 'PLAYING') this.triggerStrike();
+          }, 500);
         } else if (this.state === 'INTRO') {
           this.skipIntro();
         } else if (this.state === 'MENU') {
@@ -348,6 +353,10 @@ class Game {
       if (e.code === 'KeyS' || e.code === 'ArrowDown') this.input.backward = false;
       if (e.code === 'KeyA' || e.code === 'ArrowLeft') this.input.left = false;
       if (e.code === 'KeyD' || e.code === 'ArrowRight') this.input.right = false;
+      if (e.code === 'Space') {
+        clearInterval(this.keyHitRepeatTimer);
+        this.keyHitRepeatTimer = null;
+      }
     });
 
     window.addEventListener('mousemove', (e) => {
@@ -523,7 +532,7 @@ class Game {
         clearInterval(this.hitRepeatTimer);
         this.hitRepeatTimer = setInterval(() => {
           if (this.state === 'PLAYING') this.triggerStrike();
-        }, 360);
+        }, 500);
       }
     });
 
@@ -547,6 +556,8 @@ class Game {
     });
     clearInterval(this.hitRepeatTimer);
     this.hitRepeatTimer = null;
+    clearInterval(this.keyHitRepeatTimer);
+    this.keyHitRepeatTimer = null;
   }
 
   startGame() {
@@ -846,7 +857,7 @@ class Game {
 
     const now = performance.now();
     if (now < this.akShotCooldownUntil) return;
-    this.akShotCooldownUntil = now + 90;
+    this.akShotCooldownUntil = now + 500;
 
     if (this.akReloadPending) {
       sound.playAkReload();
@@ -1222,7 +1233,7 @@ class Game {
       this.osd.batteryFill.style.width = `${batteryPct}%`;
       this.osd.batteryFill.classList.toggle('low', this.battery <= 20);
     }
-    if (this.osd.batteryVal) this.osd.batteryVal.textContent = `${batteryPct}%`;
+    if (this.osd.batteryVal) this.osd.batteryVal.textContent = String(batteryPct);
     if (this.osd.batteryWarningVal) {
       this.osd.batteryWarningVal.textContent = `${batteryPct}%`;
     }
