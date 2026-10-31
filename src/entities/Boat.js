@@ -392,17 +392,11 @@ export class Boat {
     if (input.left) steer += 1;
     if (input.right) steer -= 1;
 
-    // Screen-relative thumbstick: the stick points where the boat should go,
-    // so "up" stays up no matter which way the hull is facing.
-    if (input.moveMagnitude > 0) {
-      const desiredAngle = Math.atan2(-input.moveZ, input.moveX);
-      let diff = desiredAngle - this.angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-
-      steer = Math.max(-1, Math.min(1, diff * 3.5));
-      throttle = input.moveMagnitude;
-    }
+    // Analog thumbstick uses the same model as WASD: the vertical axis is
+    // throttle/reverse and the horizontal axis is steering, with granular
+    // magnitudes instead of binary key presses.
+    if (input.throttleAxis) throttle = input.throttleAxis;
+    if (input.steerAxis) steer = input.steerAxis;
 
     if (input.mouseAiming && input.targetWorldPos) {
       const dx = input.targetWorldPos.x - this.position.x;

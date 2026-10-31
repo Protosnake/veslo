@@ -19,6 +19,37 @@ function isTouchDevice() {
   );
 }
 
+function lockLandscape() {
+  const orientation = screen.orientation;
+  if (!orientation || typeof orientation.lock !== 'function') return;
+  try {
+    const result = orientation.lock('landscape');
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  } catch {}
+}
+
+function requestGameFullscreen() {
+  if (!isTouchDevice()) return;
+
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    lockLandscape();
+    return;
+  }
+
+  const root = document.documentElement;
+  const request = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (!request) return;
+
+  try {
+    const result = request.call(root, { navigationUI: 'hide' });
+    if (result && typeof result.then === 'function') {
+      result.then(lockLandscape).catch(() => {});
+    } else {
+      lockLandscape();
+    }
+  } catch {}
+}
+
 const SUPPORTED_ASPECT = 16 / 9;
 
 function getScreenAspect() {
@@ -136,9 +167,8 @@ class Game {
       backward: false,
       left: false,
       right: false,
-      moveX: 0,
-      moveZ: 0,
-      moveMagnitude: 0,
+      steerAxis: 0,
+      throttleAxis: 0,
       mouseAiming: false,
       mouseThrust: false,
       targetWorldPos: new THREE.Vector3()
@@ -202,11 +232,13 @@ class Game {
     });
 
     this.startBtn.addEventListener('click', () => {
+      requestGameFullscreen();
       sound.init();
       this.startGame();
     });
 
     this.restartBtn.addEventListener('click', () => {
+      requestGameFullscreen();
       sound.init();
       this.restartGame();
     });
@@ -228,16 +260,6 @@ class Game {
       const base = joystick.querySelector('.joystick-base') || joystick;
       let pointerId = null;
 
-      // Fixed screen-space basis: pushing the stick up always moves the boat
-      // away from the camera, regardless of which way the hull is facing.
-      const forward = new THREE.Vector3();
-      const right = new THREE.Vector3();
-      const worldUp = new THREE.Vector3(0, 1, 0);
-      this.renderer.camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      right.crossVectors(forward, worldUp).normalize();
-
       const applyStick = (clientX, clientY) => {
         const rect = base.getBoundingClientRect();
         const knobSize = stickKnob.offsetWidth || 58;
@@ -256,23 +278,16 @@ class Game {
         stickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
 
         const deadzone = 0.12;
-        const stickX = dx / radius;
-        const stickY = dy / radius;
+        const shape = (value) => {
+          const magnitude = Math.abs(value);
+          if (magnitude < deadzone) return 0;
+          return Math.sign(value) * ((magnitude - deadzone) / (1 - deadzone));
+        };
 
-        const moveX = right.x * stickX + forward.x * -stickY;
-        const moveZ = right.z * stickX + forward.z * -stickY;
-        const magnitude = Math.hypot(moveX, moveZ);
-
-        if (magnitude < deadzone) {
-          this.input.moveX = 0;
-          this.input.moveZ = 0;
-          this.input.moveMagnitude = 0;
-        } else {
-          this.input.moveX = moveX / magnitude;
-          this.input.moveZ = moveZ / magnitude;
-          this.input.moveMagnitude = Math.min(1, (magnitude - deadzone) / (1 - deadzone));
-        }
-
+        // Same mapping as WASD: vertical = throttle / reverse,
+        // horizontal = granular left / right steering.
+        this.input.throttleAxis = shape(-dy / radius);
+        this.input.steerAxis = shape(-dx / radius);
         joystick.classList.add('is-active');
       };
 
@@ -280,9 +295,8 @@ class Game {
         pointerId = null;
         joystick.classList.remove('is-active');
         stickKnob.style.transform = '';
-        this.input.moveX = 0;
-        this.input.moveZ = 0;
-        this.input.moveMagnitude = 0;
+        this.input.throttleAxis = 0;
+        this.input.steerAxis = 0;
       };
 
       base.addEventListener('pointerdown', (e) => {
@@ -351,9 +365,8 @@ class Game {
     this.input.backward = false;
     this.input.left = false;
     this.input.right = false;
-    this.input.moveX = 0;
-    this.input.moveZ = 0;
-    this.input.moveMagnitude = 0;
+    this.input.steerAxis = 0;
+    this.input.throttleAxis = 0;
     this.input.mouseThrust = false;
     if (this.touchStick) this.touchStick.release();
     document.querySelectorAll('.touch-btn.is-pressed').forEach((btn) => {
