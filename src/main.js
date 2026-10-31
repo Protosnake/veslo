@@ -4,6 +4,7 @@ import { RiverWorld } from './world/River.js';
 import { Boat } from './entities/Boat.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { WildlifeManager } from './entities/WildlifeManager.js';
+import { Minivan } from './entities/Minivan.js';
 import { sound } from './systems/Audio.js';
 import { rankSystem } from './systems/RankSystem.js';
 import { mountRankSprites, rankIconMarkup } from './systems/RankSprites.js';
@@ -99,12 +100,19 @@ class Game {
     // Modals
     this.startModal = document.getElementById('start-modal');
     this.startBtn = document.getElementById('start-btn');
+    this.pauseModal = document.getElementById('pause-modal');
+    this.resumeBtn = document.getElementById('resume-btn');
+    this.pauseBtn = document.getElementById('pause-btn');
     this.gameOverModal = document.getElementById('game-over-modal');
     this.gameOverTitle = document.getElementById('game-over-title');
     this.gameOverSubtitle = document.getElementById('game-over-subtitle');
     this.finalRankBadge = document.getElementById('final-rank-badge');
     this.finalRankTitle = document.getElementById('final-rank-title');
     this.finalRankScore = document.getElementById('final-rank-score');
+    this.finalScore = document.getElementById('final-score');
+    this.finalSmacked = document.getElementById('final-smacked');
+    this.finalFrogs = document.getElementById('final-frogs');
+    this.finalSnakes = document.getElementById('final-snakes');
     this.restartBtn = document.getElementById('restart-btn');
 
     // Drone viewfinder elements
@@ -132,6 +140,7 @@ class Game {
     this.osdTimer = 0;
     this.osdInterval = 0.1;
     this.cameraDir = new THREE.Vector3();
+    this.vanScreenPos = new THREE.Vector3();
     this.prevThreatCount = 0;
     this.lowBatteryWarned = false;
     this.alertTimeout = null;
@@ -160,6 +169,22 @@ class Game {
       this.world,
       (type, kills) => this.onWildlifeKilled(type, kills)
     );
+
+    this.minivan = new Minivan(this.renderer.scene);
+    this.intro = {
+      time: 0,
+      spawned: false,
+      vanDuration: 3.2,
+      transitionStart: 6.0,
+      duration: 8.5,
+      vanStart: 0,
+      vanDrop: 0,
+      vanSpeed: 0,
+      vanHideTimer: 0,
+      fovH: 50,
+      startPose: { position: new THREE.Vector3(), look: new THREE.Vector3() },
+      targetPose: { position: new THREE.Vector3(), look: new THREE.Vector3() }
+    };
 
     // Input state
     this.input = {
@@ -190,6 +215,13 @@ class Game {
 
   initEvents() {
     window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        if (this.state === 'PLAYING') this.pauseGame();
+        else if (this.state === 'PAUSED') this.resumeGame();
+        return;
+      }
+
       sound.init();
 
       if (e.code === 'KeyW' || e.code === 'ArrowUp') this.input.forward = true;
@@ -243,6 +275,20 @@ class Game {
       requestGameFullscreen();
       this.restartGame();
     });
+
+    if (this.resumeBtn) {
+      this.resumeBtn.addEventListener('click', () => {
+        sound.init();
+        this.resumeGame();
+      });
+    }
+
+    if (this.pauseBtn) {
+      this.pauseBtn.addEventListener('click', () => {
+        sound.init();
+        this.pauseGame();
+      });
+    }
 
     window.addEventListener('blur', () => this.clearInput());
     window.addEventListener('orientationchange', () => this.clearInput());
@@ -378,10 +424,13 @@ class Game {
   }
 
   startGame() {
-    this.state = 'PLAYING';
+    this.state = 'INTRO';
     this.clearInput();
     this.startModal.classList.add('hidden');
     this.gameOverModal.classList.add('hidden');
+    this.pauseModal.classList.add('hidden');
+    document.body.classList.add('intro');
+
     this.boat.reset();
     this.smugglerManager.reset();
     this.wildlifeManager.reset();
@@ -393,12 +442,151 @@ class Game {
     this.battery = 100;
     this.prevThreatCount = 0;
     this.lowBatteryWarned = false;
+
+    this.startIntro();
+  }
+
+  startIntro() {
+    const path = this.world.gravelPath;
+    const intro = this.intro;
+    if (!path || !path.frameAt) {
+      this.finishIntro();
+      return;
+    }
+
+    // Drop off where the road disappears into the woods. The fixed drone shot
+    // only sees the last stretch, so the van enters from off-screen.
+    const dropDistance = path.introDropDistance ?? path.length * 0.45;
+    const dropFrame = path.frameAt(dropDistance);
+
+    intro.time = 0;
+    intro.spawned = false;
+    intro.vanHideTimer = 0;
+    intro.vanDrop = dropDistance;
+    intro.vanStart = path.introVanStartDistance ?? 0;
+    intro.vanSpeed = (intro.vanDrop - intro.vanStart) / intro.vanDuration;
+
+    // Fixed high drone POV over the north plateau, framed on the drop point.
+    intro.startPose.position.set(
+      dropFrame.x - 4,
+      dropFrame.y + 32,
+      dropFrame.z + 26
+    );
+    intro.startPose.look.set(dropFrame.x, dropFrame.y + 1, dropFrame.z);
+
+    this.renderer.settleFollow(this.boat.position.x, this.boat.position.z);
+    intro.targetPose = this.renderer.getGameplayPose();
+    this.renderer.setHorizontalFovOverride(intro.fovH);
+    this.renderer.setManualCamera(intro.startPose.position, intro.startPose.look);
+
+    this.minivan.show();
+    this.minivan.setPose(path.frameAt(intro.vanStart), 0);
+    this.minivan.update(0, 0);
+  }
+
+  updateIntro(dt) {
+    const intro = this.intro;
+    intro.time += dt;
+    const t = intro.time;
+    const path = this.world.gravelPath;
+
+    if (path && path.frameAt) {
+      if (t <= intro.vanDuration) {
+        const k = THREE.MathUtils.smoothstep(t, 0, intro.vanDuration);
+        const distance = THREE.MathUtils.lerp(intro.vanStart, intro.vanDrop, k);
+        // Drift onto the shoulder before coming to a stop, never after.
+        const lateral = 2.6 * THREE.MathUtils.smoothstep(k, 0.7, 1);
+        const frame = path.frameAt(distance);
+        this.minivan.setPose(frame, lateral);
+        this.minivan.update(dt, intro.vanSpeed);
+      } else {
+        const stopFrame = path.frameAt(intro.vanDrop);
+        this.minivan.setPose(stopFrame, 2.6);
+        this.minivan.update(dt, 0);
+      }
+    }
+
+    if (!intro.spawned && t >= intro.vanDuration + 0.25) {
+      intro.spawned = true;
+      for (const offset of [-1.35, 1.35]) {
+        this.smugglerManager.spawnSmugglerAt(
+          intro.vanDrop - Math.random() * 0.8,
+          offset
+        );
+      }
+      this.smugglerManager.beginAfterIntro();
+    }
+
+    this.smugglerManager.updateIntro(dt, this.boat);
+
+    if (t >= intro.transitionStart) {
+      const duration = Math.max(0.001, intro.duration - intro.transitionStart);
+      const k = THREE.MathUtils.clamp((t - intro.transitionStart) / duration, 0, 1);
+      const eased = k * k * (3 - 2 * k);
+      const position = intro.startPose.position.clone().lerp(intro.targetPose.position, eased);
+      const look = intro.startPose.look.clone().lerp(intro.targetPose.look, eased);
+      this.renderer.setManualCamera(position, look);
+      this.renderer.setHorizontalFovOverride(
+        THREE.MathUtils.lerp(
+          intro.fovH,
+          this.renderer.getGameplayHorizontalFov(),
+          eased
+        )
+      );
+    }
+
+    if (t >= intro.duration) {
+      this.finishIntro();
+    }
+  }
+
+  finishIntro() {
+    this.state = 'PLAYING';
+    document.body.classList.remove('intro');
+    this.intro.vanHideTimer = 1.0;
+    this.renderer.clearManualCamera();
+    this.renderer.clearHorizontalFovOverride();
+    this.clearInput();
     this.glitchOsd(450);
     this.showOsdAlert(t('osd.alert.uplinkActive'), 'ok', 2.2);
   }
 
+  updateVanVisibility(dt) {
+    if (!this.minivan.group.visible) return;
+
+    if (this.intro.vanHideTimer > 0) {
+      this.intro.vanHideTimer -= dt;
+      return;
+    }
+
+    const van = this.minivan.group.position;
+    this.vanScreenPos.set(van.x, van.y, van.z);
+    this.vanScreenPos.project(this.renderer.camera);
+
+    const offscreen =
+      Math.abs(this.vanScreenPos.x) > 1 ||
+      Math.abs(this.vanScreenPos.y) > 1 ||
+      this.vanScreenPos.z > 1;
+
+    if (offscreen) this.minivan.hide();
+  }
+
   restartGame() {
     this.startGame();
+  }
+
+  pauseGame() {
+    if (this.state !== 'PLAYING') return;
+    this.state = 'PAUSED';
+    this.clearInput();
+    this.pauseModal.classList.remove('hidden');
+  }
+
+  resumeGame() {
+    if (this.state !== 'PAUSED') return;
+    this.state = 'PLAYING';
+    this.clearInput();
+    this.pauseModal.classList.add('hidden');
   }
 
   onWildlifeKilled(type, kills) {
@@ -523,6 +711,10 @@ class Game {
     if (this.finalRankBadge) this.finalRankBadge.innerHTML = rankIconMarkup(rankInfo.current, 'rank-insignia rank-insignia-lg');
     if (this.finalRankTitle) this.finalRankTitle.textContent = getRankTitle(rankInfo.current);
     if (this.finalRankScore) this.finalRankScore.textContent = t('modal.over.rankScore', { score });
+    if (this.finalScore) this.finalScore.textContent = String(score);
+    if (this.finalSmacked) this.finalSmacked.textContent = String(this.smugglerManager.totalSmacked);
+    if (this.finalFrogs) this.finalFrogs.textContent = String(this.wildlifeManager.killsByType.frog);
+    if (this.finalSnakes) this.finalSnakes.textContent = String(this.wildlifeManager.killsByType.snake);
   }
 
   updateHUD() {
@@ -577,10 +769,12 @@ class Game {
     banner.classList.remove('is-visible');
     void banner.offsetWidth;
     banner.classList.add('is-visible');
+    document.body.classList.add('rank-up-active');
 
     clearTimeout(this.rankUpTimer);
     this.rankUpTimer = setTimeout(() => {
       banner.classList.remove('is-visible');
+      document.body.classList.remove('rank-up-active');
     }, 2300);
   }
 
@@ -724,18 +918,30 @@ class Game {
 
     const portraitLocked = document.body.classList.contains('is-portrait');
 
-    if (this.state === 'PLAYING' && !portraitLocked) {
+    if (this.state === 'INTRO') {
+      if (!portraitLocked) this.updateIntro(dt);
+    } else if (this.state === 'PLAYING' && !portraitLocked) {
       this.missionTime += dt;
       this.battery = Math.max(6, this.battery - dt * 0.22);
       this.boat.update(dt, this.input);
       this.smugglerManager.update(dt, this.boat);
       this.wildlifeManager.update(dt, this.boat);
-    } else {
+    } else if (this.state !== 'PAUSED') {
       this.boat.update(dt, this.idleInput);
+    }
+
+    if (this.state === 'PLAYING' && !portraitLocked) {
+      this.updateVanVisibility(dt);
     }
 
     this.world.update(dt);
 
+    this.renderer.setFollowTarget(
+      this.boat.position.x,
+      this.boat.position.z,
+      this.boat.velocity.x,
+      this.boat.velocity.z
+    );
     this.renderer.updateCamera(dt);
 
     // DOM telemetry only needs a low refresh rate; updating a dozen text nodes

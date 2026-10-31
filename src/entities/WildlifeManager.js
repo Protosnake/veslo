@@ -9,6 +9,7 @@ export class WildlifeManager {
 
     this.creatures = [];
     this.kills = 0;
+    this.killsByType = { frog: 0, snake: 0 };
     this.spawnTimer = 0;
     this.baseSpawnInterval = 7.5;
     this.minSpawnInterval = 1.6;
@@ -19,6 +20,7 @@ export class WildlifeManager {
     this.creatures.forEach((creature) => creature.destroy());
     this.creatures = [];
     this.kills = 0;
+    this.killsByType = { frog: 0, snake: 0 };
     this.spawnTimer = 3.5;
   }
 
@@ -44,8 +46,10 @@ export class WildlifeManager {
     this.kills += 1;
 
     if (creature.type === 'frog') {
+      this.killsByType.frog += 1;
       sound.playFrogRibbit();
     } else {
+      this.killsByType.snake += 1;
       sound.playSnakeHiss();
     }
 

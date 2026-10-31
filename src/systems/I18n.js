@@ -48,10 +48,8 @@ const translations = {
     'controls.oar': 'ВЕСЛО',
 
     // ── Start Modal ──
-    'modal.start.eyebrow': 'DRONE D-07 · UPLINK READY',
-    'modal.start.title': 'ВЕСЛО',
-    'modal.start.subtitle': 'Патруль ДСПУ • Пряма Трансляція',
-    'modal.start.missionTitle': '⚠️ <strong>БОЙОВЕ ЗАВДАННЯ:</strong> Захистити кордон від порушників!',
+    'modal.start.title': 'Вітаємо на службі, новобранцю!',
+    'modal.start.missionTitle': '<strong>БОЙОВЕ ЗАВДАННЯ:</strong> Захистити кордон від порушників!',
     'modal.start.missionWarning': 'Якщо хоч один дістанеться іншого берегу або ви <strong>вріжетеся в берег</strong> — місію провалено!',
     'modal.start.oarTitle': '🛶 Удар веслом:',
     'modal.start.oarPoints': '+100 ОЧКІВ',
@@ -62,7 +60,13 @@ const translations = {
     'modal.start.engineTitle': '🔥 Різня ГВИНТОМ:',
     'modal.start.enginePoints': '+500 ОЧКІВ',
     'modal.start.engineDesc': 'Задній хід на двигуні!',
-    'modal.start.btn': 'ДО РОБОТИ',
+    'modal.start.btn': 'ВИКОНУВАТИ!',
+
+    // ── Pause Modal ──
+    'modal.pause.eyebrow': 'ПАТРУЛЬ НА ПАУЗІ',
+    'modal.pause.title': 'ПАУЗА',
+    'modal.pause.subtitle': 'Натисни Esc, щоб продовжити патрулювання.',
+    'modal.pause.btn': 'ПРОДОВЖИТИ',
 
     // ── Game Over Modal ──
     'modal.over.eyebrow': 'ЗАВДАННЯ ПРОВАЛЕНО',
@@ -73,6 +77,8 @@ const translations = {
     'modal.over.rankScore': 'Фінальний рахунок: {score} очок',
     'modal.over.statScore': 'Фінальний рахунок',
     'modal.over.statSmacked': 'Порушників знешкоджено',
+    'modal.over.statFrogs': 'Вбито жаб',
+    'modal.over.statSnakes': 'Вбито гадюк',
     'modal.over.btn': 'ПЕРЕДИСЛОКУВАТИ ДРОН',
 
     // ── Military Ranks ──
@@ -169,10 +175,8 @@ const translations = {
     'controls.oar': 'OAR',
 
     // ── Start Modal ──
-    'modal.start.eyebrow': 'DRONE D-07 · UPLINK READY',
-    'modal.start.title': 'VESLO',
-    'modal.start.subtitle': 'Border River Patrol • Live Aerial Feed',
-    'modal.start.missionTitle': '⚠️ <strong>COMBAT MISSION:</strong> Protect the border from intruders!',
+    'modal.start.title': 'Welcome to the service, recruit!',
+    'modal.start.missionTitle': '<strong>COMBAT MISSION:</strong> Protect the border from intruders!',
     'modal.start.missionWarning': 'If even one reaches the beach or you <strong>crash into the shore</strong> — mission failed!',
     'modal.start.oarTitle': '🛶 Oar strike:',
     'modal.start.oarPoints': '+100 POINTS',
@@ -183,7 +187,13 @@ const translations = {
     'modal.start.engineTitle': '🔥 Engine propeller:',
     'modal.start.enginePoints': '+500 POINTS',
     'modal.start.engineDesc': 'Reverse throttle!',
-    'modal.start.btn': 'LAUNCH DRONE',
+    'modal.start.btn': 'EXECUTE!',
+
+    // ── Pause Modal ──
+    'modal.pause.eyebrow': 'PATROL PAUSED',
+    'modal.pause.title': 'PAUSED',
+    'modal.pause.subtitle': 'Press Esc to resume the patrol.',
+    'modal.pause.btn': 'RESUME',
 
     // ── Game Over Modal ──
     'modal.over.eyebrow': 'MISSION FAILED',
@@ -194,6 +204,8 @@ const translations = {
     'modal.over.rankScore': 'Final score: {score} points',
     'modal.over.statScore': 'Final Score',
     'modal.over.statSmacked': 'Smugglers Smacked',
+    'modal.over.statFrogs': 'Frogs Killed',
+    'modal.over.statSnakes': 'Vipers Killed',
     'modal.over.btn': 'REDEPLOY DRONE',
 
     // ── Military Ranks ──

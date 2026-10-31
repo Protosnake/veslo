@@ -20,7 +20,7 @@ const CAP_COLORS = [0x222222, 0xd82b2b, 0x1e3f66, 0x5a189a];
 const BAG_COLORS = [0x785633, 0x3d352e, 0x24422e];
 
 export class Smuggler {
-  constructor(scene, riverWorld, startX, baseSpeed, spawnDistanceOffset = 0) {
+  constructor(scene, riverWorld, startX, baseSpeed, spawnDistanceOffset = 0, options = {}) {
     this.scene = scene;
     this.world = riverWorld;
     this.baseSpeed = baseSpeed;
@@ -33,12 +33,16 @@ export class Smuggler {
 
     if (this.path && this.path.frameAt) {
       const spawnJitter = (Math.random() - 0.5) * 12;
-      this.pathDistance = THREE.MathUtils.clamp(
-        this.path.smugglerSpawnDistance + spawnDistanceOffset + spawnJitter,
-        0,
-        Math.max(0, this.path.length - 8)
-      );
-      this.pathOffset = (Math.random() - 0.5) * this.path.halfWidth * 1.1;
+      this.pathDistance = Number.isFinite(options.pathDistance)
+        ? THREE.MathUtils.clamp(options.pathDistance, 0, this.path.length)
+        : THREE.MathUtils.clamp(
+          this.path.smugglerSpawnDistance + spawnDistanceOffset + spawnJitter,
+          0,
+          Math.max(0, this.path.length - 8)
+        );
+      this.pathOffset = Number.isFinite(options.pathOffset)
+        ? options.pathOffset
+        : (Math.random() - 0.5) * this.path.halfWidth * 1.1;
       const frame = this.path.frameAt(this.pathDistance);
       this.position = new THREE.Vector3(
         frame.x + frame.nx * this.pathOffset,
@@ -47,7 +51,7 @@ export class Smuggler {
       );
     } else {
       const startZ = -20 + Math.random() * 1.5;
-      this.position = new THREE.Vector3(startX, 4.5, startZ);
+      this.position = new THREE.Vector3(startX, riverWorld.northBankY ?? 4.5, startZ);
     }
     this.targetZ = 16.5;
 
@@ -195,6 +199,37 @@ export class Smuggler {
     this.group.add(this.walkerGroup);
   }
 
+  resolveRockCollisions(radius = 0.4) {
+    const rocks = this.world?.rockColliders;
+    if (!rocks || !rocks.length) return;
+
+    for (let pass = 0; pass < 3; pass++) {
+      let collided = false;
+
+      for (let i = 0; i < rocks.length; i++) {
+        const rock = rocks[i];
+        const minDistance = (rock.visualRadius ?? rock.radius) + radius;
+        let dx = this.position.x - rock.x;
+        let dz = this.position.z - rock.z;
+        let distance = Math.hypot(dx, dz);
+
+        if (distance >= minDistance) continue;
+
+        if (distance < 1e-4) {
+          dx = 0;
+          dz = 1;
+          distance = 1;
+        }
+
+        this.position.x = rock.x + (dx / distance) * minDistance;
+        this.position.z = rock.z + (dz / distance) * minDistance;
+        collided = true;
+      }
+
+      if (!collided) break;
+    }
+  }
+
   chooseEmergeX(boat) {
     const minX = -27;
     const maxX = 27;
@@ -272,6 +307,7 @@ export class Smuggler {
         frame.y,
         frame.z + frame.nz * lateralOffset
       );
+      this.resolveRockCollisions();
       this.group.position.copy(this.position);
       this.group.rotation.y = frame.heading;
       reachedEnd = this.pathDistance >= this.path.length - 0.02;
@@ -290,7 +326,8 @@ export class Smuggler {
 
       this.position.x += (targetX - this.position.x) * Math.min(1, dt * 4);
       this.position.z += stepSpeed * dt;
-      this.position.y = 4.5;
+      this.position.y = this.world.northBankY ?? 4.5;
+      this.resolveRockCollisions();
       this.group.position.copy(this.position);
       this.group.rotation.y = 0;
       reachedEnd = this.position.z >= this.reedLineZ;
@@ -440,6 +477,7 @@ export class Smuggler {
     // Clamp inside river boundaries
     this.position.x = Math.max(-36, Math.min(36, this.position.x));
     this.position.y = Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.05;
+    this.resolveRockCollisions();
 
     // Smooth heading rotation interpolation
     const targetHeading = Math.atan2(moveZ, moveX);

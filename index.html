@@ -146,14 +146,16 @@
           </button>
         </div>
       </div>
+
+      <button class="mobile-pause-btn" id="pause-btn" type="button" aria-label="Pause">
+        <span class="pause-bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </div>
 
     <!-- Start / Instruction Modal -->
     <div class="modal-overlay" id="start-modal">
       <div class="modal-card">
-        <div class="modal-eyebrow"><span class="osd-rec-dot"></span> <span data-i18n="modal.start.eyebrow"></span></div>
         <h1 class="modal-title" data-i18n="modal.start.title"></h1>
-        <div class="modal-subtitle" data-i18n="modal.start.subtitle"></div>
 
         <div class="modal-block rule-highlight">
           <span data-i18n-html="modal.start.missionTitle"></span><br/>
@@ -179,6 +181,16 @@
         </div>
 
         <button class="action-btn" id="start-btn" data-i18n="modal.start.btn"></button>
+      </div>
+    </div>
+
+    <!-- Pause Modal -->
+    <div class="modal-overlay hidden" id="pause-modal">
+      <div class="modal-card">
+        <div class="modal-eyebrow"><span class="osd-rec-dot"></span> <span data-i18n="modal.pause.eyebrow"></span></div>
+        <h1 class="modal-title" data-i18n="modal.pause.title"></h1>
+        <div class="modal-subtitle" data-i18n="modal.pause.subtitle"></div>
+        <button class="action-btn" id="resume-btn" data-i18n="modal.pause.btn"></button>
       </div>
     </div>
 
@@ -209,6 +221,14 @@
           <div class="stat-item">
             <span class="stat-label" data-i18n="modal.over.statSmacked"></span>
             <span class="stat-val" id="final-smacked">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label" data-i18n="modal.over.statFrogs"></span>
+            <span class="stat-val" id="final-frogs">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label" data-i18n="modal.over.statSnakes"></span>
+            <span class="stat-val" id="final-snakes">0</span>
           </div>
         </div>
 

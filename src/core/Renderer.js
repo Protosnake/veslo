@@ -92,23 +92,55 @@ export class GameRenderer {
 
     this.baseFov = 52;
     this.baseAspect = 16 / 9;
-    // Mobile feed keeps the rock barriers at the screen edges: the eastern
-    // rocks sit on the right limit and the western ones leave a sliver of
-    // river on the left, without exposing extra south-bank foreground.
     this.isTouch = isTouchDevice();
-    this.touchHorizontalFov = 78.5;
+
+    // Mobile framing tests, selectable with ?cam=follow|moderate
+    const MOBILE_CAMERAS = {
+      follow: { hfov: 76, rig: [0, 22, 30], follow: true },
+      moderate: { hfov: 72, rig: [0, 36, 30], follow: false }
+    };
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get('cam');
+    this.cameraMode = this.isTouch
+      ? (MOBILE_CAMERAS[requested] ? requested : 'follow')
+      : 'desktop';
+    this.mobileCamera = MOBILE_CAMERAS[this.cameraMode] || null;
+
+    // Quick dev tuning: ?y=24 lowers/raises the drone, ?look=3 tilts it up,
+    // ?fov=80 zooms out further.
+    const rigY = parseFloat(params.get('y'));
+    const lookY = parseFloat(params.get('look'));
+    const fovOverride = parseFloat(params.get('fov'));
+    if (this.mobileCamera && Number.isFinite(rigY)) {
+      this.mobileCamera.rig[1] = THREE.MathUtils.clamp(rigY, 14, 44);
+    }
+    if (this.mobileCamera && Number.isFinite(fovOverride)) {
+      this.mobileCamera.hfov = THREE.MathUtils.clamp(fovOverride, 40, 100);
+    }
+    this.lookHeight = Number.isFinite(lookY)
+      ? THREE.MathUtils.clamp(lookY, -1, 10)
+      : 1;
+
+    // Desktop keeps the original angled overwatch. Mobile uses a centered rig
+    // so zooming doesn't push one bank off-screen.
+    this.touchHorizontalFov = this.mobileCamera ? this.mobileCamera.hfov : 78.5;
+    this.baseAnchor = new THREE.Vector3(0, 0, 4);
+    this.anchor = this.baseAnchor.clone();
+    this.rigOffset = new THREE.Vector3(
+      ...(this.mobileCamera ? this.mobileCamera.rig : [13, 36, 30])
+    );
+    this.followEnabled = Boolean(this.mobileCamera && this.mobileCamera.follow);
+    this.followTarget = new THREE.Vector3(0, 0, 4);
+    this.followLook = new THREE.Vector3(0, 0, 4);
+    this.followLookTarget = new THREE.Vector3(0, 0, 4);
+
+    this.fovHOverride = null;
     this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 0.5, 600);
     this.applyResponsiveFov();
 
-    // The drone is flown by someone else: it holds a static overwatch framing
-    // on the southern breach line and only drifts on the wind. It never chases
-    // the patrol boat.
-    this.anchor = new THREE.Vector3(0, 0, 4);
-    this.rigOffset = new THREE.Vector3(13, 36, 30);
-
     this.camera.position.copy(this.anchor).add(this.rigOffset);
     this.lookTarget = this.anchor.clone();
-    this.lookTarget.y += 1;
+    this.lookTarget.y += this.lookHeight;
     this.camera.lookAt(this.lookTarget);
 
     this.elapsed = 0;
@@ -117,6 +149,45 @@ export class GameRenderer {
     this.shakeIntensity = 0;
     this.shakeDecay = 0.9;
     this.shakeOffset = new THREE.Vector3();
+
+    // Cinematic intro camera override
+    this.manualCamera = false;
+    this.manualPosition = new THREE.Vector3();
+    this.manualLook = new THREE.Vector3();
+
+    if (this.isTouch) {
+      console.info(`[camera] mobile mode: ${this.cameraMode}`);
+    }
+  }
+
+  setFollowTarget(x, z) {
+    this.followTarget.set(x, 0, z);
+  }
+
+  settleFollow(x, z) {
+    this.followTarget.set(x, 0, z);
+    this.followLook.set(x, 0, z);
+    this.followLookTarget.set(x, 0, z);
+  }
+
+  getGameplayPose() {
+    const position = this.anchor.clone().add(this.rigOffset);
+    const look = new THREE.Vector3(
+      this.followLook.x,
+      this.anchor.y + this.lookHeight,
+      this.followLook.z
+    );
+    return { position, look };
+  }
+
+  setManualCamera(position, look) {
+    this.manualCamera = true;
+    this.manualPosition.copy(position);
+    this.manualLook.copy(look);
+  }
+
+  clearManualCamera() {
+    this.manualCamera = false;
   }
 
   initLights() {
@@ -149,8 +220,33 @@ export class GameRenderer {
    * portrait, 16:10 laptops). Without this the drone feed loses the river
    * banks on either side and the game becomes unplayable.
    */
+  getGameplayHorizontalFov() {
+    if (this.isTouch) return this.touchHorizontalFov;
+    return THREE.MathUtils.radToDeg(
+      2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(this.baseFov) / 2) * this.baseAspect)
+    );
+  }
+
+  setHorizontalFovOverride(hFov) {
+    this.fovHOverride = hFov;
+    this.applyResponsiveFov();
+  }
+
+  clearHorizontalFovOverride() {
+    this.fovHOverride = null;
+    this.applyResponsiveFov();
+  }
+
   applyResponsiveFov() {
     const aspect = window.innerWidth / window.innerHeight;
+
+    if (this.fovHOverride != null) {
+      const hFov = THREE.MathUtils.degToRad(this.fovHOverride);
+      const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
+      this.camera.fov = THREE.MathUtils.radToDeg(vFov);
+      this.camera.updateProjectionMatrix();
+      return;
+    }
 
     if (this.isTouch) {
       const hFov = THREE.MathUtils.degToRad(this.touchHorizontalFov);
@@ -176,6 +272,18 @@ export class GameRenderer {
   updateCamera(dt) {
     this.elapsed += dt;
     const t = this.elapsed;
+
+    if (this.manualCamera) {
+      this.camera.position.copy(this.manualPosition);
+      this.camera.lookAt(this.manualLook);
+      this.camera.updateMatrixWorld();
+      return;
+    }
+
+    // The drone body is fixed; only its gimbal turns to keep the boat framed.
+    const aimSmooth = 1 - Math.exp(-dt * 8);
+    this.followLook.x += (this.followTarget.x - this.followLook.x) * aimSmooth;
+    this.followLook.z += (this.followTarget.z - this.followLook.z) * aimSmooth;
 
     // Wind pushes the hovering drone around by a metre or two
     const driftX = Math.sin(t * 0.11) * 1.4 + Math.sin(t * 0.37) * 0.3;
@@ -206,9 +314,9 @@ export class GameRenderer {
     );
 
     this.lookTarget.set(
-      this.anchor.x + panX,
-      this.anchor.y + 1,
-      this.anchor.z + panZ
+      this.followLook.x + panX,
+      this.anchor.y + this.lookHeight,
+      this.followLook.z + panZ
     );
 
     this.camera.lookAt(this.lookTarget);

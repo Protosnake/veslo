@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 
+// Height of the northern border bank. Lowered from 4.5 so the reeds and
+// incline stop swallowing the gravel patrol path from the drone camera.
+const NORTH_BANK_Y = 3.0;
+
 // Sum-of-sines swell shared by the water mesh and anything floating on it.
 // [kX, kZ, amplitude, angular speed, phase]
 const RIVER_SWELL = [
@@ -78,6 +82,7 @@ export class RiverWorld {
     };
 
     this.riverHalfWidth = 16;
+    this.northBankY = NORTH_BANK_Y;
     this.riverSamples = this.buildRiverCenterline();
     this.rockColliders = [];
 
@@ -260,7 +265,7 @@ export class RiverWorld {
     const northGeo = new THREE.ShapeGeometry(this.buildLandShape(-this.riverHalfWidth - 1.9, -1));
     northGeo.rotateX(-Math.PI / 2);
     const northBank = new THREE.Mesh(northGeo, northMaterial);
-    northBank.position.y = 4.5;
+    northBank.position.y = NORTH_BANK_Y;
     northBank.receiveShadow = true;
     this.scene.add(northBank);
 
@@ -273,13 +278,13 @@ export class RiverWorld {
     this.scene.add(southBank);
 
     // Dirt cliff between the water and the high northern plateau
-    const wallGeo = this.buildRiverWallGeometry(-this.riverHalfWidth, 4.5, -0.6);
+    const wallGeo = this.buildRiverWallGeometry(-this.riverHalfWidth, NORTH_BANK_Y, -0.6);
     const wall = new THREE.Mesh(wallGeo, dirtMaterial);
     wall.receiveShadow = true;
     this.scene.add(wall);
 
     // Dirt lip on top of the cliff, plus the sandy southern shoreline
-    const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.5, -this.riverHalfWidth + 0.15, 4.52), lipMaterial);
+    const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.5, -this.riverHalfWidth + 0.15, NORTH_BANK_Y + 0.02), lipMaterial);
     dirtLip.receiveShadow = true;
     this.scene.add(dirtLip);
 
@@ -290,28 +295,50 @@ export class RiverWorld {
 
   createGravelPath() {
     const points = [
-      { x: 60, y: 4.66, z: -66 },
-      { x: 47, y: 4.66, z: -57 },
-      { x: 35, y: 4.66, z: -49 },
-      { x: 26, y: 4.66, z: -42 },
-      { x: 19, y: 4.66, z: -36 },
-      { x: 14.2, y: 4.65, z: -31 },
-      { x: 10.6, y: 4.62, z: -27 },
-      { x: 8.8, y: 4.56, z: -23.5 },
-      { x: 8.8, y: 4.55, z: -19.5 },
-      { x: 8.8, y: 4.54, z: -17.8 }
+      { x: 60, y: NORTH_BANK_Y + 0.16, z: -66 },
+      { x: 47, y: NORTH_BANK_Y + 0.16, z: -57 },
+      { x: 35, y: NORTH_BANK_Y + 0.16, z: -49 },
+      { x: 26, y: NORTH_BANK_Y + 0.16, z: -42 },
+      { x: 19, y: NORTH_BANK_Y + 0.16, z: -36 },
+      { x: 14.2, y: NORTH_BANK_Y + 0.15, z: -31 },
+      { x: 10.6, y: NORTH_BANK_Y + 0.12, z: -27 },
+      { x: 8.8, y: NORTH_BANK_Y + 0.06, z: -23.5 },
+      { x: 8.8, y: NORTH_BANK_Y + 0.05, z: -19.5 },
+      { x: 8.8, y: NORTH_BANK_Y + 0.04, z: -17.8 }
     ];
+
+    // Continue the road into the woods so the intro van enters from off-screen.
+    const roadStart = points[0];
+    const roadNext = points[1];
+    const extX = roadStart.x - roadNext.x;
+    const extZ = roadStart.z - roadNext.z;
+    const extLen = Math.hypot(extX, extZ) || 1;
+    const extUx = extX / extLen;
+    const extUz = extZ / extLen;
+    const EXTENSION_LENGTH = 45;
+    const extensionPoints = [];
+    for (let d = EXTENSION_LENGTH; d > 0; d -= 15) {
+      extensionPoints.push({
+        x: roadStart.x + extUx * d,
+        y: roadStart.y,
+        z: roadStart.z + extUz * d
+      });
+    }
+    points.unshift(...extensionPoints);
 
     const path = {
       x: 8.8,
       halfWidth: 1.5,
-      zMin: -66,
+      zMin: extensionPoints[0].z,
       zMax: -17.8,
       walkStartZ: -23.5,
       reedLineZ: -17.75,
       emergeZ: -14.7,
       reedZMin: -25,
-      reedZMax: -19.45
+      reedZMax: -19.45,
+      woodedStartDistance: EXTENSION_LENGTH,
+      introDropDistance: EXTENSION_LENGTH + 8,
+      introVanStartDistance: Math.max(0, EXTENSION_LENGTH - 32)
     };
     this.gravelPath = path;
 
@@ -396,7 +423,10 @@ export class RiverWorld {
 
     path.length = totalLength;
     path.sample = samplePath;
-    path.smugglerSpawnDistance = totalLength * 0.55;
+    // Keep the original spawn point on the road; only the visual approach was
+    // extended into the woods.
+    path.smugglerSpawnDistance =
+      EXTENSION_LENGTH + (totalLength - EXTENSION_LENGTH) * 0.55;
 
     path.frameAt = (distance) => {
       const sample = samplePath(distance);
@@ -753,10 +783,10 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       { x: -33, z: -14.4 }, { x: -22, z: -14.3 }, { x: -10, z: -14.2 },
       { x: 2, z: -14.4 }, { x: 15, z: -14.2 }, { x: 27, z: -14.3 },
       // Reeds on the north bank itself, hiding enemies as they walk in
-      { x: -28, z: -17.1, y: 4.5 }, { x: -20, z: -18.0, y: 4.5 },
-      { x: -12, z: -16.8, y: 4.5 }, { x: -4, z: -17.8, y: 4.5 },
-      { x: 4, z: -16.9, y: 4.5 }, { x: 12, z: -18.1, y: 4.5 },
-      { x: 20, z: -17.0, y: 4.5 }, { x: 28, z: -17.9, y: 4.5 },
+      { x: -28, z: -17.1, y: NORTH_BANK_Y }, { x: -20, z: -18.0, y: NORTH_BANK_Y },
+      { x: -12, z: -16.8, y: NORTH_BANK_Y }, { x: -4, z: -17.8, y: NORTH_BANK_Y },
+      { x: 4, z: -16.9, y: NORTH_BANK_Y }, { x: 12, z: -18.1, y: NORTH_BANK_Y },
+      { x: 20, z: -17.0, y: NORTH_BANK_Y }, { x: 28, z: -17.9, y: NORTH_BANK_Y },
       // South shore waterline
       { x: -26, z: 15.1 }, { x: -14, z: 15.2 }, { x: -2, z: 15.0 },
       { x: 12, z: 15.3 }, { x: 22, z: 15.1 }, { x: 29, z: 15.2 }
@@ -932,7 +962,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     });
 
     addReedPatch({
-      y: 4.5,
+      y: NORTH_BANK_Y,
       xMin: -48,
       xMax: 48,
       zMin: -19.4,
@@ -947,7 +977,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     });
 
     addReedPatch({
-      y: 4.5,
+      y: NORTH_BANK_Y,
       xMin: -48,
       xMax: 48,
       zMin: -17.7,
@@ -962,7 +992,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     });
 
     addReedPatch({
-      y: 4.5,
+      y: NORTH_BANK_Y,
       xMin: -48,
       xMax: 48,
       zMin: -18.4,
@@ -1049,7 +1079,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     // Extra coverage behind the northern reed belt so no bare dirt shows
     // through anywhere along the high bank.
     addReedPatch({
-      y: 4.5,
+      y: NORTH_BANK_Y,
       xMin: -48,
       xMax: 48,
       zMin: -21.5,
@@ -1066,7 +1096,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     // Dense lip row right on the bank edge so the smooth strip between the
     // bank reeds and the water is closed up.
     addReedPatch({
-      y: 4.5,
+      y: NORTH_BANK_Y,
       xMin: -48,
       xMax: 48,
       zMin: -17.4,
@@ -1114,7 +1144,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     // Fill the bald patches around the ends of the rock barriers on both banks.
     for (const side of [-1, 1]) {
       addReedPatch({
-        y: 4.5,
+        y: NORTH_BANK_Y,
         xMin: side < 0 ? -44 : 26,
         xMax: side < 0 ? -26 : 44,
         zMin: -27,
@@ -1156,10 +1186,10 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       const bands = [
         { offset: -15.0, half: 0.6, y: 0, scale: [0.9, 1.6] },
         { offset: -15.5, half: 0.4, y: 0, scale: [1.3, 2.0] },
-        { offset: -16.4, half: 0.35, y: 4.5, scale: [1.0, 1.8] },
-        { offset: -17.2, half: 1.0, y: 4.5, scale: [0.9, 1.5] },
-        { offset: -20.8, half: 1.7, y: 4.5, scale: [0.9, 1.5] },
-        { offset: -24.5, half: 1.6, y: 4.5, scale: [0.8, 1.35] }
+        { offset: -16.4, half: 0.35, y: NORTH_BANK_Y, scale: [1.0, 1.8] },
+        { offset: -17.2, half: 1.0, y: NORTH_BANK_Y, scale: [0.9, 1.5] },
+        { offset: -20.8, half: 1.7, y: NORTH_BANK_Y, scale: [0.9, 1.5] },
+        { offset: -24.5, half: 1.6, y: NORTH_BANK_Y, scale: [0.8, 1.35] }
       ];
 
       const topBankDensity = 0.5;
@@ -1212,7 +1242,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
         const x = endFrame.x + Math.cos(angle) * spread * 3.4;
         const z = endFrame.z + Math.sin(angle) * spread * 1.5;
         const height = 2.6 + Math.random() * 2.2;
-        const baseY = 4.5;
+        const baseY = NORTH_BANK_Y;
 
         stalks.push({ x, y: baseY, z, sy: height, ry: Math.random() * Math.PI, baseY });
 
@@ -1341,7 +1371,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
 
         grass.push({
           x: centerX + Math.cos(angle) * spread,
-          y: 4.5,
+          y: NORTH_BANK_Y,
           z: centerZ + Math.sin(angle) * spread,
           sx: 0.8 + Math.random() * 1.1,
           sy: 0.9 + Math.random() * 2.0,
@@ -1363,7 +1393,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
 
         bushes.push({
           x: centerX + Math.cos(angle) * spread,
-          y: 4.5,
+          y: NORTH_BANK_Y,
           z: centerZ + Math.sin(angle) * spread,
           sx: scale * (0.9 + Math.random() * 0.5),
           sy: scale * (0.55 + Math.random() * 0.4),
@@ -1518,7 +1548,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       // At the northern end of a barrier the rock line runs into the high
       // bank; stand those reeds on the bank top instead of letting them clip
       // through the ground.
-      const baseY = this.lateralOffsetAt(x, z) < -15.9 ? 4.5 : 0;
+      const baseY = this.lateralOffsetAt(x, z) < -15.9 ? NORTH_BANK_Y : 0;
 
       stalks.push({ x, y: baseY, z, sy: height, baseY });
 
@@ -1599,12 +1629,12 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
 
     for (let x = -28; x <= 28; x += 14) {
       const post = new THREE.Mesh(postGeo, postMat);
-      post.position.set(x, 4, -19.8);
+      post.position.set(x, NORTH_BANK_Y - 0.5, -19.8);
       post.castShadow = true;
       this.scene.add(post);
 
       const signBoard = new THREE.Mesh(signGeo, signMat);
-      signBoard.position.set(x, 5.2, -19.8);
+      signBoard.position.set(x, NORTH_BANK_Y + 0.7, -19.8);
       signBoard.castShadow = true;
       this.scene.add(signBoard);
     }
@@ -1625,8 +1655,9 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       // or in the water.
       if (Math.abs(x) < 47 && z > -23 && z < 25) return;
 
-      // Keep the gravel path clear so it stays visible as it bends into the trees.
-      if (this.gravelPath && this.gravelPath.isNear(x, z, 2.4)) return;
+      // Keep a wide clearing around the gravel path so the drop-off van and
+      // the road stay readable from the intro drone shot.
+      if (this.gravelPath && this.gravelPath.isNear(x, z, 9)) return;
 
       // The river now continues far past the play space; don't populate the
       // fogged-out extensions with trees.
@@ -1635,7 +1666,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       trees.push({
         x,
         z,
-        y: side < 0 ? 4.5 : 0.05,
+        y: side < 0 ? NORTH_BANK_Y : 0.05,
         scale: scale * (0.75 + Math.random() * 0.7),
         rotation: Math.random() * Math.PI * 2,
         pine: Math.random() > 0.22
@@ -1790,7 +1821,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     lightHead.position.set(0, 10.2, 1.8);
     tower.add(lightHead);
 
-    tower.position.set(x, 1.5, z);
+    tower.position.set(x, NORTH_BANK_Y - 3.0, z);
     this.scene.add(tower);
   }
 

@@ -57,15 +57,51 @@ export class SmugglerManager {
     return 4;
   }
 
+  getBaseSpeed() {
+    // Base speed: 0.75 units/sec (takes ~40s to cross river, boat is 30x faster so motor reverse kills are easy!)
+    return 0.75 * this.getSpeedMultiplier() + (Math.random() - 0.5) * 0.1;
+  }
+
   spawnSmuggler(spawnDistanceOffset = 0) {
     const path = this.world.gravelPath;
     const xPos = path
       ? path.x + (Math.random() - 0.5) * path.halfWidth * 1.2
       : -26 + Math.random() * 52;
-    // Base speed: 0.75 units/sec (takes ~40s to cross river, boat is 30x faster so motor reverse kills are easy!)
-    const baseSpeed = 0.75 * this.getSpeedMultiplier() + (Math.random() - 0.5) * 0.1;
-    const smuggler = new Smuggler(this.scene, this.world, xPos, baseSpeed, spawnDistanceOffset);
+    const smuggler = new Smuggler(
+      this.scene,
+      this.world,
+      xPos,
+      this.getBaseSpeed(),
+      spawnDistanceOffset
+    );
     this.smugglers.push(smuggler);
+  }
+
+  spawnSmugglerAt(pathDistance, pathOffset = 0) {
+    const path = this.world.gravelPath;
+    const frame = path && path.frameAt ? path.frameAt(pathDistance) : null;
+    const smuggler = new Smuggler(
+      this.scene,
+      this.world,
+      frame ? frame.x : 0,
+      this.getBaseSpeed(),
+      0,
+      { pathDistance, pathOffset }
+    );
+    this.smugglers.push(smuggler);
+    return smuggler;
+  }
+
+  updateIntro(dt, boat) {
+    for (const smuggler of this.smugglers) {
+      smuggler.update(dt, boat);
+    }
+  }
+
+  beginAfterIntro() {
+    this.firstWave = false;
+    this.waveCount = Math.max(this.waveCount, 1);
+    this.spawnTimer = 9 + Math.random() * 4;
   }
 
   update(dt, boat) {
