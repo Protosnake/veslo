@@ -351,6 +351,7 @@ html, body {
   padding: 36px 48px;
   max-width: 540px;
   max-height: 100%;
+  max-height: calc(100dvh - 16px);
   width: 90%;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1285,13 +1286,42 @@ html, body {
 }
 
 .touch-device .hud-header {
-  top: 50px;
-  bottom: auto;
+  top: auto;
+  bottom: max(10px, env(safe-area-inset-bottom));
 }
 
 .touch-device .rank-panel {
-  width: min(440px, 86vw);
-  max-width: 86vw;
+  width: auto;
+  max-width: 74vw;
+  padding: 4px 9px;
+}
+
+.touch-device .rank-top {
+  gap: 6px;
+}
+
+.touch-device .rank-badge-icon {
+  width: 16px;
+  height: 22px;
+}
+
+.touch-device .rank-name {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.touch-device .rank-score-pill {
+  font-size: 8px;
+  padding: 1px 4px;
+}
+
+.touch-device .rank-bar-bg {
+  height: 2px;
+  margin-top: 3px;
+}
+
+.touch-device .rank-meta {
+  display: none;
 }
 
 /* Landscape-only gate for touch devices */
@@ -1386,17 +1416,24 @@ html, body {
   .osd-bottom-right,
   .osd-top-left { display: none; }
   .hud-header {
-    top: 50px;
-    bottom: auto;
+    top: auto;
+    bottom: max(10px, env(safe-area-inset-bottom));
   }
   .rank-panel {
-    width: min(440px, 86vw);
-    max-width: 86vw;
+    width: auto;
+    max-width: 74vw;
+    padding: 4px 9px;
   }
+  .rank-top { gap: 6px; }
+  .rank-badge-icon { width: 16px; height: 22px; }
+  .rank-name { font-size: 10px; letter-spacing: 0.1em; }
+  .rank-score-pill { font-size: 8px; padding: 1px 4px; }
+  .rank-bar-bg { height: 2px; margin-top: 3px; }
+  .rank-meta { display: none; }
 }
 
 /* Compact, consistent modals for phones and short landscape windows */
-@media (max-width: 720px), (max-height: 620px) {
+@media (max-width: 720px), (max-height: 720px) {
   .modal-overlay {
     padding:
       max(8px, env(safe-area-inset-top))
@@ -1498,14 +1535,22 @@ html, body {
   }
 
   .hud-header {
-    top: 50px;
-    bottom: auto;
+    top: auto;
+    bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .rank-panel {
-    width: min(440px, 86vw);
-    max-width: 86vw;
+    width: auto;
+    max-width: 74vw;
+    padding: 4px 9px;
   }
+
+  .rank-top { gap: 6px; }
+  .rank-badge-icon { width: 16px; height: 22px; }
+  .rank-name { font-size: 10px; letter-spacing: 0.1em; }
+  .rank-score-pill { font-size: 8px; padding: 1px 4px; }
+  .rank-bar-bg { height: 2px; margin-top: 3px; }
+  .rank-meta { display: none; }
 
   .osd-top-left {
     display: none;
@@ -1552,6 +1597,6 @@ html, body {
   }
 
   .touch-device .hud-header {
-    top: 46px;
+    bottom: max(6px, env(safe-area-inset-bottom));
   }
 }
