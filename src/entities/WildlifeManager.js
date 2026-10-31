@@ -1,5 +1,6 @@
 import { Frog, Snake } from './Wildlife.js';
 import { sound } from '../systems/Audio.js';
+import { sx } from '../world/Bounds.js';
 
 const SMUGGLER_SCARE_RADIUS = 4;
 
@@ -35,7 +36,7 @@ export class WildlifeManager {
   spawnCreature() {
     const type = Math.random() < 0.5 ? 'frog' : 'snake';
     const side = Math.random() < 0.5 ? -1 : 1;
-    const x = -25 + Math.random() * 50;
+    const x = sx(-25) + Math.random() * sx(50);
 
     const creature = type === 'frog'
       ? new Frog(this.scene, this.world, side, x)

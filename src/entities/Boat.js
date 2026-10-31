@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
+import { PLAY_MIN_X, PLAY_MAX_X, PLAY_MIN_Z, PLAY_MAX_Z } from '../world/Bounds.js';
 
 export class Boat {
   constructor(scene, riverWorld, onLandCrash) {
@@ -463,10 +464,10 @@ export class Boat {
     }
 
     // Check if boat hit land or barrier (hitting boundaries triggers Game Over once)
-    const hitNorthBank = this.position.z <= -14.6;
-    const hitSouthBank = this.position.z >= 14.4;
-    const hitWestBarrier = this.position.x <= -31.5;
-    const hitEastBarrier = this.position.x >= 31.5;
+    const hitNorthBank = this.position.z <= PLAY_MIN_Z;
+    const hitSouthBank = this.position.z >= PLAY_MAX_Z;
+    const hitWestBarrier = this.position.x <= PLAY_MIN_X;
+    const hitEastBarrier = this.position.x >= PLAY_MAX_X;
 
     let rockHit = null;
     if (!this.isCrashed && this.world.findRockCollision) {

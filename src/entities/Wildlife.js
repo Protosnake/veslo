@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
+import { sx, sz } from '../world/Bounds.js';
 
 const FROG_BODY_GEO = new THREE.SphereGeometry(0.5, 8, 6);
 const FROG_HEAD_GEO = new THREE.SphereGeometry(0.3, 8, 6);
@@ -25,8 +26,8 @@ class WildlifeCreature {
     this.type = type;
     this.side = side;
 
-    this.startZ = side < 0 ? -15.1 : 15.1;
-    this.crossZ = side < 0 ? 15.1 : -15.1;
+    this.startZ = side < 0 ? sz(-15.1) : sz(15.1);
+    this.crossZ = side < 0 ? sz(15.1) : sz(-15.1);
     this.baseX = x;
 
     this.position = new THREE.Vector3(x, 0, this.startZ);
@@ -188,10 +189,10 @@ class WildlifeCreature {
         ? Math.sign(dx)
         : (Math.random() < 0.5 ? -1 : 1);
       let targetX = avoidPoint.x + side * (8 + Math.random() * 3);
-      if (targetX < -29 || targetX > 29) {
+      if (targetX < sx(-29) || targetX > sx(29)) {
         targetX = avoidPoint.x - side * (8 + Math.random() * 3);
       }
-      targetX = THREE.MathUtils.clamp(targetX, -29, 29);
+      targetX = THREE.MathUtils.clamp(targetX, sx(-29), sx(29));
 
       const dirZ = Math.sign(this.crossZ - this.position.z) || 1;
       const zMin = Math.min(this.startZ, this.crossZ) + 0.4;
@@ -254,7 +255,7 @@ class WildlifeCreature {
       this.position.z += dirZ * this.speed * 0.35 * dt;
     }
 
-    this.position.x = THREE.MathUtils.clamp(this.position.x, -29, 29);
+    this.position.x = THREE.MathUtils.clamp(this.position.x, sx(-29), sx(29));
 
     if (this.diveTimer <= 0) {
       if (this.diveTarget) {
@@ -335,7 +336,7 @@ class WildlifeCreature {
     const moveLen = Math.hypot(moveX, moveZ) || 1;
     this.position.x += (moveX / moveLen) * moveSpeed * dt;
     this.position.z += (moveZ / moveLen) * moveSpeed * dt;
-    this.position.x = THREE.MathUtils.clamp(this.position.x, -29, 29);
+    this.position.x = THREE.MathUtils.clamp(this.position.x, sx(-29), sx(29));
 
     const targetHeading = Math.atan2(moveX, moveZ);
     let diff = targetHeading - this.heading;

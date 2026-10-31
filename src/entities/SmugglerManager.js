@@ -101,7 +101,7 @@ export class SmugglerManager {
   beginAfterIntro() {
     this.firstWave = false;
     this.waveCount = Math.max(this.waveCount, 1);
-    this.spawnTimer = 9 + Math.random() * 4;
+    this.spawnTimer = 3 + Math.random() * 2;
   }
 
   update(dt, boat, wildlife = null) {

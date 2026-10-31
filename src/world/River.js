@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sx, sz, RIVER_HALF_WIDTH } from './Bounds.js';
 
 // Height of the northern border bank. Lowered from 4.5 so the reeds and
 // incline stop swallowing the gravel patrol path from the drone camera.
@@ -81,7 +82,7 @@ export class RiverWorld {
       z: 0.2
     };
 
-    this.riverHalfWidth = 16;
+    this.riverHalfWidth = RIVER_HALF_WIDTH;
     this.northBankY = NORTH_BANK_Y;
     this.riverSamples = this.buildRiverCenterline();
     this.rockColliders = [];
@@ -105,20 +106,20 @@ export class RiverWorld {
     const points = [];
 
     const westBend = new THREE.CubicBezierCurve3(
-      new THREE.Vector3(-340, 0, 170),
-      new THREE.Vector3(-190, 0, 110),
-      new THREE.Vector3(-90, 0, 0),
-      new THREE.Vector3(-45, 0, 0)
+      new THREE.Vector3(sx(-340), 0, sz(170)),
+      new THREE.Vector3(sx(-190), 0, sz(110)),
+      new THREE.Vector3(sx(-90), 0, 0),
+      new THREE.Vector3(sx(-45), 0, 0)
     );
     const eastBend = new THREE.CubicBezierCurve3(
-      new THREE.Vector3(45, 0, 0),
-      new THREE.Vector3(95, 0, 0),
-      new THREE.Vector3(170, 0, -40),
-      new THREE.Vector3(340, 0, -200)
+      new THREE.Vector3(sx(45), 0, 0),
+      new THREE.Vector3(sx(95), 0, 0),
+      new THREE.Vector3(sx(170), 0, sz(-40)),
+      new THREE.Vector3(sx(340), 0, sz(-200))
     );
 
     for (let i = 0; i < 80; i++) points.push(westBend.getPoint(i / 80));
-    for (let x = -45; x <= 45; x += 2.5) points.push(new THREE.Vector3(x, 0, 0));
+    for (let x = sx(-45); x <= sx(45); x += 2.5) points.push(new THREE.Vector3(x, 0, 0));
     for (let i = 1; i <= 100; i++) points.push(eastBend.getPoint(i / 100));
 
     // Continue both ends far into the fog so the river/water surface never
@@ -295,16 +296,16 @@ export class RiverWorld {
 
   createGravelPath() {
     const points = [
-      { x: 60, y: NORTH_BANK_Y + 0.16, z: -66 },
-      { x: 47, y: NORTH_BANK_Y + 0.16, z: -57 },
-      { x: 35, y: NORTH_BANK_Y + 0.16, z: -49 },
-      { x: 26, y: NORTH_BANK_Y + 0.16, z: -42 },
-      { x: 19, y: NORTH_BANK_Y + 0.16, z: -36 },
-      { x: 14.2, y: NORTH_BANK_Y + 0.15, z: -31 },
-      { x: 10.6, y: NORTH_BANK_Y + 0.12, z: -27 },
-      { x: 8.8, y: NORTH_BANK_Y + 0.06, z: -23.5 },
-      { x: 8.8, y: NORTH_BANK_Y + 0.05, z: -19.5 },
-      { x: 8.8, y: NORTH_BANK_Y + 0.04, z: -17.8 }
+      { x: sx(60), y: NORTH_BANK_Y + 0.16, z: sz(-66) },
+      { x: sx(47), y: NORTH_BANK_Y + 0.16, z: sz(-57) },
+      { x: sx(35), y: NORTH_BANK_Y + 0.16, z: sz(-49) },
+      { x: sx(26), y: NORTH_BANK_Y + 0.16, z: sz(-42) },
+      { x: sx(19), y: NORTH_BANK_Y + 0.16, z: sz(-36) },
+      { x: sx(14.2), y: NORTH_BANK_Y + 0.15, z: sz(-31) },
+      { x: sx(10.6), y: NORTH_BANK_Y + 0.12, z: sz(-27) },
+      { x: sx(8.8), y: NORTH_BANK_Y + 0.06, z: sz(-23.5) },
+      { x: sx(8.8), y: NORTH_BANK_Y + 0.05, z: sz(-19.5) },
+      { x: sx(8.8), y: NORTH_BANK_Y + 0.04, z: sz(-17.8) }
     ];
 
     // Continue the road into the woods so the intro van enters from off-screen.
@@ -327,15 +328,15 @@ export class RiverWorld {
     points.unshift(...extensionPoints);
 
     const path = {
-      x: 8.8,
+      x: sx(8.8),
       halfWidth: 1.5,
       zMin: extensionPoints[0].z,
-      zMax: -17.8,
-      walkStartZ: -23.5,
-      reedLineZ: -17.75,
-      emergeZ: -14.7,
-      reedZMin: -25,
-      reedZMax: -19.45,
+      zMax: sz(-17.8),
+      walkStartZ: sz(-23.5),
+      reedLineZ: sz(-17.75),
+      emergeZ: sz(-14.7),
+      reedZMin: sz(-25),
+      reedZMax: sz(-19.45),
       woodedStartDistance: EXTENSION_LENGTH,
       introDropDistance: EXTENSION_LENGTH + 8,
       introVanStartDistance: Math.max(0, EXTENSION_LENGTH - 32)
@@ -423,10 +424,12 @@ export class RiverWorld {
 
     path.length = totalLength;
     path.sample = samplePath;
-    // Keep the original spawn point on the road; only the visual approach was
-    // extended into the woods.
-    path.smugglerSpawnDistance =
-      EXTENSION_LENGTH + (totalLength - EXTENSION_LENGTH) * 0.55;
+    // Spawn just a short walk from the reed line so waves reach the water
+    // quickly instead of trekking the whole (now longer) road.
+    path.smugglerSpawnDistance = Math.max(
+      EXTENSION_LENGTH,
+      totalLength - sz(12)
+    );
 
     path.frameAt = (distance) => {
       const sample = samplePath(distance);
@@ -790,7 +793,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       // South shore waterline
       { x: -26, z: 15.1 }, { x: -14, z: 15.2 }, { x: -2, z: 15.0 },
       { x: 12, z: 15.3 }, { x: 22, z: 15.1 }, { x: 29, z: 15.2 }
-    ];
+    ].map((pos) => ({ ...pos, x: sx(pos.x), z: sz(pos.z) }));
 
     // All reeds are batched into a handful of InstancedMeshes. The dense
     // shoreline belts reuse those same meshes, and the wind sway is evaluated
@@ -889,8 +892,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       // Reject reeds that would sit inside the northern cliff/lip (buried and
       // poking through the ground) or float in the air just past its edge.
       const lateral = this.lateralOffsetAt(x, z);
-      if (y > 1 && lateral > -16.05) return;
-      if (y <= 1 && lateral < -16.05) return;
+      if (y > 1 && lateral > sz(-16.05)) return;
+      if (y <= 1 && lateral < sz(-16.05)) return;
 
       const height = (1.7 + Math.random() * 1.8) * sizeScale;
       const target = Math.random() > 0.5 ? stalks : altStalks;
@@ -926,9 +929,16 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       scaleMin,
       scaleMax
     }) => {
+      const scaledXMin = sx(xMin);
+      const scaledXMax = sx(xMax);
+      const scaledZMin = sz(zMin);
+      const scaledZMax = sz(zMax);
+      const scaledRadiusX = sx(patchRadiusX);
+      const scaledRadiusZ = sz(patchRadiusZ);
+
       for (let patch = 0; patch < patchCount; patch++) {
-        const centerX = xMin + Math.random() * (xMax - xMin);
-        const centerZ = zMin + Math.random() * (zMax - zMin);
+        const centerX = scaledXMin + Math.random() * (scaledXMax - scaledXMin);
+        const centerZ = scaledZMin + Math.random() * (scaledZMax - scaledZMin);
         const reedCount = Math.max(
           2,
           Math.round((reedMin + Math.random() * (reedMax - reedMin + 1)) * playDensity)
@@ -938,9 +948,9 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
           const angle = Math.random() * Math.PI * 2;
           const spread = Math.sqrt(Math.random());
           addExtraReed(
-            centerX + Math.cos(angle) * spread * patchRadiusX,
+            centerX + Math.cos(angle) * spread * scaledRadiusX,
             y,
-            centerZ + Math.sin(angle) * spread * patchRadiusZ,
+            centerZ + Math.sin(angle) * spread * scaledRadiusZ,
             scaleMin + Math.random() * (scaleMax - scaleMin)
           );
         }
@@ -1178,7 +1188,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     // glued to the banks as the channel bends away into the fog.
     for (let i = 0; i < this.riverSamples.length; i += 2) {
       const sample = this.riverSamples[i];
-      if (Math.abs(sample.p.x) < 46) continue;
+      if (Math.abs(sample.p.x) < sx(46)) continue;
       if (Math.hypot(sample.p.x, sample.p.z) > 500) continue;
 
       // Northern bank: waterline, cliff lip and plateau rows. Offsets are kept
@@ -1190,7 +1200,11 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
         { offset: -17.2, half: 1.0, y: NORTH_BANK_Y, scale: [0.9, 1.5] },
         { offset: -20.8, half: 1.7, y: NORTH_BANK_Y, scale: [0.9, 1.5] },
         { offset: -24.5, half: 1.6, y: NORTH_BANK_Y, scale: [0.8, 1.35] }
-      ];
+      ].map((band) => ({
+        ...band,
+        offset: sz(band.offset),
+        half: sz(band.half)
+      }));
 
       const topBankDensity = 0.5;
 
@@ -1223,7 +1237,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
 
         for (let j = 0; j < reedCount; j++) {
           const along = (Math.random() - 0.5) * 4.5;
-          const offset = 15.8 + (Math.random() - 0.5) * 3.0;
+          const offset = sz(15.8) + (Math.random() - 0.5) * sz(3.0);
           const x = sample.p.x + sample.n.x * offset + sample.t.x * along;
           const z = sample.p.z + sample.n.z * offset + sample.t.z * along;
 
@@ -1239,8 +1253,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       for (let i = 0; i < 140; i++) {
         const angle = Math.random() * Math.PI * 2;
         const spread = Math.sqrt(Math.random());
-        const x = endFrame.x + Math.cos(angle) * spread * 3.4;
-        const z = endFrame.z + Math.sin(angle) * spread * 1.5;
+        const x = endFrame.x + Math.cos(angle) * spread * sx(3.4);
+        const z = endFrame.z + Math.sin(angle) * spread * sz(1.5);
         const height = 2.6 + Math.random() * 2.2;
         const baseY = NORTH_BANK_Y;
 
@@ -1319,8 +1333,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     const grass = [];
 
     for (let patch = 0; patch < 96; patch++) {
-      const centerX = -68 + Math.random() * 136;
-      const centerZ = 20 + Math.random() * 36;
+      const centerX = sx(-68) + Math.random() * sx(136);
+      const centerZ = sz(20) + Math.random() * sz(36);
       const count = 3 + Math.floor(Math.random() * 5);
 
       for (let i = 0; i < count; i++) {
@@ -1340,8 +1354,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     }
 
     for (let patch = 0; patch < 240; patch++) {
-      const centerX = -68 + Math.random() * 136;
-      const centerZ = 17.3 + Math.random() * 42;
+      const centerX = sx(-68) + Math.random() * sx(136);
+      const centerZ = sz(17.3) + Math.random() * sz(42);
       const count = 6 + Math.floor(Math.random() * 7);
 
       for (let i = 0; i < count; i++) {
@@ -1362,8 +1376,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     // The high northern bank gets the same treatment: thick tufts and low
     // bushes swallow the dirt lip and any bare ground behind the reed belt.
     for (let patch = 0; patch < 220; patch++) {
-      const centerX = -70 + Math.random() * 140;
-      const centerZ = -27 + Math.random() * 8;
+      const centerX = sx(-70) + Math.random() * sx(140);
+      const centerZ = sz(-27) + Math.random() * sz(8);
 
       for (let i = 0; i < 9 + Math.floor(Math.random() * 8); i++) {
         const angle = Math.random() * Math.PI * 2;
@@ -1382,8 +1396,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     }
 
     for (let patch = 0; patch < 70; patch++) {
-      const centerX = -70 + Math.random() * 140;
-      const centerZ = -27 + Math.random() * 5;
+      const centerX = sx(-70) + Math.random() * sx(140);
+      const centerZ = sz(-27) + Math.random() * sz(5);
       const count = 2 + Math.floor(Math.random() * 4);
 
       for (let i = 0; i < count; i++) {
@@ -1406,8 +1420,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     // Dense low tufts along the sand-to-grass transition so the beach edge
     // doesn't read as a bare lawn between the reeds and the bushes.
     for (let patch = 0; patch < 150; patch++) {
-      const centerX = -64 + Math.random() * 128;
-      const centerZ = 17.6 + Math.random() * 9;
+      const centerX = sx(-64) + Math.random() * sx(128);
+      const centerZ = sz(17.6) + Math.random() * sz(9);
       const count = 8 + Math.floor(Math.random() * 8);
 
       for (let i = 0; i < count; i++) {
@@ -1480,23 +1494,23 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     const stalks = [];
     const heads = [];
 
-    const boundarySides = [-33.5, 33.5];
+    const boundarySides = [sx(-33.5), sx(33.5)];
     const reedClusters = [];
 
     boundarySides.forEach((baseX) => {
       const isWest = baseX < 0;
       const riverSide = isWest ? 1 : -1;
 
-      let z = -16.5;
-      while (z <= 16.5) {
-        const clusterZ = z + (Math.random() - 0.5) * 1.4;
-        const clusterX = baseX + riverSide * (0.2 + Math.random() * 1.6);
+      let z = sz(-16.5);
+      while (z <= sz(16.5)) {
+        const clusterZ = z + (Math.random() - 0.5) * sz(1.4);
+        const clusterX = baseX + riverSide * sx(0.2 + Math.random() * 1.6);
         const clusterSize = 1 + Math.floor(Math.random() * 3);
 
         for (let i = 0; i < clusterSize; i++) {
           const size = 0.9 + Math.random() * 1.5;
-          const x = clusterX + riverSide * (Math.random() * 2.0 - 0.2);
-          const zz = clusterZ + (Math.random() - 0.5) * 2.4;
+          const x = clusterX + riverSide * sx(Math.random() * 2.0 - 0.2);
+          const zz = clusterZ + (Math.random() - 0.5) * sz(2.4);
           const target = Math.random() > 0.48 ? rocks : mossRocks;
           target.push({
             x,
@@ -1516,13 +1530,13 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
         }
 
         reedClusters.push({ clusterX, clusterZ, riverSide });
-        z += 2.0 + Math.random() * 2.4;
+        z += sz(2.0) + Math.random() * sz(2.4);
       }
 
       for (let i = 0; i < 7; i++) {
         const size = 0.6 + Math.random() * 1.3;
-        const x = baseX + riverSide * (1.8 + Math.random() * 2.8);
-        const zz = -15 + Math.random() * 30;
+        const x = baseX + riverSide * sx(1.8 + Math.random() * 2.8);
+        const zz = sz(-15) + Math.random() * sz(30);
         const target = Math.random() > 0.5 ? rocks : mossRocks;
         target.push({
           x,
@@ -1548,7 +1562,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       // At the northern end of a barrier the rock line runs into the high
       // bank; stand those reeds on the bank top instead of letting them clip
       // through the ground.
-      const baseY = this.lateralOffsetAt(x, z) < -15.9 ? NORTH_BANK_Y : 0;
+      const baseY = this.lateralOffsetAt(x, z) < sz(-15.9) ? NORTH_BANK_Y : 0;
 
       stalks.push({ x, y: baseY, z, sy: height, baseY });
 
@@ -1627,20 +1641,20 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     const signGeo = new THREE.BoxGeometry(2.2, 1.1, 0.15);
     const signMat = new THREE.MeshLambertMaterial({ color: 0xffea00 });
 
-    for (let x = -28; x <= 28; x += 14) {
+    for (let x = sx(-28); x <= sx(28); x += sx(14)) {
       const post = new THREE.Mesh(postGeo, postMat);
-      post.position.set(x, NORTH_BANK_Y - 0.5, -19.8);
+      post.position.set(x, NORTH_BANK_Y - 0.5, sz(-19.8));
       post.castShadow = true;
       this.scene.add(post);
 
       const signBoard = new THREE.Mesh(signGeo, signMat);
-      signBoard.position.set(x, NORTH_BANK_Y + 0.7, -19.8);
+      signBoard.position.set(x, NORTH_BANK_Y + 0.7, sz(-19.8));
       signBoard.castShadow = true;
       this.scene.add(signBoard);
     }
 
-    this.createWatchtower(-20, -21);
-    this.createWatchtower(20, -21);
+    this.createWatchtower(sx(-20), sz(-21));
+    this.createWatchtower(sx(20), sz(-21));
   }
 
   // Dense mixed forest belts along both banks plus a canopy wall that closes off
@@ -1653,7 +1667,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     const addTree = (x, z, side, scale) => {
       // Keep the mission area readable: no trees on the beach, the patrol path
       // or in the water.
-      if (Math.abs(x) < 47 && z > -23 && z < 25) return;
+      if (Math.abs(x) < sx(47) && z > sz(-23) && z < sz(25)) return;
 
       // Keep a wide clearing around the gravel path so the drop-off van and
       // the road stay readable from the intro drone shot.
@@ -1684,13 +1698,13 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       for (const side of [-1, 1]) {
         // Four rows of forest climbing away from the water
         for (let row = 0; row < 4; row++) {
-          const offset = (side < 0 ? 24 : 27) + row * 15 + Math.random() * 9;
+          const offset = sz(side < 0 ? 24 : 27) + row * sz(15) + Math.random() * sz(9);
           if (Math.random() > 0.82) continue;
           plant(s, side, offset, 1);
         }
         // Sparse taller canopy wall behind the belt
         if (i % 12 === 0) {
-          plant(s, side, 95 + Math.random() * 40, 1.35);
+          plant(s, side, sz(95) + Math.random() * sz(40), 1.35);
         }
       }
     }
@@ -1698,14 +1712,16 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     for (const side of [-1, 1]) {
       const groveCount = side < 0 ? 14 : 10;
       for (let g = 0; g < groveCount; g++) {
-        const groveX = -58 + Math.random() * 116;
-        const groveZ = side < 0 ? -28 - Math.random() * 36 : 28 + Math.random() * 36;
+        const groveX = sx(-58) + Math.random() * sx(116);
+        const groveZ = side < 0
+          ? sz(-28) - Math.random() * sz(36)
+          : sz(28) + Math.random() * sz(36);
         const treeCount = 5 + Math.floor(Math.random() * 5);
 
         for (let i = 0; i < treeCount; i++) {
           addTree(
-            groveX + (Math.random() - 0.5) * 14,
-            groveZ + (Math.random() - 0.5) * 14,
+            groveX + (Math.random() - 0.5) * sx(14),
+            groveZ + (Math.random() - 0.5) * sz(14),
             side,
             0.9 + Math.random() * 0.5
           );
@@ -1893,8 +1909,8 @@ gl_Position = projectionMatrix * mvPosition;`
       const jacketColor = new THREE.Color(jacketColors[i % jacketColors.length]);
       const seed = i * 1.5;
 
-      const px = -28 + ((i + 0.5) / spectatorCount) * 56 + (Math.random() - 0.5) * 5.5;
-      const pz = 17.2 + Math.random() * 4.4;
+      const px = sx(-28) + ((i + 0.5) / spectatorCount) * sx(56) + (Math.random() - 0.5) * sx(5.5);
+      const pz = sz(17.2) + Math.random() * sz(4.4);
 
       personDummy.position.set(px, 0, pz);
       personDummy.rotation.set(0, Math.PI + (Math.random() - 0.5) * 0.4, 0);

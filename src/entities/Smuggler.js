@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
+import { sx, sz } from '../world/Bounds.js';
 
 // Shared geometry cache to avoid runtime allocations / memory leaks
 const SHARED_GEO = {
@@ -52,14 +53,14 @@ export class Smuggler {
         frame.z + frame.nz * this.pathOffset
       );
     } else {
-      const startZ = -20 + Math.random() * 1.5;
+      const startZ = sz(-20) + Math.random() * sz(1.5);
       this.position = new THREE.Vector3(startX, riverWorld.northBankY ?? 4.5, startZ);
     }
     this.walkTarget = this.position.clone();
     this.laneOffset = this.pathOffset;
     this.laneMergeDistance = this.pathDistance;
     this.waitTimer = 0;
-    this.targetZ = 16.5;
+    this.targetZ = sz(16.5);
 
     // AI & Smooth Movement
     this.wobbleSeed = Math.random() * 100;
@@ -74,9 +75,13 @@ export class Smuggler {
     this.state = 'walking';
     this.disembark = null;
     this.walkPhase = Math.random() * Math.PI * 2;
-    this.walkSpeed = this.path ? 4.2 + Math.random() * 0.9 : 1.4 + Math.random() * 0.5;
-    this.reedLineZ = this.path ? this.path.reedLineZ : -16.4;
-    this.emergeZ = this.path ? this.path.emergeZ : -14.7;
+    // The gravel road is longer than the old river box, so hurry the walk to
+    // keep the first smugglers from taking forever to reach the water.
+    this.walkSpeed = this.path
+      ? (4.2 + Math.random() * 0.9) * 1.75
+      : 1.4 + Math.random() * 0.5;
+    this.reedLineZ = this.path ? this.path.reedLineZ : sz(-16.4);
+    this.emergeZ = this.path ? this.path.emergeZ : sz(-14.7);
     this.emergeX = this.position.x;
     this.hideDelay = 0;
 
@@ -264,8 +269,8 @@ export class Smuggler {
   }
 
   chooseEmergeX(boat) {
-    const minX = -27;
-    const maxX = 27;
+    const minX = sx(-27);
+    const maxX = sx(27);
     const minDistance = 15;
     const maxDistance = 24;
     const boatX = boat ? boat.position.x : 0;
@@ -639,7 +644,7 @@ export class Smuggler {
     }
 
     // Clamp inside river boundaries
-    this.position.x = Math.max(-36, Math.min(36, this.position.x));
+    this.position.x = Math.max(sx(-36), Math.min(sx(36), this.position.x));
     this.position.y = Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.05;
     this.resolveRockCollisions();
 
@@ -669,7 +674,7 @@ export class Smuggler {
     }
 
     // Check if reached South Bank beach (fully visible on the flat shoreline!)
-    if (this.position.z >= 15.3) {
+    if (this.position.z >= sz(15.3)) {
       this.reachedSouth = true;
       this.group.position.y = 0.35; // stands up on the beach
       this.armL.rotation.z = Math.PI / 1.5;
