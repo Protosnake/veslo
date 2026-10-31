@@ -1,5 +1,6 @@
 // Web Audio API procedural sound synthesizer for Veslo
-import wildlifeUrl from '../assets/wildlife.mp3?url';
+import wildlifeOggUrl from '../assets/wildlife.ogg?url';
+import wildlifeMp3Url from '../assets/wildlife.mp3?url';
 
 class SoundSystem {
   constructor() {
@@ -30,11 +31,19 @@ class SoundSystem {
   loadWildlife() {
     if (!this.ctx || this.wildlifePromise) return this.wildlifePromise;
 
-    this.wildlifePromise = fetch(wildlifeUrl)
-      .then((response) => response.arrayBuffer())
+    const decode = (url) => fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
+        return response.arrayBuffer();
+      })
       .then((data) => new Promise((resolve, reject) => {
         this.ctx.decodeAudioData(data, resolve, reject);
-      }))
+      }));
+
+    // Prefer Ogg (crisper soundtrack) and fall back to MP3 where the browser
+    // cannot decode Vorbis.
+    this.wildlifePromise = decode(wildlifeOggUrl)
+      .catch(() => decode(wildlifeMp3Url))
       .then((buffer) => {
         this.wildlifeSample = buffer;
         this.startWildlife();
@@ -49,21 +58,29 @@ class SoundSystem {
   startWildlife() {
     if (!this.ctx || !this.wildlifeSample || this.wildlifeSource) return;
 
-    try {
-      const t = this.ctx.currentTime;
-      const source = this.ctx.createBufferSource();
-      source.buffer = this.wildlifeSample;
-      source.loop = true;
+    const start = () => {
+      try {
+        const t = this.ctx.currentTime;
+        const source = this.ctx.createBufferSource();
+        source.buffer = this.wildlifeSample;
+        source.loop = true;
 
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.07, t + 2);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.07, t + 2);
 
-      source.connect(gain);
-      gain.connect(this.ctx.destination);
-      source.start(t);
-      this.wildlifeSource = source;
-    } catch (e) {}
+        source.connect(gain);
+        gain.connect(this.ctx.destination);
+        source.start(t);
+        this.wildlifeSource = source;
+      } catch (e) {}
+    };
+
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().then(start).catch(() => {});
+    } else {
+      start();
+    }
   }
 
   startEngineSound() {

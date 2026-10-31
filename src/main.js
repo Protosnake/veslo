@@ -232,14 +232,15 @@ class Game {
     });
 
     this.startBtn.addEventListener('click', () => {
-      requestGameFullscreen();
+      // Unlock audio inside the tap before any fullscreen transition.
       sound.init();
+      requestGameFullscreen();
       this.startGame();
     });
 
     this.restartBtn.addEventListener('click', () => {
-      requestGameFullscreen();
       sound.init();
+      requestGameFullscreen();
       this.restartGame();
     });
 
