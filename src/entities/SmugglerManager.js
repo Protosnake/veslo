@@ -170,6 +170,7 @@ export class SmugglerManager {
         const distHull = Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z);
         if (distHull <= hullHitbox.radius) {
           s.ram();
+          boat.applyRamImpact();
           this.totalSmacked++;
           this.score += 50;
           sound.playRam();

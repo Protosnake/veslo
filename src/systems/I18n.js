@@ -123,6 +123,11 @@ const translations = {
     'crash.south': 'ТРЯСЦЯ ТВОЇЙ МАТЕРІ, МИ НА ІНШОМУ БОЦІ!',
     'crash.west': 'ТВОЮ НАЛЄВО, КУДИ ТИ ЇДЕШ?',
     'crash.east': 'ХОЛЕРА, ДАВАЙ ВЗАД!',
+    'crash.stuckNorth': 'СУКА КАМИШІ НАМОТАЛО',
+    'crash.stuckSouth': 'МОТОРУ ПИЗДА, ПОГНУЛИ ЛОПАСТІ',
+    'crash.bankRam': 'ПРИПЛИЛІ',
+    'crash.engineRock1': 'ПИЗДА ДВІЖКУ!',
+    'crash.engineRock2': 'БЛЯДЬ, БОЧОК ПОТІК!',
 
     // ── Partner Rock-Bump Swears ──
     'partner.swear.1': "Ярік, блядь!",
@@ -276,6 +281,11 @@ const translations = {
     'crash.south': 'CRASHED ONTO SOUTH BEACH!',
     'crash.west': 'CRASHED INTO WEST REEF BARRIER!',
     'crash.east': 'CRASHED INTO EAST REEF BARRIER!',
+    'crash.stuckNorth': 'STUCK IN THE REEDS!',
+    'crash.stuckSouth': 'STUCK IN THE SAND!',
+    'crash.bankRam': 'WE MADE IT ASHORE!',
+    'crash.engineRock1': "ENGINE'S FUCKED!",
+    'crash.engineRock2': 'FUCK, THE HULL IS LEAKING!',
 
     // ── Partner Rock-Bump Swears ──
     'partner.swear.1': 'Yarik, for fuck sake!',

@@ -34,6 +34,7 @@ export class Boat {
     this.slapArcAngle = 0;
     this.isCrashed = false;
     this.rockBumpCooldown = 0;
+    this.isBankRam = false;
 
     // Scratch state reused every frame to keep the hot path allocation-free.
     this.yAxis = new THREE.Vector3(0, 1, 0);
@@ -346,6 +347,7 @@ export class Boat {
     this.slapCooldown = 0;
     this.isCrashed = false;
     this.rockBumpCooldown = 0;
+    this.isBankRam = false;
 
     this.group.position.copy(this.position);
     this.group.rotation.set(0, 0, 0);
@@ -381,6 +383,11 @@ export class Boat {
     this.propOffset.set(0.5, 0, 0).applyAxisAngle(this.yAxis, this.angle);
     this.hullHitbox.center.copy(this.position).add(this.propOffset);
     return this.hullHitbox;
+  }
+
+  applyRamImpact() {
+    this.velocity.multiplyScalar(0.35);
+    this.speed = this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
   }
 
   bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier) {
@@ -512,11 +519,43 @@ export class Boat {
       this.position.z += current.z * dt;
     }
 
-    // Check if boat hit land or barrier (hitting boundaries triggers Game Over once)
-    const hitNorthBank = this.position.z <= PLAY_MIN_Z;
-    const hitSouthBank = this.position.z >= PLAY_MAX_Z;
+    // Hull contact with a bank drags the boat unless it is a high-speed ram;
+    // the engine/propeller crossing the bank line ends the run.
+    const zHalfExtent =
+      Math.abs(Math.sin(this.angle)) * 2.2 + Math.abs(Math.cos(this.angle)) * 1.2;
+    const northPenetration = Math.max(0, PLAY_MIN_Z - (this.position.z - zHalfExtent));
+    const southPenetration = Math.max(0, this.position.z + zHalfExtent - PLAY_MAX_Z);
+    const bankPenetration = Math.max(northPenetration, southPenetration);
+
+    if (!this.isCrashed && bankPenetration > 0) {
+      const northSide = northPenetration > 0;
+      const movingIntoBank = northSide ? this.velocity.z < 0 : this.velocity.z > 0;
+      const ramming = movingIntoBank && this.speed >= this.maxSpeed * 0.75;
+      if (ramming) this.isBankRam = true;
+      const depth = Math.min(1, bankPenetration / 2.5);
+      const awayFromBank = northSide ? 1 : -1;
+      const escaping = this.velocity.z * awayFromBank > 0;
+      const dragRate = ramming ? 0.6 : escaping ? 1.2 : 4 + depth * 9;
+      const bankDamping = Math.exp(-dragRate * dt);
+      this.velocity.multiplyScalar(bankDamping);
+      this.speed =
+        this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
+      this.angularVelocity *= Math.exp(-2 * dt);
+    } else if (bankPenetration <= 0) {
+      this.isBankRam = false;
+    }
+
+    const engineX = this.position.x - Math.cos(this.angle) * 1.9;
+    const engineZ = this.position.z + Math.sin(this.angle) * 1.9;
+    const engineStuckNorth = engineZ <= PLAY_MIN_Z;
+    const engineStuckSouth = engineZ >= PLAY_MAX_Z;
     const hitWestBarrier = this.position.x <= PLAY_MIN_X;
     const hitEastBarrier = this.position.x >= PLAY_MAX_X;
+
+    let engineRock = null;
+    if (!this.isCrashed && this.world.findRockCollision) {
+      engineRock = this.world.findRockCollision(engineX, engineZ, 0.45);
+    }
 
     let rockHit = null;
     if (!this.isCrashed && this.world.findRockCollision) {
@@ -540,14 +579,26 @@ export class Boat {
       }
     }
 
-    if (!this.isCrashed && (hitNorthBank || hitSouthBank)) {
+    if (!this.isCrashed && (engineRock || engineStuckNorth || engineStuckSouth)) {
       this.isCrashed = true;
       this.speed = 0;
       this.velocity.set(0, 0, 0);
       this.angularVelocity = 0;
 
+      if (engineRock && this.world.emitRockImpact) {
+        this.world.emitRockImpact(engineX, engineZ, engineRock);
+      }
+
       if (this.onLandCrash) {
-        this.onLandCrash(hitNorthBank ? 'north' : 'south');
+        let reason;
+        if (engineRock) {
+          reason = Math.random() < 0.5 ? 'engineRock1' : 'engineRock2';
+        } else if (this.isBankRam) {
+          reason = 'bankRam';
+        } else {
+          reason = engineStuckNorth ? 'stuckNorth' : 'stuckSouth';
+        }
+        this.onLandCrash(reason);
       }
       return;
     }
