@@ -1,5 +1,29 @@
 import * as THREE from 'three';
 
+export class WebGLUnavailableError extends Error {
+  constructor(cause) {
+    super('WebGL is not available in this browser.');
+    this.name = 'WebGLUnavailableError';
+    this.cause = cause;
+  }
+}
+
+function detectWebGL() {
+  try {
+    const canvas = document.createElement('canvas');
+    const gl =
+      window.WebGLRenderingContext &&
+      (canvas.getContext('webgl2') ||
+        canvas.getContext('webgl') ||
+        canvas.getContext('experimental-webgl'));
+    if (!gl) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Wide-angle patrol drone holding a static overwatch over the breach line.
 export class GameRenderer {
   constructor(container) {
@@ -18,10 +42,30 @@ export class GameRenderer {
   }
 
   initRenderer() {
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: 'high-performance'
-    });
+    if (!detectWebGL()) {
+      throw new WebGLUnavailableError();
+    }
+
+    const attempts = [
+      { antialias: true, powerPreference: 'high-performance' },
+      { antialias: true },
+      { antialias: false }
+    ];
+
+    let lastError;
+    for (const options of attempts) {
+      try {
+        this.renderer = new THREE.WebGLRenderer(options);
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!this.renderer) {
+      throw new WebGLUnavailableError(lastError);
+    }
+
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;

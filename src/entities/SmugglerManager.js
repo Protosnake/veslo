@@ -1,5 +1,6 @@
 import { Smuggler } from './Smuggler.js';
 import { sound } from '../systems/Audio.js';
+import { t } from '../systems/I18n.js';
 
 export class SmugglerManager {
   constructor(scene, riverWorld, onScore, onGameOver) {
@@ -81,7 +82,7 @@ export class SmugglerManager {
             this.totalSmacked++;
             this.score += 100;
             sound.playSmack();
-            this.onScore(100, s.position, 'БОНК! +100', 'whack');
+            this.onScore(100, s.position, t('score.whack'), 'whack');
             continue;
           }
         }
@@ -93,7 +94,7 @@ export class SmugglerManager {
           this.totalSmacked++;
           this.score += 500;
           sound.playPropellerShred();
-          this.onScore(500, s.position, 'ПРОПЕЛЕР! +500', 'shred');
+          this.onScore(500, s.position, t('score.shred'), 'shred');
           continue;
         }
 
@@ -104,7 +105,7 @@ export class SmugglerManager {
           this.totalSmacked++;
           this.score += 50;
           sound.playRam();
-          this.onScore(50, s.position, 'ТАРАН! +50', 'ram');
+          this.onScore(50, s.position, t('score.ram'), 'ram');
           continue;
         }
       }

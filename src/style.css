@@ -186,7 +186,7 @@ html, body {
 .hud-footer {
   width: 100%;
   max-width: 900px;
-  margin: 0 auto;
+  margin: auto auto 0;
   display: flex;
   justify-content: center;
   pointer-events: none;
@@ -213,23 +213,6 @@ html, body {
   border: 1px solid #4a6652;
   color: #ffd000;
   font-weight: bold;
-}
-
-.debug-btn {
-  background: rgba(40, 60, 48, 0.9);
-  border: 1px solid #4ade80;
-  color: #4ade80;
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: bold;
-  cursor: pointer;
-  pointer-events: auto;
-  transition: background 0.15s ease;
-}
-
-.debug-btn:hover {
-  background: rgba(74, 222, 128, 0.25);
 }
 
 /* Rank Up Alert Popup */
@@ -979,17 +962,6 @@ html, body {
   color: var(--osd-bright);
   font-family: var(--osd-mono);
 }
-
-.debug-btn {
-  border-radius: 2px;
-  border: 1px solid var(--osd);
-  background: rgba(141, 255, 176, 0.08);
-  color: var(--osd);
-  font-family: var(--osd-mono);
-  letter-spacing: 0.1em;
-}
-
-.debug-btn:hover { background: rgba(141, 255, 176, 0.2); }
 
 /* Menus */
 .modal-eyebrow {

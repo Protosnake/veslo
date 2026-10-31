@@ -7,6 +7,7 @@ import { sound } from './systems/Audio.js';
 import { rankSystem } from './systems/RankSystem.js';
 import { mountRankSprites, rankIconMarkup } from './systems/RankSprites.js';
 import { logger } from './systems/Logger.js';
+import { t, getRankTitle, onLocaleChange } from './systems/I18n.js';
 
 class Game {
   constructor() {
@@ -31,14 +32,6 @@ class Game {
     this.finalRankTitle = document.getElementById('final-rank-title');
     this.finalRankScore = document.getElementById('final-rank-score');
     this.restartBtn = document.getElementById('restart-btn');
-
-    // Debug toggle button
-    this.debugToggleBtn = document.getElementById('debug-toggle-btn');
-    if (this.debugToggleBtn) {
-      this.debugToggleBtn.addEventListener('click', () => {
-        logger.toggle();
-      });
-    }
 
     // Drone viewfinder elements
     this.osd = {
@@ -66,6 +59,7 @@ class Game {
 
     // Storage
     this.highScore = parseInt(localStorage.getItem('veslo_high_score') || '0', 10);
+    this.lastGameOver = null;
 
     // Core 3D engine
     this.renderer = new GameRenderer(this.container);
@@ -99,6 +93,7 @@ class Game {
     this.clock = new THREE.Clock();
 
     this.initEvents();
+    onLocaleChange(() => this.refreshLocale());
     this.updateHUD();
     this.animate();
   }
@@ -143,12 +138,7 @@ class Game {
     });
 
     window.addEventListener('mousedown', (e) => {
-      sound.init();
-      if (e.button === 0) {
-        if (this.state === 'PLAYING') {
-          this.boat.triggerSlap();
-        }
-      }
+      if (e.button === 0) sound.init();
     });
 
     this.startBtn.addEventListener('click', () => {
@@ -177,7 +167,7 @@ class Game {
     this.prevThreatCount = 0;
     this.lowBatteryWarned = false;
     this.glitchOsd(450);
-    this.showOsdAlert('UPLINK ESTABLISHED · PATROL ACTIVE', 'ok', 2.2);
+    this.showOsdAlert(t('osd.alert.uplinkActive'), 'ok', 2.2);
   }
 
   restartGame() {
@@ -232,12 +222,12 @@ class Game {
     sound.playRam();
     sound.playGameOver();
     this.glitchOsd(1400);
-    this.showOsdAlert('SIGNAL LOST', 'danger', 4);
+    this.showOsdAlert(t('osd.alert.signalLost'), 'danger', 4);
 
     logger.log('CRASH', reason);
 
-    if (this.gameOverTitle) this.gameOverTitle.textContent = "ЧОВЕН ВРІЗАВСЯ В БЕРЕГ!";
-    if (this.gameOverSubtitle) this.gameOverSubtitle.textContent = reason;
+    this.lastGameOver = { type: 'crash', reason };
+    this.renderGameOverText();
 
     this.handleGameOverRanks();
 
@@ -252,15 +242,15 @@ class Game {
     this.renderer.triggerScreenShake(0.8);
     this.world.triggerCrowdReaction();
     this.glitchOsd(1400);
-    this.showOsdAlert('SIGNAL LOST', 'danger', 4);
+    this.showOsdAlert(t('osd.alert.signalLost'), 'danger', 4);
 
     logger.log('BREACH', 'Smuggler reached shore!');
 
-    if (this.gameOverTitle) this.gameOverTitle.textContent = "КОРДОН ПРОРВАНО!";
-    if (this.gameOverSubtitle) this.gameOverSubtitle.textContent = "Порушник переплив річку. Місію провалено.";
+    this.lastGameOver = { type: 'breach' };
+    this.renderGameOverText();
 
     if (breachedSmuggler && breachedSmuggler.position) {
-      this.createFloatingScore(breachedSmuggler.position, "ПРОРИВ КОРДОНУ! ⚠️", "shred");
+      this.createFloatingScore(breachedSmuggler.position, t('score.breach'), 'shred');
     }
 
     this.handleGameOverRanks();
@@ -268,6 +258,31 @@ class Game {
     setTimeout(() => {
       this.gameOverModal.classList.remove('hidden');
     }, 1200);
+  }
+
+  renderGameOverText() {
+    if (!this.lastGameOver) return;
+    if (this.lastGameOver.type === 'crash') {
+      if (this.gameOverTitle) this.gameOverTitle.textContent = t(`crash.${this.lastGameOver.reason}`);
+      if (this.gameOverSubtitle) {
+        this.gameOverSubtitle.textContent = '';
+        this.gameOverSubtitle.hidden = true;
+      }
+    } else {
+      if (this.gameOverTitle) this.gameOverTitle.textContent = t('modal.over.titleBreach');
+      if (this.gameOverSubtitle) {
+        this.gameOverSubtitle.textContent = t('modal.over.subtitleBreach');
+        this.gameOverSubtitle.hidden = false;
+      }
+    }
+  }
+
+  refreshLocale() {
+    this.updateHUD();
+    if (this.lastGameOver) {
+      this.renderGameOverText();
+      this.handleGameOverRanks();
+    }
   }
 
   handleGameOverRanks() {
@@ -279,8 +294,8 @@ class Game {
 
     const rankInfo = rankSystem.getRankForScore(score);
     if (this.finalRankBadge) this.finalRankBadge.innerHTML = rankIconMarkup(rankInfo.current, 'rank-insignia rank-insignia-lg');
-    if (this.finalRankTitle) this.finalRankTitle.textContent = rankInfo.current.title;
-    if (this.finalRankScore) this.finalRankScore.textContent = `Фінальний рахунок: ${score} очок`;
+    if (this.finalRankTitle) this.finalRankTitle.textContent = getRankTitle(rankInfo.current);
+    if (this.finalRankScore) this.finalRankScore.textContent = t('modal.over.rankScore', { score });
   }
 
   updateHUD() {
@@ -290,16 +305,19 @@ class Game {
 
     // Update Minimalist Rank HUD
     if (this.hudRankBadge) this.hudRankBadge.innerHTML = rankIconMarkup(rankInfo.current);
-    if (this.hudRankTitle) this.hudRankTitle.textContent = rankInfo.current.title;
-    if (this.hudScorePill) this.hudScorePill.textContent = `${score} ОЧКІВ`;
+    if (this.hudRankTitle) this.hudRankTitle.textContent = getRankTitle(rankInfo.current);
+    if (this.hudScorePill) this.hudScorePill.textContent = t('hud.scorePill', { score });
     if (this.hudHighScore) this.hudHighScore.textContent = Math.max(this.highScore, score);
     if (this.hudRankBar) this.hudRankBar.style.width = `${(progress * 100).toFixed(1)}%`;
 
     if (this.hudRankNext) {
       if (rankInfo.next) {
-        this.hudRankNext.textContent = `НАСТУПНЕ ЗВАННЯ: ${rankInfo.next.title.toUpperCase()} (${rankInfo.next.minScore})`;
+        this.hudRankNext.textContent = t('hud.nextRank', {
+          title: getRankTitle(rankInfo.next).toUpperCase(),
+          score: rankInfo.next.minScore
+        });
       } else {
-        this.hudRankNext.textContent = `МАКСИМАЛЬНЕ ВІЙСЬКОВЕ ЗВАННЯ ДПСУ!`;
+        this.hudRankNext.textContent = t('hud.maxRank');
       }
     }
 
@@ -308,7 +326,7 @@ class Game {
     if (newRank) {
       sound.playAlert();
       this.showRankUpBanner(newRank);
-      logger.log('RANK_UP', `Promoted to ${newRank.title}!`, { score });
+      logger.log('RANK_UP', `Promoted to ${getRankTitle(newRank)}!`, { score });
     }
   }
 
@@ -321,10 +339,10 @@ class Game {
 
     const banner = this.rankUpBanner;
     banner.innerHTML = `
-      <div class="rank-up-eyebrow">ПІДВИЩЕННЯ У ЗВАННІ ДПСУ!</div>
+      <div class="rank-up-eyebrow">${t('rank.promotion')}</div>
       <div class="rank-up-main">
         ${rankIconMarkup(rank, 'rank-insignia rank-insignia-lg')}
-        <span class="rank-up-title">${rank.title}</span>
+        <span class="rank-up-title">${getRankTitle(rank)}</span>
       </div>
     `;
 
@@ -437,7 +455,7 @@ class Game {
 
     if (playing && batteryPct < 20 && !this.lowBatteryWarned) {
       this.lowBatteryWarned = true;
-      this.showOsdAlert('BATTERY CRITICAL', 'danger', 2.2);
+      this.showOsdAlert(t('osd.alert.batteryCritical'), 'danger', 2.2);
     }
 
     if (this.osd.threatCount) {
@@ -486,10 +504,38 @@ class Game {
   }
 }
 
+function showWebGLUnavailable() {
+  document.getElementById('start-modal')?.classList.add('hidden');
+  document.getElementById('game-over-modal')?.classList.add('hidden');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> ${t('error.webgl.eyebrow')}</div>
+      <h1 class="modal-title">${t('error.webgl.title')}</h1>
+      <div class="modal-subtitle">${t('error.webgl.subtitle')}</div>
+      <div class="rule-highlight">
+        <strong>${t('error.webgl.howTo')}</strong><br>
+        ${t('error.webgl.hint')}
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   mountRankSprites();
-  const game = new Game();
-  if (new URLSearchParams(window.location.search).has('autostart')) {
-    game.startGame(); // temporary screenshot hook
+  try {
+    const game = new Game();
+    window.__game = game;
+    if (new URLSearchParams(window.location.search).has('autostart')) {
+      game.startGame(); // temporary screenshot hook
+    }
+  } catch (err) {
+    if (err.name === 'WebGLUnavailableError') {
+      showWebGLUnavailable();
+    } else {
+      throw err;
+    }
   }
 });

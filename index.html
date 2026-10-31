@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ВЕСЛО (Veslo) - Border River Patrol</title>
+    <title>Veslo</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
@@ -29,21 +29,21 @@
       <!-- Top telemetry bar -->
       <div class="osd-topbar">
         <div class="osd-topbar-side">
-          <span class="osd-strong">DRONE D-07</span>
+          <span class="osd-strong" data-i18n="osd.drone">DRONE D-07</span>
           <span class="osd-sep">//</span>
-          <span class="osd-dim">BORDER PATROL</span>
+          <span class="osd-dim" data-i18n="osd.borderPatrol">BORDER PATROL</span>
         </div>
         <div class="osd-topbar-center">
-          <span class="osd-dim">UPLINK</span>
-          <span class="osd-ok">STABLE</span>
+          <span class="osd-dim" data-i18n="osd.uplink">UPLINK</span>
+          <span class="osd-ok" data-i18n="osd.stable">STABLE</span>
           <span class="osd-sep">·</span>
           <span class="osd-dim">5.8 GHz</span>
         </div>
         <div class="osd-topbar-side osd-right">
-          <span class="osd-rec"><span class="osd-rec-dot"></span>REC</span>
+          <span class="osd-rec"><span class="osd-rec-dot"></span><span data-i18n="osd.rec">REC</span></span>
           <span class="osd-timecode" id="osd-timecode">00:00:00:00</span>
           <span class="osd-sep">·</span>
-          <span class="osd-dim">4K 60FPS</span>
+          <span class="osd-dim" data-i18n="osd.resolution">4K 60FPS</span>
         </div>
       </div>
 
@@ -57,24 +57,24 @@
       </div>
 
       <!-- Alert banner -->
-      <div class="osd-alert" id="osd-alert">UPLINK ESTABLISHED</div>
+      <div class="osd-alert" id="osd-alert" data-i18n="osd.alert.uplinkEstablished">UPLINK ESTABLISHED</div>
 
       <!-- Bottom telemetry -->
       <div class="osd-block osd-top-left">
-        <div class="osd-readout"><span class="k">ALT</span><span class="v" id="osd-alt">34.0</span><span class="u">M</span></div>
-        <div class="osd-readout"><span class="k">SPD</span><span class="v" id="osd-spd">00.0</span><span class="u">KN</span></div>
-        <div class="osd-readout"><span class="k">HDG</span><span class="v" id="osd-hdg">000</span><span class="u">°</span></div>
+        <div class="osd-readout"><span class="k" data-i18n="osd.alt">ALT</span><span class="v" id="osd-alt">34.0</span><span class="u">M</span></div>
+        <div class="osd-readout"><span class="k" data-i18n="osd.spd">SPD</span><span class="v" id="osd-spd">00.0</span><span class="u">KN</span></div>
+        <div class="osd-readout"><span class="k" data-i18n="osd.hdg">HDG</span><span class="v" id="osd-hdg">000</span><span class="u">°</span></div>
         <div class="osd-battery">
-          <span class="k">BAT</span>
+          <span class="k" data-i18n="osd.bat">BAT</span>
           <div class="osd-battery-bar"><div class="osd-battery-fill" id="osd-battery-fill"></div></div>
           <span class="v" id="osd-battery-val">100%</span>
         </div>
       </div>
 
       <div class="osd-block osd-bottom-right">
-        <div class="osd-line"><span class="k">GPS</span> <span id="osd-gps">46.61 N / 30.72 E</span></div>
-        <div class="osd-line"><span class="k">WIND</span> 03 KT <span class="osd-sep">·</span> <span class="k">SAT</span> <span class="osd-ok">12</span></div>
-        <div class="osd-line"><span class="k">THREATS</span> <span id="osd-threat-count" class="osd-warn">0</span></div>
+        <div class="osd-line"><span class="k" data-i18n="osd.gps">GPS</span> <span id="osd-gps">46.61 N / 30.72 E</span></div>
+        <div class="osd-line"><span class="k" data-i18n="osd.wind">WIND</span> 03 KT <span class="osd-sep">·</span> <span class="k" data-i18n="osd.sat">SAT</span> <span class="osd-ok">12</span></div>
+        <div class="osd-line"><span class="k" data-i18n="osd.threats">THREATS</span> <span id="osd-threat-count" class="osd-warn">0</span></div>
       </div>
     </div>
 
@@ -87,8 +87,8 @@
             <span class="rank-badge-icon" id="hud-rank-badge" aria-hidden="true"></span>
             <div class="rank-info-group">
               <div class="rank-title-row">
-                <span class="rank-name" id="hud-rank-title">РЕКРУТ</span>
-                <span class="rank-score-pill" id="hud-score-pill">0 ОЧКІВ</span>
+                <span class="rank-name" id="hud-rank-title"></span>
+                <span class="rank-score-pill" id="hud-score-pill"></span>
               </div>
               <div class="rank-bar-bg">
                 <div class="rank-bar-fill" id="hud-rank-bar" style="width: 0%;"></div>
@@ -96,8 +96,8 @@
             </div>
           </div>
           <div class="rank-meta">
-            <span class="rank-next" id="hud-rank-next">НАСТУПНЕ ЗВАННЯ: СОЛДАТ (500)</span>
-            <span class="high-score-val">BEST <span id="hud-high-score">0</span></span>
+            <span class="rank-next" id="hud-rank-next"></span>
+            <span class="high-score-val"><span data-i18n="hud.best">BEST</span> <span id="hud-high-score">0</span></span>
           </div>
         </div>
       </div>
@@ -105,10 +105,9 @@
       <!-- Footer Control Hints -->
       <div class="hud-footer">
         <div class="control-pill">
-          <span><kbd>W</kbd>/<kbd>S</kbd> Газ / Задній хід</span>
-          <span><kbd>A</kbd>/<kbd>D</kbd> Кермо</span>
-          <span><kbd>SPACE</kbd> чи <kbd>Клік</kbd> <strong>УДАР (ВЕСЛО)</strong></span>
-          <button id="debug-toggle-btn" class="debug-btn">🐞 DEBUG</button>
+          <span><kbd>W</kbd>/<kbd>S</kbd> <span data-i18n="controls.throttle"></span></span>
+          <span><kbd>A</kbd>/<kbd>D</kbd> <span data-i18n="controls.steering"></span></span>
+          <span><kbd>SPACE</kbd> <strong data-i18n="controls.strike"></strong></span>
         </div>
       </div>
     </div>
@@ -116,65 +115,65 @@
     <!-- Start / Instruction Modal -->
     <div class="modal-overlay" id="start-modal">
       <div class="modal-card">
-        <div class="modal-eyebrow"><span class="osd-rec-dot"></span> DRONE D-07 · UPLINK READY</div>
-        <h1 class="modal-title">ВЕСЛО</h1>
-        <div class="modal-subtitle">Border River Patrol &bull; Live Aerial Feed</div>
+        <div class="modal-eyebrow"><span class="osd-rec-dot"></span> <span data-i18n="modal.start.eyebrow"></span></div>
+        <h1 class="modal-title" data-i18n="modal.start.title"></h1>
+        <div class="modal-subtitle" data-i18n="modal.start.subtitle"></div>
 
         <div class="rule-highlight">
-          ⚠️ <strong>БОЙОВЕ ЗАВДАННЯ:</strong> Захистити кордон від порушників!
-          Якщо хоч один дістанеться пляжу або ви <strong>вріжетеся в берег</strong> — місію провалено!
+          <span data-i18n-html="modal.start.missionTitle"></span><br/>
+          <span data-i18n-html="modal.start.missionWarning"></span>
         </div>
 
         <div class="stats-grid" style="text-align: left; font-size: 13px; line-height: 1.5; color: #c0dbc7;">
           <div>
-            <strong>🛶 Удар веслом:</strong> <span style="color:#ffd000; font-weight:bold;">+100 ОЧКІВ</span><br/>
-            Пробіл чи клік мишкою для удару веслом!
+            <strong data-i18n="modal.start.oarTitle"></strong> <span style="color:#ffd000; font-weight:bold;" data-i18n="modal.start.oarPoints"></span><br/>
+            <span data-i18n="modal.start.oarDesc"></span>
           </div>
           <div>
-            <strong>💥 Таран човном:</strong> <span style="color:#55e6ff; font-weight:bold;">+50 ОЧКІВ</span><br/>
-            Збивайте порушників корпусом човна.
+            <strong data-i18n="modal.start.ramTitle"></strong> <span style="color:#55e6ff; font-weight:bold;" data-i18n="modal.start.ramPoints"></span><br/>
+            <span data-i18n="modal.start.ramDesc"></span>
           </div>
           <div style="grid-column: span 2; background: rgba(255, 51, 68, 0.15); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 51, 68, 0.3);">
-            <strong>🔥 Гвинт двигуна:</strong> <span style="color:#ff3344; font-weight:900;">+500 ОЧКІВ</span><br/>
-            Задній хід на двигуні! Одразу відкриває звання Солдата!
+            <strong data-i18n="modal.start.engineTitle"></strong> <span style="color:#ff3344; font-weight:900;" data-i18n="modal.start.enginePoints"></span><br/>
+            <span data-i18n="modal.start.engineDesc"></span>
           </div>
         </div>
 
-        <button class="action-btn" id="start-btn">LAUNCH DRONE</button>
+        <button class="action-btn" id="start-btn" data-i18n="modal.start.btn"></button>
       </div>
     </div>
 
     <!-- Game Over Modal -->
     <div class="modal-overlay hidden" id="game-over-modal">
       <div class="modal-card">
-        <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> FEED INTERRUPTED · SIGNAL LOST</div>
+        <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> <span data-i18n="modal.over.eyebrow"></span></div>
         <h1 class="modal-title game-over-banner" id="game-over-title">BORDER BREACHED!</h1>
         <div class="modal-subtitle" id="game-over-subtitle">A smuggler reached the southern shore. Mission Failed.</div>
 
         <!-- Final Military Rank Achieved Card -->
         <div class="game-over-rank-box">
-          <span class="game-over-rank-sub">ДОСЯГНУТЕ ВІЙСЬКОВЕ ЗВАННЯ ДПСУ</span>
+          <span class="game-over-rank-sub" data-i18n="modal.over.rankLabel"></span>
           <div class="game-over-rank-main">
             <span id="final-rank-badge"></span>
             <div>
-              <div id="final-rank-title" style="font-size: 28px; font-weight: 900; color: #ffd000; letter-spacing: 1px;">СОЛДАТ</div>
-              <div id="final-rank-score" style="font-size: 14px; color: #9bbfa2; margin-top: 2px;">Рахунок: 700 очок</div>
+              <div id="final-rank-title" style="font-size: 28px; font-weight: 900; color: #ffd000; letter-spacing: 1px;"></div>
+              <div id="final-rank-score" style="font-size: 14px; color: #9bbfa2; margin-top: 2px;"></div>
             </div>
           </div>
         </div>
 
         <div class="stats-grid">
           <div class="stat-item">
-            <span class="stat-label">Final Score</span>
+            <span class="stat-label" data-i18n="modal.over.statScore"></span>
             <span class="stat-val" id="final-score" style="color: #ffd000;">0</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">Smugglers Smacked</span>
+            <span class="stat-label" data-i18n="modal.over.statSmacked"></span>
             <span class="stat-val" id="final-smacked">0</span>
           </div>
         </div>
 
-        <button class="action-btn" id="restart-btn">REDEPLOY DRONE</button>
+        <button class="action-btn" id="restart-btn" data-i18n="modal.over.btn"></button>
       </div>
     </div>
 

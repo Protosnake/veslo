@@ -1,25 +1,25 @@
 // Ukrainian State Border Guard Service (Державна прикордонна служба України - ДПСУ)
 // Military rank progression following Fibonacci score milestones starting Private at 500
 export const RANKS = [
-  { minScore: 0, title: 'Рекрут', titleEn: 'Recruit', sprite: 'rank-recruit' },
-  { minScore: 500, title: 'Солдат', titleEn: 'Private', sprite: 'rank-soldier' },
-  { minScore: 800, title: 'Старший солдат', titleEn: 'Senior Soldier', sprite: 'rank-senior-soldier' },
-  { minScore: 1300, title: 'Молодший сержант', titleEn: 'Junior Sergeant', sprite: 'rank-junior-sergeant' },
-  { minScore: 2100, title: 'Сержант', titleEn: 'Sergeant', sprite: 'rank-sergeant' },
-  { minScore: 3400, title: 'Старший сержант', titleEn: 'Senior Sergeant', sprite: 'rank-senior-sergeant' },
-  { minScore: 5500, title: 'Головний сержант', titleEn: 'Chief Sergeant', sprite: 'rank-chief-sergeant' },
-  { minScore: 8900, title: 'Штаб-сержант', titleEn: 'Staff Sergeant', sprite: 'rank-staff-sergeant' },
-  { minScore: 14400, title: 'Майстер-сержант', titleEn: 'Master Sergeant', sprite: 'rank-master-sergeant' },
-  { minScore: 23300, title: 'Молодший лейтенант', titleEn: 'Junior Lieutenant', sprite: 'rank-junior-lieutenant' },
-  { minScore: 37700, title: 'Лейтенант', titleEn: 'Lieutenant', sprite: 'rank-lieutenant' },
-  { minScore: 61000, title: 'Старший лейтенант', titleEn: 'Senior Lieutenant', sprite: 'rank-senior-lieutenant' },
-  { minScore: 98700, title: 'Капітан', titleEn: 'Captain', sprite: 'rank-captain' },
-  { minScore: 159700, title: 'Майор', titleEn: 'Major', sprite: 'rank-major' },
-  { minScore: 258400, title: 'Підполковник', titleEn: 'Lieutenant Colonel', sprite: 'rank-lieutenant-colonel' },
-  { minScore: 418100, title: 'Полковник', titleEn: 'Colonel', sprite: 'rank-colonel' },
-  { minScore: 676500, title: 'Бригадний генерал', titleEn: 'Brigadier General', sprite: 'rank-brigadier-general' },
-  { minScore: 1094600, title: 'Генерал-майор', titleEn: 'Major General', sprite: 'rank-major-general' },
-  { minScore: 1771100, title: 'Генерал', titleEn: 'General', sprite: 'rank-general' }
+  { minScore: 0, key: 'rank.title.recruit', sprite: 'rank-recruit' },
+  { minScore: 500, key: 'rank.title.soldier', sprite: 'rank-soldier' },
+  { minScore: 800, key: 'rank.title.seniorSoldier', sprite: 'rank-senior-soldier' },
+  { minScore: 1300, key: 'rank.title.juniorSergeant', sprite: 'rank-junior-sergeant' },
+  { minScore: 2100, key: 'rank.title.sergeant', sprite: 'rank-sergeant' },
+  { minScore: 3400, key: 'rank.title.seniorSergeant', sprite: 'rank-senior-sergeant' },
+  { minScore: 5500, key: 'rank.title.chiefSergeant', sprite: 'rank-chief-sergeant' },
+  { minScore: 8900, key: 'rank.title.staffSergeant', sprite: 'rank-staff-sergeant' },
+  { minScore: 14400, key: 'rank.title.masterSergeant', sprite: 'rank-master-sergeant' },
+  { minScore: 23300, key: 'rank.title.juniorLieutenant', sprite: 'rank-junior-lieutenant' },
+  { minScore: 37700, key: 'rank.title.lieutenant', sprite: 'rank-lieutenant' },
+  { minScore: 61000, key: 'rank.title.seniorLieutenant', sprite: 'rank-senior-lieutenant' },
+  { minScore: 98700, key: 'rank.title.captain', sprite: 'rank-captain' },
+  { minScore: 159700, key: 'rank.title.major', sprite: 'rank-major' },
+  { minScore: 258400, key: 'rank.title.lieutenantColonel', sprite: 'rank-lieutenant-colonel' },
+  { minScore: 418100, key: 'rank.title.colonel', sprite: 'rank-colonel' },
+  { minScore: 676500, key: 'rank.title.brigadierGeneral', sprite: 'rank-brigadier-general' },
+  { minScore: 1094600, key: 'rank.title.majorGeneral', sprite: 'rank-major-general' },
+  { minScore: 1771100, key: 'rank.title.general', sprite: 'rank-general' }
 ];
 
 export class RankSystem {

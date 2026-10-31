@@ -469,11 +469,11 @@ export class Boat {
       this.velocity.set(0, 0, 0);
       this.angularVelocity = 0;
       if (this.onLandCrash) {
-        let reason = 'CRASHED INTO RIVERBANK!';
-        if (hitNorthBank) reason = 'CRASHED INTO NORTH BORDER POST!';
-        else if (hitSouthBank) reason = 'CRASHED ONTO SOUTH BEACH!';
-        else if (hitWestBarrier) reason = 'CRASHED INTO WEST REEF BARRIER!';
-        else if (hitEastBarrier) reason = 'CRASHED INTO EAST REEF BARRIER!';
+        let reason = 'riverbank';
+        if (hitNorthBank) reason = 'north';
+        else if (hitSouthBank) reason = 'south';
+        else if (hitWestBarrier) reason = 'west';
+        else if (hitEastBarrier) reason = 'east';
         this.onLandCrash(reason);
       }
       return;
