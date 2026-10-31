@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>Veslo</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
@@ -110,6 +113,31 @@
           <span><kbd>SPACE</kbd> <strong data-i18n="controls.strike"></strong></span>
         </div>
       </div>
+
+      <!-- Touch Controls (mobile: left thumb navigation, right thumb strike) -->
+      <div class="touch-controls" id="touch-controls">
+        <div class="touch-joystick" id="touch-joystick" role="group" aria-label="Boat navigation">
+          <div class="joystick-base">
+            <span class="joystick-tick north" aria-hidden="true"></span>
+            <span class="joystick-tick east" aria-hidden="true"></span>
+            <span class="joystick-tick south" aria-hidden="true"></span>
+            <span class="joystick-tick west" aria-hidden="true"></span>
+            <div class="joystick-knob" id="touch-stick-knob"></div>
+          </div>
+        </div>
+
+        <div class="touch-action">
+          <button
+            class="touch-btn touch-hit"
+            type="button"
+            id="touch-hit"
+            aria-label="Strike with oar"
+          >
+            <span class="touch-hit-label" data-i18n="controls.hitShort"></span>
+            <span class="touch-hit-sub" data-i18n="controls.oar"></span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Start / Instruction Modal -->
@@ -119,23 +147,26 @@
         <h1 class="modal-title" data-i18n="modal.start.title"></h1>
         <div class="modal-subtitle" data-i18n="modal.start.subtitle"></div>
 
-        <div class="rule-highlight">
+        <div class="modal-block rule-highlight">
           <span data-i18n-html="modal.start.missionTitle"></span><br/>
           <span data-i18n-html="modal.start.missionWarning"></span>
         </div>
 
-        <div class="stats-grid" style="text-align: left; font-size: 13px; line-height: 1.5; color: #c0dbc7;">
-          <div>
-            <strong data-i18n="modal.start.oarTitle"></strong> <span style="color:#ffd000; font-weight:bold;" data-i18n="modal.start.oarPoints"></span><br/>
-            <span data-i18n="modal.start.oarDesc"></span>
+        <div class="stats-grid mission-grid">
+          <div class="stat-item mission-item">
+            <span class="stat-label" data-i18n="modal.start.oarTitle"></span>
+            <span class="stat-val stat-val-sm is-gold" data-i18n="modal.start.oarPoints"></span>
+            <span class="stat-desc" data-i18n="modal.start.oarDesc"></span>
           </div>
-          <div>
-            <strong data-i18n="modal.start.ramTitle"></strong> <span style="color:#55e6ff; font-weight:bold;" data-i18n="modal.start.ramPoints"></span><br/>
-            <span data-i18n="modal.start.ramDesc"></span>
+          <div class="stat-item mission-item">
+            <span class="stat-label" data-i18n="modal.start.ramTitle"></span>
+            <span class="stat-val stat-val-sm is-cyan" data-i18n="modal.start.ramPoints"></span>
+            <span class="stat-desc" data-i18n="modal.start.ramDesc"></span>
           </div>
-          <div style="grid-column: span 2; background: rgba(255, 51, 68, 0.15); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 51, 68, 0.3);">
-            <strong data-i18n="modal.start.engineTitle"></strong> <span style="color:#ff3344; font-weight:900;" data-i18n="modal.start.enginePoints"></span><br/>
-            <span data-i18n="modal.start.engineDesc"></span>
+          <div class="stat-item mission-item span-2 is-danger">
+            <span class="stat-label" data-i18n="modal.start.engineTitle"></span>
+            <span class="stat-val stat-val-sm is-danger" data-i18n="modal.start.enginePoints"></span>
+            <span class="stat-desc" data-i18n="modal.start.engineDesc"></span>
           </div>
         </div>
 
@@ -151,13 +182,13 @@
         <div class="modal-subtitle" id="game-over-subtitle">A smuggler reached the southern shore. Mission Failed.</div>
 
         <!-- Final Military Rank Achieved Card -->
-        <div class="game-over-rank-box">
+        <div class="modal-block game-over-rank-box">
           <span class="game-over-rank-sub" data-i18n="modal.over.rankLabel"></span>
           <div class="game-over-rank-main">
             <span id="final-rank-badge"></span>
             <div>
-              <div id="final-rank-title" style="font-size: 28px; font-weight: 900; color: #ffd000; letter-spacing: 1px;"></div>
-              <div id="final-rank-score" style="font-size: 14px; color: #9bbfa2; margin-top: 2px;"></div>
+              <div class="game-over-rank-title" id="final-rank-title"></div>
+              <div class="game-over-rank-score" id="final-rank-score"></div>
             </div>
           </div>
         </div>
@@ -165,7 +196,7 @@
         <div class="stats-grid">
           <div class="stat-item">
             <span class="stat-label" data-i18n="modal.over.statScore"></span>
-            <span class="stat-val" id="final-score" style="color: #ffd000;">0</span>
+            <span class="stat-val is-gold" id="final-score">0</span>
           </div>
           <div class="stat-item">
             <span class="stat-label" data-i18n="modal.over.statSmacked"></span>

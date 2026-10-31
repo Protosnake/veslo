@@ -3,11 +3,54 @@ import { GameRenderer } from './core/Renderer.js';
 import { RiverWorld } from './world/River.js';
 import { Boat } from './entities/Boat.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
+import { WildlifeManager } from './entities/WildlifeManager.js';
 import { sound } from './systems/Audio.js';
 import { rankSystem } from './systems/RankSystem.js';
 import { mountRankSprites, rankIconMarkup } from './systems/RankSprites.js';
 import { logger } from './systems/Logger.js';
 import { t, getRankTitle, onLocaleChange } from './systems/I18n.js';
+
+function isTouchDevice() {
+  return (
+    window.matchMedia('(any-pointer: coarse)').matches ||
+    navigator.maxTouchPoints > 0 ||
+    'ontouchstart' in window ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  );
+}
+
+const SUPPORTED_ASPECT = 16 / 9;
+
+function getScreenAspect() {
+  const width = (window.screen && window.screen.width) || window.innerWidth;
+  const height = (window.screen && window.screen.height) || window.innerHeight;
+  return width / height;
+}
+
+function isSupportedDesktopResolution() {
+  if (isTouchDevice()) return true;
+  return Math.abs(getScreenAspect() - SUPPORTED_ASPECT) <= 0.06;
+}
+
+function showUnsupportedResolution() {
+  if (document.getElementById('resolution-modal')) return;
+  const width = (window.screen && window.screen.width) || window.innerWidth;
+  const height = (window.screen && window.screen.height) || window.innerHeight;
+  const ratio = (width / height).toFixed(2);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'resolution-modal';
+  overlay.innerHTML = `
+    <div class="modal-card resolution-card">
+      <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> ${t('error.resolution.eyebrow')}</div>
+      <h1 class="modal-title">${t('error.resolution.title')}</h1>
+      <div class="modal-subtitle">${t('error.resolution.subtitle')}</div>
+      <div class="resolution-value">${width} × ${height} · ${ratio}:1</div>
+      <div class="rule-highlight" style="margin-top:18px;margin-bottom:0;">${t('error.resolution.hint')}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
 
 class Game {
   constructor() {
@@ -81,12 +124,21 @@ class Game {
       (smuggler) => this.onGameOver(smuggler)
     );
 
+    this.wildlifeManager = new WildlifeManager(
+      this.renderer.scene,
+      this.world,
+      (type, kills) => this.onWildlifeKilled(type, kills)
+    );
+
     // Input state
     this.input = {
       forward: false,
       backward: false,
       left: false,
       right: false,
+      moveX: 0,
+      moveZ: 0,
+      moveMagnitude: 0,
       mouseAiming: false,
       mouseThrust: false,
       targetWorldPos: new THREE.Vector3()
@@ -158,14 +210,166 @@ class Game {
       sound.init();
       this.restartGame();
     });
+
+    window.addEventListener('blur', () => this.clearInput());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.clearInput();
+    });
+
+    this.initTouchControls();
+  }
+
+  initTouchControls() {
+    const joystick = document.getElementById('touch-joystick');
+    const stickKnob = document.getElementById('touch-stick-knob');
+
+    if (joystick && stickKnob) {
+      const base = joystick.querySelector('.joystick-base') || joystick;
+      let pointerId = null;
+
+      // Fixed screen-space basis: pushing the stick up always moves the boat
+      // away from the camera, regardless of which way the hull is facing.
+      const forward = new THREE.Vector3();
+      const right = new THREE.Vector3();
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      this.renderer.camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+      right.crossVectors(forward, worldUp).normalize();
+
+      const applyStick = (clientX, clientY) => {
+        const rect = base.getBoundingClientRect();
+        const knobSize = stickKnob.offsetWidth || 58;
+        const radius = Math.max(1, rect.width / 2 - knobSize / 2 - 4);
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        let dx = clientX - centerX;
+        let dy = clientY - centerY;
+        const distance = Math.hypot(dx, dy);
+        if (distance > radius) {
+          dx = (dx / distance) * radius;
+          dy = (dy / distance) * radius;
+        }
+
+        stickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+        const deadzone = 0.12;
+        const stickX = dx / radius;
+        const stickY = dy / radius;
+
+        const moveX = right.x * stickX + forward.x * -stickY;
+        const moveZ = right.z * stickX + forward.z * -stickY;
+        const magnitude = Math.hypot(moveX, moveZ);
+
+        if (magnitude < deadzone) {
+          this.input.moveX = 0;
+          this.input.moveZ = 0;
+          this.input.moveMagnitude = 0;
+        } else {
+          this.input.moveX = moveX / magnitude;
+          this.input.moveZ = moveZ / magnitude;
+          this.input.moveMagnitude = Math.min(1, (magnitude - deadzone) / (1 - deadzone));
+        }
+
+        joystick.classList.add('is-active');
+      };
+
+      const releaseStick = () => {
+        pointerId = null;
+        joystick.classList.remove('is-active');
+        stickKnob.style.transform = '';
+        this.input.moveX = 0;
+        this.input.moveZ = 0;
+        this.input.moveMagnitude = 0;
+      };
+
+      base.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        sound.init();
+        pointerId = e.pointerId;
+        joystick.classList.add('is-active');
+        if (base.setPointerCapture) {
+          try { base.setPointerCapture(e.pointerId); } catch {}
+        }
+        applyStick(e.clientX, e.clientY);
+      });
+
+      base.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== pointerId) return;
+        e.preventDefault();
+        applyStick(e.clientX, e.clientY);
+      });
+
+      const endStick = (e) => {
+        if (pointerId != null && e.pointerId !== pointerId) return;
+        releaseStick();
+      };
+
+      base.addEventListener('pointerup', endStick);
+      base.addEventListener('pointercancel', endStick);
+      base.addEventListener('lostpointercapture', releaseStick);
+      base.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      this.touchStick = { release: releaseStick };
+    }
+
+    const hitBtn = document.getElementById('touch-hit');
+    if (!hitBtn) return;
+
+    const stopHit = () => {
+      hitBtn.classList.remove('is-pressed');
+      clearInterval(this.hitRepeatTimer);
+      this.hitRepeatTimer = null;
+    };
+
+    hitBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      sound.init();
+      hitBtn.classList.add('is-pressed');
+      if (hitBtn.setPointerCapture && e.pointerId != null) {
+        try { hitBtn.setPointerCapture(e.pointerId); } catch {}
+      }
+      if (this.state === 'PLAYING') {
+        this.boat.triggerSlap();
+        clearInterval(this.hitRepeatTimer);
+        this.hitRepeatTimer = setInterval(() => {
+          if (this.state === 'PLAYING') this.boat.triggerSlap();
+        }, 360);
+      }
+    });
+
+    hitBtn.addEventListener('pointerup', stopHit);
+    hitBtn.addEventListener('pointercancel', stopHit);
+    hitBtn.addEventListener('lostpointercapture', stopHit);
+    hitBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  clearInput() {
+    this.input.forward = false;
+    this.input.backward = false;
+    this.input.left = false;
+    this.input.right = false;
+    this.input.moveX = 0;
+    this.input.moveZ = 0;
+    this.input.moveMagnitude = 0;
+    this.input.mouseThrust = false;
+    if (this.touchStick) this.touchStick.release();
+    document.querySelectorAll('.touch-btn.is-pressed').forEach((btn) => {
+      btn.classList.remove('is-pressed');
+    });
+    clearInterval(this.hitRepeatTimer);
+    this.hitRepeatTimer = null;
   }
 
   startGame() {
     this.state = 'PLAYING';
+    this.clearInput();
     this.startModal.classList.add('hidden');
     this.gameOverModal.classList.add('hidden');
     this.boat.reset();
     this.smugglerManager.reset();
+    this.wildlifeManager.reset();
     rankSystem.reset();
     this.updateHUD();
 
@@ -180,6 +384,10 @@ class Game {
 
   restartGame() {
     this.startGame();
+  }
+
+  onWildlifeKilled(type, kills) {
+    logger.log('WILDLIFE', `${type} killed`, { kills });
   }
 
   onSmugglerSmacked(points, worldPos, text, type = 'whack') {
@@ -225,12 +433,12 @@ class Game {
   onBoatCrash(reason) {
     if (this.state !== 'PLAYING') return;
     this.state = 'GAMEOVER';
+    this.clearInput();
     this.renderer.triggerScreenShake(1.3);
     this.world.triggerCrowdReaction();
     sound.playRam();
     sound.playGameOver();
     this.glitchOsd(1400);
-    this.showOsdAlert(t('osd.alert.signalLost'), 'danger', 4);
 
     logger.log('CRASH', reason);
 
@@ -239,18 +447,16 @@ class Game {
 
     this.handleGameOverRanks();
 
-    setTimeout(() => {
-      this.gameOverModal.classList.remove('hidden');
-    }, 600);
+    this.gameOverModal.classList.remove('hidden');
   }
 
   onGameOver(breachedSmuggler) {
     if (this.state !== 'PLAYING') return;
     this.state = 'GAMEOVER';
+    this.clearInput();
     this.renderer.triggerScreenShake(0.8);
     this.world.triggerCrowdReaction();
     this.glitchOsd(1400);
-    this.showOsdAlert(t('osd.alert.signalLost'), 'danger', 4);
 
     logger.log('BREACH', 'Smuggler reached shore!');
 
@@ -263,9 +469,7 @@ class Game {
 
     this.handleGameOverRanks();
 
-    setTimeout(() => {
-      this.gameOverModal.classList.remove('hidden');
-    }, 1200);
+    this.gameOverModal.classList.remove('hidden');
   }
 
   renderGameOverText() {
@@ -508,6 +712,7 @@ class Game {
       this.battery = Math.max(6, this.battery - dt * 0.22);
       this.boat.update(dt, this.input);
       this.smugglerManager.update(dt, this.boat);
+      this.wildlifeManager.update(dt, this.boat);
     } else {
       this.boat.update(dt, this.idleInput);
     }
@@ -547,6 +752,21 @@ function showWebGLUnavailable() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  document.body.classList.toggle('touch-device', isTouchDevice());
+
+  const refreshResolutionNotice = () => {
+    document.getElementById('resolution-modal')?.remove();
+    if (!isSupportedDesktopResolution()) showUnsupportedResolution();
+  };
+
+  refreshResolutionNotice();
+  onLocaleChange(refreshResolutionNotice);
+
+  if (!isSupportedDesktopResolution()) {
+    document.getElementById('start-modal')?.classList.add('hidden');
+    return;
+  }
+
   mountRankSprites();
   try {
     const game = new Game();

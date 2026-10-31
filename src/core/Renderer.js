@@ -8,6 +8,15 @@ export class WebGLUnavailableError extends Error {
   }
 }
 
+function isTouchDevice() {
+  return (
+    window.matchMedia('(any-pointer: coarse)').matches ||
+    navigator.maxTouchPoints > 0 ||
+    'ontouchstart' in window ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  );
+}
+
 function detectWebGL() {
   try {
     const canvas = document.createElement('canvas');
@@ -82,7 +91,14 @@ export class GameRenderer {
     const aspect = window.innerWidth / window.innerHeight;
 
     this.baseFov = 52;
+    this.baseAspect = 16 / 9;
+    // Mobile feed keeps the rock barriers at the screen edges: the eastern
+    // rocks sit on the right limit and the western ones leave a sliver of
+    // river on the left, without exposing extra south-bank foreground.
+    this.isTouch = isTouchDevice();
+    this.touchHorizontalFov = 78.5;
     this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 0.5, 600);
+    this.applyResponsiveFov();
 
     // The drone is flown by someone else: it holds a static overwatch framing
     // on the southern breach line and only drifts on the wind. It never chases
@@ -126,6 +142,31 @@ export class GameRenderer {
     this.sun.shadow.bias = -0.0005;
 
     this.scene.add(this.sun);
+  }
+
+  /**
+   * Preserve the 16:9 horizontal framing on narrower screens (phones in
+   * portrait, 16:10 laptops). Without this the drone feed loses the river
+   * banks on either side and the game becomes unplayable.
+   */
+  applyResponsiveFov() {
+    const aspect = window.innerWidth / window.innerHeight;
+
+    if (this.isTouch) {
+      const hFov = THREE.MathUtils.degToRad(this.touchHorizontalFov);
+      const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
+      this.camera.fov = THREE.MathUtils.radToDeg(vFov);
+    } else if (aspect >= this.baseAspect) {
+      this.camera.fov = this.baseFov;
+    } else {
+      const hFov = 2 * Math.atan(
+        Math.tan(THREE.MathUtils.degToRad(this.baseFov) / 2) * this.baseAspect
+      );
+      const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
+      this.camera.fov = THREE.MathUtils.radToDeg(vFov);
+    }
+
+    this.camera.updateProjectionMatrix();
   }
 
   /**
@@ -182,7 +223,7 @@ export class GameRenderer {
   onResize() {
     const aspect = window.innerWidth / window.innerHeight;
     this.camera.aspect = aspect;
-    this.camera.updateProjectionMatrix();
+    this.applyResponsiveFov();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 

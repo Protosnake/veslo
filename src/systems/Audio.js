@@ -349,6 +349,149 @@ class SoundSystem {
     } catch (e) {}
   }
 
+  playWildlifeDiveIn() {
+    this.playWildlifePop(560, 170, 0.13);
+  }
+
+  playWildlifeDiveOut() {
+    this.playWildlifePop(210, 620, 0.11);
+  }
+
+  playWildlifePop(startFreq, endFreq, volume) {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(startFreq, t);
+      osc.frequency.exponentialRampToValueAtTime(endFreq, t + 0.09);
+
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(volume, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0004, t + 0.12);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.14);
+
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.1);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        const env = Math.exp(-i / (this.ctx.sampleRate * 0.025));
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1500, t);
+      filter.Q.setValueAtTime(1.2, t);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.05, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.002, t + 0.1);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(this.ctx.destination);
+      noise.start(t);
+    } catch (e) {}
+  }
+
+  playFrogRibbit() {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+
+      for (let i = 0; i < 2; i++) {
+        const start = t + i * 0.14;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(900, start);
+        filter.frequency.exponentialRampToValueAtTime(380, start + 0.12);
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, start);
+        osc.frequency.exponentialRampToValueAtTime(88, start + 0.1);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.2, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.13);
+      }
+
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.18);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.04));
+      }
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+      const noiseFilter = this.ctx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.setValueAtTime(700, t);
+      noiseFilter.Q.setValueAtTime(1.4, t);
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.06, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.004, t + 0.18);
+
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(this.ctx.destination);
+      noise.start(t);
+    } catch (e) {}
+  }
+
+  playSnakeHiss() {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.55);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        const env = Math.min(1, i / (this.ctx.sampleRate * 0.05)) *
+          Math.exp(-i / (this.ctx.sampleRate * 0.3));
+        const rasp = 0.7 + 0.3 * Math.sin(i * 0.05);
+        data[i] = (Math.random() * 2 - 1) * env * rasp;
+      }
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(2200, t);
+      filter.frequency.exponentialRampToValueAtTime(4200, t + 0.4);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.22, t);
+      gain.gain.exponentialRampToValueAtTime(0.005, t + 0.55);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      noise.start(t);
+    } catch (e) {}
+  }
+
   playAlert() {
     // Rank-up chime: short ascending three-note confirmation
     if (!this.ctx || this.isMuted) return;

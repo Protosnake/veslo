@@ -42,6 +42,8 @@ const translations = {
     'controls.throttle': 'Газ / Реверс',
     'controls.steering': 'Кермо',
     'controls.strike': 'УДАР (ВЕСЛО)',
+    'controls.hitShort': 'УДАР',
+    'controls.oar': 'ВЕСЛО',
 
     // ── Start Modal ──
     'modal.start.eyebrow': 'DRONE D-07 · UPLINK READY',
@@ -61,7 +63,7 @@ const translations = {
     'modal.start.btn': 'ДО РОБОТИ',
 
     // ── Game Over Modal ──
-    'modal.over.eyebrow': 'ТРАНСЛЯЦІЮ ПЕРЕРВАНО · СИГНАЛ ВТРАЧЕНО',
+    'modal.over.eyebrow': 'ЗАВДАННЯ ПРОВАЛЕНО',
     'modal.over.titleBreach': 'КОРДОН ПРОРВАНО!',
     'modal.over.subtitleBreach': 'Порушник переплив річку. Завдання провалено.',
     'modal.over.titleCrash': 'ТВОЮ ДІВІЗІЮ! ЧОВЕН СІВ НА МІЛЬ!',
@@ -114,6 +116,12 @@ const translations = {
     'error.webgl.subtitle': 'Цей пристрій не зміг створити контекст WebGL, тому трансляція з дрона не може запуститися.',
     'error.webgl.howTo': 'Як виправити:',
     'error.webgl.hint': 'Увімкніть апаратне прискорення в налаштуваннях браузера, оновіть графічні драйвери або відкрийте гру в актуальній версії Chrome, Edge чи Firefox на пристрої з підтримкою GPU.',
+
+    // ── Resolution Fallback ──
+    'error.resolution.eyebrow': 'ПОТОЧНИЙ РЕЖИМ НЕ ПІДТРИМУЄТЬСЯ',
+    'error.resolution.title': 'РОЗДІЛЬНІСТЬ НЕ ПІДТРИМУЄТЬСЯ',
+    'error.resolution.subtitle': 'Для гри Veslo потрібен екран із співвідношенням сторін 16:9.',
+    'error.resolution.hint': 'Перемкніть дисплей на 1920×1080 (Full HD) або інший режим 16:9 і перезавантажте сторінку.',
   },
 
   en: {
@@ -153,6 +161,8 @@ const translations = {
     'controls.throttle': 'Throttle / Reverse',
     'controls.steering': 'Steering',
     'controls.strike': 'STRIKE (OAR)',
+    'controls.hitShort': 'HIT',
+    'controls.oar': 'OAR',
 
     // ── Start Modal ──
     'modal.start.eyebrow': 'DRONE D-07 · UPLINK READY',
@@ -172,7 +182,7 @@ const translations = {
     'modal.start.btn': 'LAUNCH DRONE',
 
     // ── Game Over Modal ──
-    'modal.over.eyebrow': 'FEED INTERRUPTED · SIGNAL LOST',
+    'modal.over.eyebrow': 'MISSION FAILED',
     'modal.over.titleBreach': 'BORDER BREACHED!',
     'modal.over.subtitleBreach': 'A smuggler reached the southern shore. Mission failed.',
     'modal.over.titleCrash': 'BOAT CRASHED INTO SHORE!',
@@ -225,6 +235,12 @@ const translations = {
     'error.webgl.subtitle': 'This device could not create a WebGL context, so the drone feed cannot start.',
     'error.webgl.howTo': 'How to fix:',
     'error.webgl.hint': 'Enable hardware acceleration in your browser settings, update your graphics drivers, or open the game in a recent Chrome, Edge or Firefox on a machine with GPU support.',
+
+    // ── Resolution Fallback ──
+    'error.resolution.eyebrow': 'CURRENT MODE UNSUPPORTED',
+    'error.resolution.title': 'RESOLUTION NOT SUPPORTED',
+    'error.resolution.subtitle': 'Veslo requires a 16:9 display.',
+    'error.resolution.hint': 'Switch your display to 1920×1080 (Full HD) or another 16:9 mode, then reload the page.',
   }
 };
 
