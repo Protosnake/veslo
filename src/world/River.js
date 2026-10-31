@@ -1,5 +1,37 @@
 import * as THREE from 'three';
 
+// Sum-of-sines swell shared by the water mesh and anything floating on it.
+// [kX, kZ, amplitude, angular speed, phase]
+const RIVER_SWELL = [
+  [0.45, 0.00, 0.085, 1.55, 0.0],  // long wind swell down the valley
+  [0.10, 0.38, 0.070, -1.25, 1.7], // cross swell from the banks
+  [0.82, 0.60, 0.028, 2.35, 2.4],  // short chop
+  [0.30, -0.95, 0.034, -1.85, 0.6] // diagonal ripple
+];
+
+const _waveSample = { y: 0, dx: 0, dz: 0 };
+
+function sampleWaterInto(out, x, z, t) {
+  let y = 0;
+  let dx = 0;
+  let dz = 0;
+
+  for (let i = 0; i < RIVER_SWELL.length; i++) {
+    const [kx, kz, amp, speed, phase] = RIVER_SWELL[i];
+    const angle = kx * x + kz * z + speed * t + phase;
+    const c = Math.cos(angle);
+    y += amp * Math.sin(angle);
+    dx += amp * kx * c;
+    dz += amp * kz * c;
+  }
+
+  out.y = y;
+  out.dx = dx;
+  out.dz = dz;
+  return out;
+}
+
+
 export class RiverWorld {
   constructor(scene) {
     this.scene = scene;
@@ -69,8 +101,28 @@ export class RiverWorld {
   }
 
   // Flat strip that follows the river centerline between two lateral offsets.
-  buildRibbonGeometry(fromOffset, toOffset, y, across = 1) {
-    const samples = this.riverSamples;
+  // `along` subdivides each centreline segment, which the water surface needs
+  // to resolve short choppy ripples instead of a few huge flat facets.
+  buildRibbonGeometry(fromOffset, toOffset, y, across = 1, along = 1) {
+    const baseSamples = this.riverSamples;
+    let samples = baseSamples;
+
+    if (along > 1) {
+      samples = [];
+      for (let i = 0; i < baseSamples.length - 1; i++) {
+        const a = baseSamples[i];
+        const b = baseSamples[i + 1];
+        for (let k = 0; k < along; k++) {
+          const f = k / along;
+          samples.push({
+            p: a.p.clone().lerp(b.p, f),
+            n: a.n.clone().lerp(b.n, f).normalize()
+          });
+        }
+      }
+      samples.push(baseSamples[baseSamples.length - 1]);
+    }
+
     const cols = across + 1;
     const positions = [];
     const uvs = [];
@@ -183,33 +235,101 @@ export class RiverWorld {
     sand.receiveShadow = true;
     this.scene.add(sand);
 
-    // Danger demarcation line along Z = 15.4
-    const lineGeo = new THREE.PlaneGeometry(80, 0.3);
+    // Danger demarcation line along Z = 15.4. It is built as a thin ribbon so
+    // it can ride the swell instead of slicing through the wave crests (which
+    // used to show up as red patches along the shoreline).
+    const linePositions = [];
+    const lineIndices = [];
+    const lineHalfDepth = 0.16;
+    const lineStart = -40;
+    const lineEnd = 40;
+    const lineStep = 1;
+    const lineRows = Math.round((lineEnd - lineStart) / lineStep) + 1;
+
+    for (let i = 0; i < lineRows; i++) {
+      const x = lineStart + i * lineStep;
+      linePositions.push(x, 0, 15.4 - lineHalfDepth, x, 0, 15.4 + lineHalfDepth);
+      if (i > 0) {
+        const a = (i - 1) * 2;
+        const b = a + 1;
+        const c = i * 2;
+        const d = c + 1;
+        lineIndices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+    lineGeo.setIndex(lineIndices);
+    this.dangerLineBase = lineGeo.attributes.position.clone();
+
     const lineMat = new THREE.MeshBasicMaterial({
       color: 0xff2222,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.6
+      opacity: 0.6,
+      depthWrite: false
     });
     this.dangerLine = new THREE.Mesh(lineGeo, lineMat);
-    this.dangerLine.rotation.x = -Math.PI / 2;
-    this.dangerLine.position.set(0, 0.05, 15.4);
+    this.dangerLine.renderOrder = 2;
     this.scene.add(this.dangerLine);
   }
 
   createWater() {
-    const segAcross = 6;
+    const segAcross = 18;
+    const segAlong = 2;
+    // Let the surface run a little under the banks so wave crests lap against
+    // the sand/cliff instead of ending on a hard geometric seam.
+    const shoreOverlap = 0.6;
 
-    this.waterGeo = this.buildRibbonGeometry(-this.riverHalfWidth, this.riverHalfWidth, 0, segAcross);
+    this.waterGeo = this.buildRibbonGeometry(
+      -this.riverHalfWidth - shoreOverlap,
+      this.riverHalfWidth + shoreOverlap,
+      0,
+      segAcross,
+      segAlong
+    );
     this.waterBasePos = this.waterGeo.attributes.position.clone();
 
+    // Bake a shallow-to-deep tint so the surface is not one flat slab of blue.
+    // River palette leans green-teal: silty shallows lighten toward the banks.
+    const positions = this.waterGeo.attributes.position;
+    const uvs = this.waterGeo.attributes.uv;
+    const colors = new Float32Array(positions.count * 3);
+    const deepColor = new THREE.Color(0x17695a);
+    const shallowColor = new THREE.Color(0x3a8f70);
+    const tint = new THREE.Color();
+
+    for (let i = 0; i < positions.count; i++) {
+      const across = uvs.getX(i);
+      const edge = Math.abs(across * 2 - 1);
+      const shallow = edge * edge;
+      const x = positions.getX(i);
+      const z = positions.getZ(i);
+      const variation =
+        0.95 +
+        0.05 * Math.sin(x * 0.23 + z * 0.19) +
+        0.03 * Math.sin(x * 0.07 - z * 0.11);
+
+      tint.copy(deepColor).lerp(shallowColor, shallow);
+      colors[i * 3] = tint.r * variation;
+      colors[i * 3 + 1] = tint.g * variation;
+      colors[i * 3 + 2] = tint.b * variation;
+    }
+
+    this.waterGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    this.waterNormalMap = this.createWaterNormalTexture();
+
     this.waterMat = new THREE.MeshStandardMaterial({
-      color: 0x1b779c,
-      roughness: 0.25,
-      metalness: 0.1,
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.26,
+      metalness: 0.0,
       transparent: true,
-      opacity: 0.9,
-      flatShading: true,
+      opacity: 0.94,
+      normalMap: this.waterNormalMap,
+      normalScale: new THREE.Vector2(0.5, 0.5),
       side: THREE.DoubleSide
     });
 
@@ -217,19 +337,84 @@ export class RiverWorld {
     this.waterMesh.receiveShadow = true;
     this.scene.add(this.waterMesh);
 
-    // Foam strips that follow both banks around the bends
+    // Foam strips that follow both banks. They are re-seated on top of the
+    // swell every frame so they cannot be sliced by passing wave crests.
     const foamMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.4,
-      side: THREE.DoubleSide
+      opacity: 0.32,
+      side: THREE.DoubleSide,
+      depthWrite: false
     });
 
-    const foamNorth = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth, -this.riverHalfWidth + 0.8, 0.04), foamMat);
-    this.scene.add(foamNorth);
+    this.foamStrips = [];
+    const addFoamStrip = (fromOffset, toOffset) => {
+      const geo = this.buildRibbonGeometry(fromOffset, toOffset, 0, 1, 2);
+      const mesh = new THREE.Mesh(geo, foamMat);
+      mesh.renderOrder = 1;
+      this.scene.add(mesh);
+      this.foamStrips.push({ mesh, base: geo.attributes.position.clone() });
+    };
 
-    const foamSouth = new THREE.Mesh(this.buildRibbonGeometry(this.riverHalfWidth - 0.8, this.riverHalfWidth, 0.04), foamMat);
-    this.scene.add(foamSouth);
+    addFoamStrip(-this.riverHalfWidth, -this.riverHalfWidth + 0.7);
+    addFoamStrip(this.riverHalfWidth - 0.7, this.riverHalfWidth);
+  }
+
+  // Tileable detail normal map so the close-up surface has fine ripple sparkle
+  // without needing thousands of extra vertices.
+  createWaterNormalTexture(size = 256) {
+    const data = new Uint8Array(size * size * 4);
+    const waves = [
+      [3, 1, 1.0, 0.0],
+      [1, -4, 0.65, 1.3],
+      [5, 3, 0.4, 2.1],
+      [7, -2, 0.28, 0.7],
+      [2, 6, 0.35, 3.1]
+    ];
+    const twoPi = Math.PI * 2;
+
+    for (let py = 0; py < size; py++) {
+      const v = (py / size) * twoPi;
+      for (let px = 0; px < size; px++) {
+        const u = (px / size) * twoPi;
+        let dhdu = 0;
+        let dhdv = 0;
+
+        for (let w = 0; w < waves.length; w++) {
+          const [kx, kz, amp, phase] = waves[w];
+          const c = Math.cos(kx * u + kz * v + phase);
+          dhdu += amp * kx * c;
+          dhdv += amp * kz * c;
+        }
+
+        const strength = 0.045;
+        let nx = -dhdu * strength;
+        let ny = -dhdv * strength;
+        let nz = 1;
+        const inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+        nx *= inv;
+        ny *= inv;
+        nz *= inv;
+
+        const i = (py * size + px) * 4;
+        data[i] = Math.round((nx * 0.5 + 0.5) * 255);
+        data[i + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+        data[i + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+        data[i + 3] = 255;
+      }
+    }
+
+    const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(8, 150);
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  getWaveHeight(x, z, t = this.time) {
+    return sampleWaterInto(_waveSample, x, z, t).y;
   }
 
   getCurrentVelocity() {
@@ -877,17 +1062,41 @@ export class RiverWorld {
     this.time += dt;
 
     const pos = this.waterGeo.attributes.position;
+    const normals = this.waterGeo.attributes.normal;
     const base = this.waterBasePos;
     const count = pos.count;
 
     for (let i = 0; i < count; i++) {
-      const u = base.getX(i);
-      const w = base.getZ(i);
-      const wave1 = Math.sin(u * 0.35 + this.time * 2.2) * 0.22;
-      const wave2 = Math.cos(w * 0.4 + this.time * 1.8) * 0.16;
-      pos.setY(i, wave1 + wave2);
+      const x = base.getX(i);
+      const z = base.getZ(i);
+      sampleWaterInto(_waveSample, x, z, this.time);
+
+      pos.setY(i, _waveSample.y);
+
+      const nx = -_waveSample.dx;
+      const ny = 1;
+      const nz = -_waveSample.dz;
+      const inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+      normals.setXYZ(i, nx * inv, ny * inv, nz * inv);
     }
     pos.needsUpdate = true;
+    normals.needsUpdate = true;
+
+    // Drift the fine ripple pattern with the current.
+    this.waterNormalMap.offset.x = this.time * 0.035;
+    this.waterNormalMap.offset.y = -this.time * 0.055;
+
+    // Keep the shoreline foam seated on the moving surface.
+    for (let s = 0; s < this.foamStrips.length; s++) {
+      const strip = this.foamStrips[s];
+      const foamPos = strip.mesh.geometry.attributes.position;
+      for (let i = 0; i < foamPos.count; i++) {
+        const x = strip.base.getX(i);
+        const z = strip.base.getZ(i);
+        foamPos.setY(i, this.getWaveHeight(x, z) + 0.03);
+      }
+      foamPos.needsUpdate = true;
+    }
 
     for (let i = 0; i < this.reedsList.length; i++) {
       const r = this.reedsList[i];
@@ -919,6 +1128,14 @@ export class RiverWorld {
     }
 
     if (this.dangerLine) {
+      const linePos = this.dangerLine.geometry.attributes.position;
+      const lineBase = this.dangerLineBase;
+      for (let i = 0; i < linePos.count; i++) {
+        const x = lineBase.getX(i);
+        const z = lineBase.getZ(i);
+        linePos.setY(i, this.getWaveHeight(x, z) + 0.04);
+      }
+      linePos.needsUpdate = true;
       this.dangerLine.material.opacity = 0.45 + Math.sin(this.time * 5) * 0.25;
     }
 
