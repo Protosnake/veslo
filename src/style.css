@@ -46,7 +46,16 @@ html, body {
   padding: 58px 20px 20px;
 }
 
-/* Minimalist Centered Rank HUD (Only Ranking & Progress) */
+/* Ranking HUD — docked bottom-left where the telemetry used to sit */
+.hud-header {
+  position: absolute;
+  left: 24px;
+  bottom: 72px;
+  display: flex;
+  justify-content: flex-start;
+  margin: 0;
+}
+
 .hud-header-minimal {
   display: flex;
   justify-content: center;
@@ -69,70 +78,109 @@ html, body {
 .rank-top {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 9px;
 }
 
 .rank-badge-icon {
-  font-size: 36px;
-  line-height: 1;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  display: block;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 39px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+.rank-insignia {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.rank-insignia-lg {
+  width: 38px;
+  height: 54px;
 }
 
 .rank-info-group {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
 }
 
 .rank-title-row {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
 }
 
 .rank-name {
-  font-size: 20px;
+  font-size: 13px;
   font-weight: 900;
   color: var(--primary-color);
-  letter-spacing: 1px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  text-shadow: 0 2px 6px rgba(255, 208, 0, 0.3);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .rank-score-pill {
-  font-size: 13px;
-  font-weight: 800;
-  color: #c9e3cf;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 2px 8px;
-  border-radius: 10px;
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--osd-bright);
+  background: rgba(141, 255, 176, 0.08);
+  border: 1px solid rgba(141, 255, 176, 0.25);
+  padding: 1px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
 }
 
 .rank-bar-bg {
   width: 100%;
-  height: 8px;
+  height: 3px;
   background: rgba(0, 0, 0, 0.55);
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 .rank-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #ffd000, #ff8800);
-  border-radius: 6px;
+  border-radius: 0;
   transition: width 0.35s ease;
 }
 
+.rank-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 5px;
+}
+
 .rank-next {
-  font-size: 11px;
+  font-size: 9px;
   color: #8fa895;
   font-weight: 700;
-  margin-top: 4px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
+
+.high-score-val {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+
+.high-score-val span { color: var(--osd-bright); }
 
 /* Footer Control Hints */
 .hud-footer {
@@ -190,20 +238,54 @@ html, body {
   top: 18%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.7);
-  background: linear-gradient(135deg, rgba(20, 35, 24, 0.96), rgba(10, 20, 14, 0.96));
-  border: 2px solid #ffd000;
-  box-shadow: 0 0 35px rgba(255, 208, 0, 0.6);
-  border-radius: 14px;
-  padding: 16px 36px;
+  background: linear-gradient(160deg, rgba(5, 17, 11, 0.94), rgba(5, 17, 11, 0.78));
+  border: 1px solid rgba(255, 208, 0, 0.75);
+  border-radius: 2px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  box-shadow: 0 0 18px rgba(255, 208, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.45);
+  padding: 12px 28px;
   text-align: center;
   z-index: 80;
   pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  contain: layout style;
+  will-change: transform, opacity;
+  font-family: var(--osd-mono);
+}
+
+.rank-up-popup.is-visible {
+  visibility: visible;
   animation: rankUpPop 2.2s forwards ease-out;
+}
+
+.rank-up-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--osd-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rank-up-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.rank-up-title {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--primary-color);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 @keyframes rankUpPop {
   0% { opacity: 0; transform: translate(-50%, -20%) scale(0.6); }
-  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
   30% { transform: translate(-50%, -50%) scale(1.0); }
   80% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
   100% { opacity: 0; transform: translate(-50%, -80%) scale(0.9); }
@@ -744,6 +826,7 @@ html, body {
 
 .osd-bottom-left { left: 24px; }
 .osd-bottom-right { right: 24px; text-align: right; }
+.osd-top-left { top: 66px; left: 34px; bottom: auto; }
 
 .osd-readout {
   display: flex;
@@ -840,17 +923,22 @@ html, body {
 
 .score-label { color: var(--osd-dim); font-size: 11px; }
 .score-value { font-size: 34px; letter-spacing: 0.04em; }
-.high-score-val { color: var(--osd-dim); font-size: 11px; }
+.high-score-val { color: var(--osd-dim); font-size: 9px; }
 
-.rank-panel { min-width: 210px; }
+.rank-panel {
+  width: 360px;
+  max-width: 62vw;
+  min-width: 0;
+  padding: 7px 12px 8px;
+}
 .rank-label { color: var(--osd-dim); }
-.rank-name { font-family: var(--osd-mono); letter-spacing: 0.12em; }
+.rank-name { font-family: var(--osd-mono); letter-spacing: 0.14em; }
 .rank-bar-bg { border: 1px solid rgba(141, 255, 176, 0.25); background: rgba(0, 0, 0, 0.5); }
 .rank-bar-fill {
   background: linear-gradient(90deg, var(--osd), #d8ff6a);
   box-shadow: 0 0 8px rgba(141, 255, 176, 0.4);
 }
-.rank-next { color: var(--osd-dim); font-size: 10px; }
+.rank-next { color: var(--osd-dim); font-size: 9px; }
 
 .hud-right {
   background: linear-gradient(160deg, rgba(5, 17, 11, 0.82), rgba(5, 17, 11, 0.52));

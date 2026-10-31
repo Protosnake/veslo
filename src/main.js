@@ -5,6 +5,7 @@ import { Boat } from './entities/Boat.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { sound } from './systems/Audio.js';
 import { rankSystem } from './systems/RankSystem.js';
+import { mountRankSprites, rankIconMarkup } from './systems/RankSprites.js';
 import { logger } from './systems/Logger.js';
 
 class Game {
@@ -18,6 +19,7 @@ class Game {
     this.hudScorePill = document.getElementById('hud-score-pill');
     this.hudRankBar = document.getElementById('hud-rank-bar');
     this.hudRankNext = document.getElementById('hud-rank-next');
+    this.hudHighScore = document.getElementById('hud-high-score');
 
     // Modals
     this.startModal = document.getElementById('start-modal');
@@ -276,7 +278,7 @@ class Game {
     }
 
     const rankInfo = rankSystem.getRankForScore(score);
-    if (this.finalRankBadge) this.finalRankBadge.textContent = rankInfo.current.badge;
+    if (this.finalRankBadge) this.finalRankBadge.innerHTML = rankIconMarkup(rankInfo.current, 'rank-insignia rank-insignia-lg');
     if (this.finalRankTitle) this.finalRankTitle.textContent = rankInfo.current.title;
     if (this.finalRankScore) this.finalRankScore.textContent = `Фінальний рахунок: ${score} очок`;
   }
@@ -287,9 +289,10 @@ class Game {
     const progress = rankSystem.getProgress(score);
 
     // Update Minimalist Rank HUD
-    if (this.hudRankBadge) this.hudRankBadge.textContent = rankInfo.current.badge;
+    if (this.hudRankBadge) this.hudRankBadge.innerHTML = rankIconMarkup(rankInfo.current);
     if (this.hudRankTitle) this.hudRankTitle.textContent = rankInfo.current.title;
     if (this.hudScorePill) this.hudScorePill.textContent = `${score} ОЧКІВ`;
+    if (this.hudHighScore) this.hudHighScore.textContent = Math.max(this.highScore, score);
     if (this.hudRankBar) this.hudRankBar.style.width = `${(progress * 100).toFixed(1)}%`;
 
     if (this.hudRankNext) {
@@ -310,21 +313,29 @@ class Game {
   }
 
   showRankUpBanner(rank) {
-    const banner = document.createElement('div');
-    banner.className = 'rank-up-popup';
+    if (!this.rankUpBanner) {
+      this.rankUpBanner = document.createElement('div');
+      this.rankUpBanner.className = 'rank-up-popup';
+      document.body.appendChild(this.rankUpBanner);
+    }
+
+    const banner = this.rankUpBanner;
     banner.innerHTML = `
-      <div style="font-size: 13px; letter-spacing: 2px; color: #a4ceb2; font-weight: 800; text-transform: uppercase;">
-        ПІДВИЩЕННЯ У ЗВАННІ ДПСУ!
-      </div>
-      <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 6px;">
-        <span style="font-size: 36px;">${rank.badge}</span>
-        <span style="font-size: 26px; font-weight: 900; color: #ffd000; letter-spacing: 1px;">${rank.title}</span>
+      <div class="rank-up-eyebrow">ПІДВИЩЕННЯ У ЗВАННІ ДПСУ!</div>
+      <div class="rank-up-main">
+        ${rankIconMarkup(rank, 'rank-insignia rank-insignia-lg')}
+        <span class="rank-up-title">${rank.title}</span>
       </div>
     `;
-    document.body.appendChild(banner);
 
-    setTimeout(() => {
-      if (banner.parentNode) banner.parentNode.removeChild(banner);
+    // Restart the CSS animation on the cached node (no layout rebuild / removal thrash)
+    banner.classList.remove('is-visible');
+    void banner.offsetWidth;
+    banner.classList.add('is-visible');
+
+    clearTimeout(this.rankUpTimer);
+    this.rankUpTimer = setTimeout(() => {
+      banner.classList.remove('is-visible');
     }, 2300);
   }
 
@@ -476,6 +487,7 @@ class Game {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  mountRankSprites();
   const game = new Game();
   if (new URLSearchParams(window.location.search).has('autostart')) {
     game.startGame(); // temporary screenshot hook

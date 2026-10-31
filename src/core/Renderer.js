@@ -42,7 +42,7 @@ export class GameRenderer {
     // on the southern breach line and only drifts on the wind. It never chases
     // the patrol boat.
     this.anchor = new THREE.Vector3(0, 0, 4);
-    this.rigOffset = new THREE.Vector3(13, 36, 30);
+    this.rigOffset = new THREE.Vector3(10, 29, 24);
 
     this.camera.position.copy(this.anchor).add(this.rigOffset);
     this.lookTarget = this.anchor.clone();

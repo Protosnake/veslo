@@ -60,7 +60,7 @@
       <div class="osd-alert" id="osd-alert">UPLINK ESTABLISHED</div>
 
       <!-- Bottom telemetry -->
-      <div class="osd-block osd-bottom-left">
+      <div class="osd-block osd-top-left">
         <div class="osd-readout"><span class="k">ALT</span><span class="v" id="osd-alt">34.0</span><span class="u">M</span></div>
         <div class="osd-readout"><span class="k">SPD</span><span class="v" id="osd-spd">00.0</span><span class="u">KN</span></div>
         <div class="osd-readout"><span class="k">HDG</span><span class="v" id="osd-hdg">000</span><span class="u">°</span></div>
@@ -84,7 +84,7 @@
       <div class="hud-header">
         <div class="hud-panel rank-panel">
           <div class="rank-top">
-            <span class="rank-badge-icon" id="hud-rank-badge">🪖</span>
+            <span class="rank-badge-icon" id="hud-rank-badge" aria-hidden="true"></span>
             <div class="rank-info-group">
               <div class="rank-title-row">
                 <span class="rank-name" id="hud-rank-title">РЕКРУТ</span>
@@ -93,18 +93,12 @@
               <div class="rank-bar-bg">
                 <div class="rank-bar-fill" id="hud-rank-bar" style="width: 0%;"></div>
               </div>
-              <div class="rank-next" id="hud-rank-next">НАСТУПНЕ ЗВАННЯ: СОЛДАТ (500)</div>
-            </div>
-            <div class="score-inline">
-              <span class="score-label">Score</span>
-              <span class="score-value" id="hud-score">0</span>
-              <span class="high-score-val">Best: <span id="hud-high-score">0</span></span>
             </div>
           </div>
-          <div class="rank-bar-bg">
-            <div class="rank-bar-fill" id="hud-rank-bar" style="width: 0%;"></div>
+          <div class="rank-meta">
+            <span class="rank-next" id="hud-rank-next">НАСТУПНЕ ЗВАННЯ: СОЛДАТ (500)</span>
+            <span class="high-score-val">BEST <span id="hud-high-score">0</span></span>
           </div>
-          <div class="rank-next" id="hud-rank-next">НАСТУПНЕ: СОЛДАТ (500)</div>
         </div>
       </div>
 
@@ -161,7 +155,7 @@
         <div class="game-over-rank-box">
           <span class="game-over-rank-sub">ДОСЯГНУТЕ ВІЙСЬКОВЕ ЗВАННЯ ДПСУ</span>
           <div class="game-over-rank-main">
-            <span id="final-rank-badge" style="font-size: 42px;">🎖️</span>
+            <span id="final-rank-badge"></span>
             <div>
               <div id="final-rank-title" style="font-size: 28px; font-weight: 900; color: #ffd000; letter-spacing: 1px;">СОЛДАТ</div>
               <div id="final-rank-score" style="font-size: 14px; color: #9bbfa2; margin-top: 2px;">Рахунок: 700 очок</div>

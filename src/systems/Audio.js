@@ -105,8 +105,8 @@ class SoundSystem {
       osc.frequency.setValueAtTime(340, t);
       osc.frequency.exponentialRampToValueAtTime(55, t + 0.16);
 
-      gain.gain.setValueAtTime(0.35, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
+      gain.gain.setValueAtTime(0.2625, t);
+      gain.gain.exponentialRampToValueAtTime(0.0075, t + 0.18);
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
@@ -125,8 +125,8 @@ class SoundSystem {
       noise.buffer = buffer;
 
       const noiseGain = this.ctx.createGain();
-      noiseGain.gain.setValueAtTime(0.3, t);
-      noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.12);
+      noiseGain.gain.setValueAtTime(0.225, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0075, t + 0.12);
 
       noise.connect(noiseGain);
       noiseGain.connect(this.ctx.destination);
@@ -266,6 +266,33 @@ class SoundSystem {
       gain.connect(this.ctx.destination);
 
       noise.start(t);
+    } catch (e) {}
+  }
+
+  playAlert() {
+    // Rank-up chime: short ascending three-note confirmation
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+      const notes = [660, 880, 1320];
+
+      notes.forEach((freq, i) => {
+        const start = t + i * 0.11;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.16, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.24);
+      });
     } catch (e) {}
   }
 
