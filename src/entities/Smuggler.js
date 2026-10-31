@@ -13,6 +13,8 @@ const SHARED_GEO = {
   arm: new THREE.CylinderGeometry(0.08, 0.08, 0.6, 5)
 };
 
+const SHARED_BLOOD_GEO = new THREE.CircleGeometry(0.65, 16);
+
 const SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xdeb887 });
 const SNORKEL_MAT = new THREE.MeshLambertMaterial({ color: 0xffee00 });
 const TIP_MAT = new THREE.MeshBasicMaterial({ color: 0xff3300 });
@@ -87,7 +89,10 @@ export class Smuggler {
 
     this.isDead = false;
     this.deathTimer = 0;
-    this.deathType = 'smack'; // 'smack' | 'ram' | 'shred'
+    this.deathDuration = 0.6;
+    this.deathType = 'smack'; // 'smack' | 'ram' | 'shred' | 'ak'
+    this.corpseHit = false;
+    this.bloodPuddle = null;
     this.reachedSouth = false;
 
     this.createModel();
@@ -419,6 +424,19 @@ export class Smuggler {
     this.group.position.copy(this.position);
   }
 
+  startSwimmingAt(x, z) {
+    this.state = 'swimming';
+    this.position.set(x, 0, z);
+    this.emergeX = x;
+    this.emergeZ = z;
+    this.currentHeading = Math.PI / 2;
+    this.group.visible = true;
+    this.group.position.copy(this.position);
+    this.group.rotation.set(0, 0, 0);
+    this.swimmerGroup.visible = true;
+    this.walkerGroup.visible = false;
+  }
+
   updateWalking(dt, boat) {
     this.walkPhase += dt * (4 + this.walkSpeed * 2);
 
@@ -489,6 +507,8 @@ export class Smuggler {
     this.isDead = true;
     this.deathType = 'smack';
     this.deathTimer = 0;
+    this.deathDuration = 5;
+    this.corpseHit = false;
     this.world.emitSplash(this.position.x, this.position.z, 22, 0xffffff);
   }
 
@@ -497,6 +517,8 @@ export class Smuggler {
     this.isDead = true;
     this.deathType = 'ram';
     this.deathTimer = 0;
+    this.deathDuration = 5;
+    this.corpseHit = false;
     this.world.emitSplash(this.position.x, this.position.z, 26, 0xd8eeff);
   }
 
@@ -505,37 +527,52 @@ export class Smuggler {
     this.isDead = true;
     this.deathType = 'shred';
     this.deathTimer = 0;
-    // Dramatic red/white propeller chop splashes
+    this.deathDuration = 5;
+    this.corpseHit = false;
     this.world.emitSplash(this.position.x, this.position.z, 36, 0xff3b4b);
     this.world.emitSplash(this.position.x, this.position.z, 20, 0xffffff);
+    this.spawnBloodPuddle();
+  }
+
+  ak() {
+    if (this.isDead) return;
+    this.isDead = true;
+    this.deathType = 'ak';
+    this.deathTimer = 0;
+    this.deathDuration = 5;
+    this.corpseHit = false;
+    this.world.emitSplash(this.position.x, this.position.z, 18, 0xff3b4b);
+    this.spawnBloodPuddle();
+  }
+
+  spawnBloodPuddle() {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x7a0d14,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+    this.bloodPuddle = new THREE.Mesh(SHARED_BLOOD_GEO, material);
+    this.bloodPuddle.rotation.x = -Math.PI / 2;
+    this.bloodPuddle.position.set(this.position.x, 0.06, this.position.z);
+    this.bloodPuddle.scale.setScalar(0.45);
+    this.scene.add(this.bloodPuddle);
   }
 
   update(dt, boat, wildlife = null) {
     if (this.isDead) {
       this.deathTimer += dt;
+      const sinkProgress = Math.min(1, this.deathTimer / this.deathDuration);
 
-      if (this.deathType === 'shred') {
-        // Wild propeller spin & disintegration
-        this.group.rotation.x += 24 * dt;
-        this.group.rotation.y += 32 * dt;
-        this.group.rotation.z += 28 * dt;
-        this.group.position.y = -this.deathTimer * 3.5;
-        const scale = Math.max(0.01, 1 - this.deathTimer * 2.2);
-        this.group.scale.setScalar(scale);
-      } else if (this.deathType === 'ram') {
-        // Ram thud: pushed under boat and rolling back
-        this.group.rotation.x += 10 * dt;
-        this.group.position.y = -this.deathTimer * 2.2;
-        const scale = Math.max(0.01, 1 - this.deathTimer * 1.8);
-        this.group.scale.setScalar(scale);
-      } else {
-        // Classic cartoon oar bonk flip
-        this.group.rotation.x += 14 * dt;
-        this.group.rotation.y += 18 * dt;
-        this.group.rotation.z += 10 * dt;
-        this.group.position.y = Math.sin(this.deathTimer * 8) * 1.4 - this.deathTimer * 2.0;
-        const scale = Math.max(0.01, 1 - this.deathTimer * 1.6);
-        this.group.scale.setScalar(scale);
+      const bob = Math.sin(this.deathTimer * 2.4 + this.wobbleSeed) * 0.05 * (1 - sinkProgress);
+      this.group.position.y = 0.08 + bob - sinkProgress * 0.95;
+      this.group.rotation.z = Math.sin(this.deathTimer * 1.3 + this.wobbleSeed) * 0.12 * (1 - sinkProgress);
+      if (this.bloodPuddle) {
+        const grow = Math.min(1, this.deathTimer * 2.5);
+        const fade = Math.min(1, Math.max(0, (this.deathDuration - this.deathTimer) / 1.2));
+        this.bloodPuddle.scale.setScalar(0.45 + grow * 0.35);
+        this.bloodPuddle.material.opacity = 0.75 * fade;
       }
       return;
     }
@@ -684,5 +721,10 @@ export class Smuggler {
 
   destroy() {
     this.scene.remove(this.group);
+    if (this.bloodPuddle) {
+      this.scene.remove(this.bloodPuddle);
+      this.bloodPuddle.material.dispose();
+      this.bloodPuddle = null;
+    }
   }
 }

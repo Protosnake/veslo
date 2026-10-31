@@ -92,6 +92,13 @@ export class SmugglerManager {
     return smuggler;
   }
 
+  spawnSwimmingAt(x, z) {
+    const smuggler = new Smuggler(this.scene, this.world, x, this.getBaseSpeed());
+    smuggler.startSwimmingAt(x, z);
+    this.smugglers.push(smuggler);
+    return smuggler;
+  }
+
   updateIntro(dt, boat) {
     for (const smuggler of this.smugglers) {
       smuggler.update(dt, boat);
@@ -102,6 +109,38 @@ export class SmugglerManager {
     this.firstWave = false;
     this.waveCount = Math.max(this.waveCount, 1);
     this.spawnTimer = 3 + Math.random() * 2;
+  }
+
+  findAkTarget(boat) {
+    const range = 40;
+    let target = null;
+    let bestDistance = Infinity;
+
+    for (const s of this.smugglers) {
+      if (s.isDead || s.state !== 'swimming') continue;
+
+      const dx = s.position.x - boat.position.x;
+      const dz = s.position.z - boat.position.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > range || distance < 0.001) continue;
+
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        target = s;
+      }
+    }
+
+    return target;
+  }
+
+  fireAkShot(boat) {
+    const target = this.findAkTarget(boat);
+    if (!target) return null;
+
+    target.ak();
+    this.totalSmacked++;
+    this.onScore(0, target.position, '???', 'ak');
+    return target;
   }
 
   update(dt, boat, wildlife = null) {
@@ -159,6 +198,7 @@ export class SmugglerManager {
         const distMotor = Math.hypot(s.position.x - motorHitbox.center.x, s.position.z - motorHitbox.center.z);
         if (distMotor <= motorHitbox.radius) {
           s.shred();
+          boat.applyMotorShred();
           this.totalSmacked++;
           this.score += 500;
           sound.playPropellerShred();
@@ -179,8 +219,23 @@ export class SmugglerManager {
         }
       }
 
+      if (
+        s.isDead &&
+        !s.corpseHit &&
+        (s.deathType === 'shred' || s.deathType === 'ak')
+      ) {
+        const distCorpse = Math.hypot(
+          s.position.x - hullHitbox.center.x,
+          s.position.z - hullHitbox.center.z
+        );
+        if (distCorpse <= hullHitbox.radius) {
+          s.corpseHit = true;
+          boat.applyRamImpact();
+        }
+      }
+
       // Cleanup finished death animation
-      if (s.isDead && s.deathTimer >= 0.6) {
+      if (s.isDead && s.deathTimer >= s.deathDuration) {
         s.destroy();
         this.smugglers.splice(i, 1);
       }

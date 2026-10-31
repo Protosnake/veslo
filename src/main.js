@@ -49,6 +49,30 @@ const PARTNER_SWEAR_KEYS = Array.from(
   (_, index) => `partner.swear.${index + 1}`
 );
 
+function readBatteryPercent(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(100, Math.max(0, parsed));
+}
+
+function readSpawnCount(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.floor(parsed));
+}
+
+const INITIAL_BATTERY =
+  readBatteryPercent(new URLSearchParams(window.location.search).get('battery'))
+  ?? readBatteryPercent(import.meta.env.VITE_START_BATTERY)
+  ?? 100;
+
+const INITIAL_SPAWN_COUNT =
+  readSpawnCount(new URLSearchParams(window.location.search).get('spawn'))
+  ?? readSpawnCount(import.meta.env.VITE_INITIAL_SPAWN)
+  ?? 0;
+
 function installPromptDismissed() {
   try {
     return localStorage.getItem(INSTALL_PROMPT_KEY) === '1';
@@ -189,10 +213,12 @@ class Game {
     };
 
     this.missionTime = 0;
-    this.battery = 100;
+    this.battery = INITIAL_BATTERY;
     this.batteryDead = false;
     this.batteryDeadTimer = 0;
     this.rechargedTimer = 0;
+    this.akReloadPending = false;
+    this.akShotCooldownUntil = 0;
     this.fps = 0;
     this.fpsFrames = 0;
     this.fpsElapsed = 0;
@@ -306,7 +332,7 @@ class Game {
       if (e.code === 'Space') {
         e.preventDefault();
         if (this.state === 'PLAYING') {
-          this.boat.triggerSlap();
+          this.triggerStrike();
         } else if (this.state === 'INTRO') {
           this.skipIntro();
         } else if (this.state === 'MENU') {
@@ -493,10 +519,10 @@ class Game {
         try { hitBtn.setPointerCapture(e.pointerId); } catch {}
       }
       if (this.state === 'PLAYING') {
-        this.boat.triggerSlap();
+        this.triggerStrike();
         clearInterval(this.hitRepeatTimer);
         this.hitRepeatTimer = setInterval(() => {
-          if (this.state === 'PLAYING') this.boat.triggerSlap();
+          if (this.state === 'PLAYING') this.triggerStrike();
         }, 360);
       }
     });
@@ -540,10 +566,12 @@ class Game {
 
     // Fresh drone feed for the new mission
     this.missionTime = 0;
-    this.battery = 100;
+    this.battery = INITIAL_BATTERY;
     this.batteryDead = false;
     this.batteryDeadTimer = 0;
     this.rechargedTimer = 0;
+    this.akReloadPending = false;
+    this.akShotCooldownUntil = 0;
     this.prevThreatCount = 0;
     if (this.osd.root) {
       this.osd.root.classList.remove('low-battery', 'signal-lost', 'battery-recharged');
@@ -688,6 +716,26 @@ class Game {
     this.smugglerManager.beginAfterIntro();
   }
 
+  spawnDebugSwimmers() {
+    if (INITIAL_SPAWN_COUNT <= 0) return;
+
+    const path = this.world.gravelPath;
+    const z = (path ? path.emergeZ : 0) + 2;
+    const halfWidth = this.world.riverHalfWidth ?? 24;
+    const centerX = this.boat.position.x;
+
+    for (let i = 0; i < INITIAL_SPAWN_COUNT; i++) {
+      const spread = (i - (INITIAL_SPAWN_COUNT - 1) / 2) * 5;
+      const jitter = (Math.random() - 0.5) * 3;
+      const x = THREE.MathUtils.clamp(
+        centerX + spread + jitter,
+        -halfWidth + 3,
+        halfWidth - 3
+      );
+      this.smugglerManager.spawnSwimmingAt(x, z);
+    }
+  }
+
   skipIntro() {
     if (this.state !== 'INTRO') return;
 
@@ -737,6 +785,7 @@ class Game {
     this.clearInput();
     this.glitchOsd(450);
     this.showOsdAlert(t('osd.alert.uplinkActive'), 'ok', 2.2);
+    this.spawnDebugSwimmers();
   }
 
   updateVanVisibility(dt) {
@@ -782,6 +831,30 @@ class Game {
 
   onWildlifeKilled(type, kills) {
     logger.log('WILDLIFE', `${type} killed`, { kills });
+  }
+
+  triggerStrike() {
+    if (this.batteryDead && this.smugglerManager.findAkTarget(this.boat)) {
+      this.fireAkShot();
+      return;
+    }
+    this.boat.triggerSlap();
+  }
+
+  fireAkShot() {
+    if (this.state !== 'PLAYING' || !this.batteryDead) return;
+
+    const now = performance.now();
+    if (now < this.akShotCooldownUntil) return;
+    this.akShotCooldownUntil = now + 90;
+
+    if (this.akReloadPending) {
+      sound.playAkReload();
+      this.akReloadPending = false;
+    }
+    sound.playAkShot();
+
+    this.smugglerManager.fireAkShot(this.boat);
   }
 
   onSmugglerSmacked(points, worldPos, text, type = 'whack') {
@@ -1115,6 +1188,7 @@ class Game {
     this.battery = 0;
     this.batteryDead = true;
     this.batteryDeadTimer = 0;
+    this.akReloadPending = true;
   }
 
   updateOSD() {

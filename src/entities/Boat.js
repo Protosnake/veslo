@@ -35,6 +35,7 @@ export class Boat {
     this.isCrashed = false;
     this.rockBumpCooldown = 0;
     this.isBankRam = false;
+    this.motorStallTimer = 0;
 
     // Scratch state reused every frame to keep the hot path allocation-free.
     this.yAxis = new THREE.Vector3(0, 1, 0);
@@ -348,9 +349,11 @@ export class Boat {
     this.isCrashed = false;
     this.rockBumpCooldown = 0;
     this.isBankRam = false;
+    this.motorStallTimer = 0;
 
     this.group.position.copy(this.position);
     this.group.rotation.set(0, 0, 0);
+    sound.startEngineSound();
   }
 
   triggerSlap() {
@@ -388,6 +391,15 @@ export class Boat {
   applyRamImpact() {
     this.velocity.multiplyScalar(0.35);
     this.speed = this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
+  }
+
+  applyMotorShred() {
+    this.velocity.set(0, 0, 0);
+    this.speed = 0;
+    this.angularVelocity = 0;
+    this.motorStallTimer = 0.5;
+    sound.stopEngineSound();
+    sound.playRotorThrottle();
   }
 
   bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier) {
@@ -439,6 +451,14 @@ export class Boat {
     }
     if (this.rockBumpCooldown > 0) {
       this.rockBumpCooldown -= dt;
+    }
+    if (this.motorStallTimer > 0) {
+      this.motorStallTimer = Math.max(0, this.motorStallTimer - dt);
+      this.velocity.set(0, 0, 0);
+      this.speed = 0;
+      this.angularVelocity = 0;
+      if (this.motorStallTimer <= 0) sound.startEngineSound();
+      return;
     }
 
     let throttle = 0;

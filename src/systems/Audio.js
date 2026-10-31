@@ -1,6 +1,8 @@
 // Web Audio API procedural sound synthesizer for Veslo
 import wildlifeOggUrl from '../assets/wildlife.ogg?url';
 import wildlifeMp3Url from '../assets/wildlife.mp3?url';
+import akReloadUrl from '../assets/ak-reload.mp3?url';
+import akShotUrl from '../assets/ak-shot.mp3?url';
 
 class SoundSystem {
   constructor() {
@@ -15,6 +17,9 @@ class SoundSystem {
     this.wildlifeSample = null;
     this.wildlifePromise = null;
     this.wildlifeSource = null;
+    this.akReloadSample = null;
+    this.akShotSample = null;
+    this.akPromise = null;
   }
 
   init() {
@@ -28,6 +33,7 @@ class SoundSystem {
       this.ctx.resume();
     }
     this.loadWildlife();
+    this.loadAkSamples();
     this.startEngineSound();
   }
 
@@ -56,6 +62,29 @@ class SoundSystem {
       });
 
     return this.wildlifePromise;
+  }
+
+  loadAkSamples() {
+    if (!this.ctx || this.akPromise) return this.akPromise;
+
+    const decode = (url) => fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then((data) => new Promise((resolve, reject) => {
+        this.ctx.decodeAudioData(data, resolve, reject);
+      }));
+
+    this.akPromise = Promise.all([
+      decode(akReloadUrl).catch(() => null),
+      decode(akShotUrl).catch(() => null)
+    ]).then(([reload, shot]) => {
+      this.akReloadSample = reload;
+      this.akShotSample = shot;
+    });
+
+    return this.akPromise;
   }
 
   startWildlife() {
@@ -122,6 +151,19 @@ class SoundSystem {
       this.engineOsc.frequency.setTargetAtTime(targetFreq, t, 0.08);
       this.engineGain.gain.setTargetAtTime(targetGain, t, 0.08);
     } catch (e) {}
+  }
+
+  stopEngineSound(fade = 0.15) {
+    if (!this.ctx || !this.engineRunning) return;
+    try {
+      const t = this.ctx.currentTime;
+      this.engineGain.gain.cancelScheduledValues(t);
+      this.engineGain.gain.setTargetAtTime(0.0001, t, fade);
+      this.engineOsc.stop(t + fade * 4);
+    } catch (e) {}
+    this.engineOsc = null;
+    this.engineGain = null;
+    this.engineRunning = false;
   }
 
   startVanEngine() {
@@ -406,6 +448,77 @@ class SoundSystem {
       nFilter.connect(nGain);
       nGain.connect(this.ctx.destination);
       noise.start(t);
+    } catch (e) {}
+  }
+
+  playAkBuffer(buffer, playbackRate = 1) {
+    if (!this.ctx || this.isMuted || !buffer) return;
+    try {
+      const t = this.ctx.currentTime;
+      const source = this.ctx.createBufferSource();
+      const gain = this.ctx.createGain();
+      source.buffer = buffer;
+      source.playbackRate.setValueAtTime(playbackRate, t);
+      gain.gain.setValueAtTime(0.5, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.55);
+      source.connect(gain);
+      gain.connect(this.ctx.destination);
+      source.start(t);
+    } catch (e) {}
+  }
+
+  playAkReload() {
+    if (!this.ctx || this.isMuted) return;
+    if (this.akReloadSample) {
+      this.playAkBuffer(this.akReloadSample, 1);
+      return;
+    }
+    const promise = this.loadAkSamples();
+    if (promise) {
+      promise.then(() => this.playAkBuffer(this.akReloadSample, 1)).catch(() => {});
+    }
+  }
+
+  playAkShot() {
+    if (!this.ctx || this.isMuted) return;
+    const pitch = 0.9 + Math.random() * 0.2;
+    if (this.akShotSample) {
+      this.playAkBuffer(this.akShotSample, pitch);
+      return;
+    }
+    const promise = this.loadAkSamples();
+    if (promise) {
+      promise.then(() => this.playAkBuffer(this.akShotSample, pitch)).catch(() => {});
+    }
+  }
+
+  playRotorThrottle() {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(400, t);
+      filter.frequency.linearRampToValueAtTime(1600, t + 0.12);
+      filter.frequency.linearRampToValueAtTime(280, t + 0.5);
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(60, t);
+      osc.frequency.exponentialRampToValueAtTime(190, t + 0.16);
+      osc.frequency.exponentialRampToValueAtTime(48, t + 0.5);
+
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.28, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.52);
     } catch (e) {}
   }
 
