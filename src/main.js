@@ -196,7 +196,6 @@ class Game {
     this.cameraDir = new THREE.Vector3();
     this.vanScreenPos = new THREE.Vector3();
     this.prevThreatCount = 0;
-    this.lowBatteryWarned = false;
     this.alertTimeout = null;
     this.glitchTimeout = null;
     this.buildHeadingTape();
@@ -526,7 +525,6 @@ class Game {
     this.batteryDeadTimer = 0;
     this.rechargedTimer = 0;
     this.prevThreatCount = 0;
-    this.lowBatteryWarned = false;
     if (this.osd.root) {
       this.osd.root.classList.remove('low-battery', 'signal-lost', 'battery-recharged');
     }
@@ -1038,7 +1036,6 @@ class Game {
         this.batteryDead = false;
         this.batteryDeadTimer = 0;
         this.rechargedTimer = 3;
-        this.lowBatteryWarned = false;
       }
       return;
     }
@@ -1098,11 +1095,6 @@ class Game {
       'battery-recharged',
       playing && this.rechargedTimer > 0
     );
-
-    if (lowBattery && !this.lowBatteryWarned) {
-      this.lowBatteryWarned = true;
-      this.showOsdAlert(t('osd.alert.batteryCritical'), 'danger', 2.2);
-    }
 
     if (this.osd.threatCount) {
       const threats = this.smugglerManager.smugglers.filter(
