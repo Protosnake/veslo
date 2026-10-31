@@ -331,9 +331,10 @@ class Game {
         const deadzone = 0.12;
         const value = -dy / limit;
         const magnitude = Math.abs(value);
-        this.input.throttleAxis = magnitude < deadzone
+        const shaped = magnitude < deadzone
           ? 0
           : Math.sign(value) * ((magnitude - deadzone) / (1 - deadzone));
+        this.input.throttleAxis = shaped * 0.7;
         throttle.classList.add('is-active');
       };
 
