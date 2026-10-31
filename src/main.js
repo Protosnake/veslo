@@ -29,26 +29,75 @@ function lockLandscape() {
   } catch {}
 }
 
+function isStandaloneMode() {
+  if (window.navigator.standalone === true) return true;
+  if (typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(display-mode: fullscreen)').matches ||
+    window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function isIOSDevice() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+const INSTALL_PROMPT_KEY = 'veslo_install_prompt_dismissed';
+
+function installPromptDismissed() {
+  try {
+    return localStorage.getItem(INSTALL_PROMPT_KEY) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function showIOSInstallPrompt() {
+  if (isStandaloneMode() || !isIOSDevice() || installPromptDismissed()) return;
+  document.getElementById('install-modal')?.classList.remove('hidden');
+}
+
 function requestGameFullscreen() {
   if (!isTouchDevice()) return;
 
-  if (document.fullscreenElement || document.webkitFullscreenElement) {
+  const activeFullscreen =
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.mozFullScreenElement ||
+    document.msFullscreenElement;
+
+  if (activeFullscreen) {
     lockLandscape();
     return;
   }
 
   const root = document.documentElement;
-  const request = root.requestFullscreen || root.webkitRequestFullscreen;
-  if (!request) return;
+  const request =
+    root.requestFullscreen ||
+    root.webkitRequestFullscreen ||
+    root.mozRequestFullScreen ||
+    root.msRequestFullscreen;
+
+  if (!request) {
+    showIOSInstallPrompt();
+    return;
+  }
 
   try {
     const result = request.call(root, { navigationUI: 'hide' });
     if (result && typeof result.then === 'function') {
-      result.then(lockLandscape).catch(() => {});
+      result.then(lockLandscape).catch(() => showIOSInstallPrompt());
     } else {
       lockLandscape();
+      setTimeout(() => {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          showIOSInstallPrompt();
+        }
+      }, 500);
     }
-  } catch {}
+  } catch (e) {
+    showIOSInstallPrompt();
+  }
 }
 
 const SUPPORTED_ASPECT = 16 / 9;
@@ -1123,6 +1172,21 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('start-modal')?.classList.add('hidden');
     return;
   }
+
+  const installModal = document.getElementById('install-modal');
+  const installContinueBtn = document.getElementById('install-continue-btn');
+  if (installModal) {
+    installModal.addEventListener('pointerdown', (e) => e.stopPropagation());
+  }
+  if (installModal && installContinueBtn) {
+    installContinueBtn.addEventListener('click', () => {
+      try {
+        localStorage.setItem(INSTALL_PROMPT_KEY, '1');
+      } catch (e) {}
+      installModal.classList.add('hidden');
+    });
+  }
+  showIOSInstallPrompt();
 
   mountRankSprites();
   try {

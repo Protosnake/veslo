@@ -10,6 +10,10 @@ const translations = {
     'page.title': 'Річковий Прикордонний Патруль',
     'orientation.title': 'ПОТРІБЕН ЛАНДШАФТНИЙ РЕЖИМ',
     'orientation.subtitle': 'Поверніть пристрій горизонтально, щоб грати у Veslo.',
+    'fullscreen.prompt.eyebrow': 'ПОРАДА ДЛЯ ПОВНОГО ЕКРАНА',
+    'fullscreen.prompt.title': 'ДОДАЙТЕ НА ЕКРАН ДОМІВКИ',
+    'fullscreen.prompt.body': 'Safari не приховує адресний рядок у звичайній вкладці. Натисніть <strong>Поділитися</strong> → <strong>На екран Домівка</strong>, а потім запустіть Veslo з екрана Домівки для повноекранного режиму.',
+    'fullscreen.prompt.btn': 'ПРОДОВЖИТИ В БРАУЗЕРІ',
 
     // ── Drone OSD ──
     'osd.drone': 'DRONE D-07',
@@ -137,6 +141,10 @@ const translations = {
     'page.title': 'VESLO — Border River Patrol',
     'orientation.title': 'LANDSCAPE MODE REQUIRED',
     'orientation.subtitle': 'Rotate your device horizontally to play Veslo.',
+    'fullscreen.prompt.eyebrow': 'FULLSCREEN TIP',
+    'fullscreen.prompt.title': 'ADD TO HOME SCREEN',
+    'fullscreen.prompt.body': 'Safari keeps its address bar in normal tabs. Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then launch Veslo from your Home Screen for true fullscreen.',
+    'fullscreen.prompt.btn': 'CONTINUE IN BROWSER',
 
     // ── Drone OSD ──
     'osd.drone': 'DRONE D-07',
