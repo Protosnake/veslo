@@ -8,6 +8,8 @@ const translations = {
   ua: {
     // ── Page ──
     'page.title': 'Річковий Прикордонний Патруль',
+    'orientation.title': 'ПОТРІБЕН ЛАНДШАФТНИЙ РЕЖИМ',
+    'orientation.subtitle': 'Поверніть пристрій горизонтально, щоб грати у Veslo.',
 
     // ── Drone OSD ──
     'osd.drone': 'DRONE D-07',
@@ -127,6 +129,8 @@ const translations = {
   en: {
     // ── Page ──
     'page.title': 'VESLO — Border River Patrol',
+    'orientation.title': 'LANDSCAPE MODE REQUIRED',
+    'orientation.subtitle': 'Rotate your device horizontally to play Veslo.',
 
     // ── Drone OSD ──
     'osd.drone': 'DRONE D-07',

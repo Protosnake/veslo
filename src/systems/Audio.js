@@ -1,5 +1,5 @@
 // Web Audio API procedural sound synthesizer for Veslo
-import wildlifeUrl from '../assets/wildlife.ogg?url';
+import wildlifeUrl from '../assets/wildlife.mp3?url';
 
 class SoundSystem {
   constructor() {

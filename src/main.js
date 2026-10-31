@@ -212,6 +212,7 @@ class Game {
     });
 
     window.addEventListener('blur', () => this.clearInput());
+    window.addEventListener('orientationchange', () => this.clearInput());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clearInput();
     });
@@ -707,7 +708,9 @@ class Game {
     const dt = Math.min(rawDt, 0.1);
     this.updateFps(rawDt);
 
-    if (this.state === 'PLAYING') {
+    const portraitLocked = document.body.classList.contains('is-portrait');
+
+    if (this.state === 'PLAYING' && !portraitLocked) {
       this.missionTime += dt;
       this.battery = Math.max(6, this.battery - dt * 0.22);
       this.boat.update(dt, this.input);
@@ -752,7 +755,18 @@ function showWebGLUnavailable() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  document.body.classList.toggle('touch-device', isTouchDevice());
+  const touch = isTouchDevice();
+  const updateViewportClasses = () => {
+    document.body.classList.toggle('touch-device', touch);
+    document.body.classList.toggle(
+      'is-portrait',
+      touch && window.innerHeight > window.innerWidth
+    );
+  };
+
+  updateViewportClasses();
+  window.addEventListener('resize', updateViewportClasses);
+  window.addEventListener('orientationchange', updateViewportClasses);
 
   const refreshResolutionNotice = () => {
     document.getElementById('resolution-modal')?.remove();
