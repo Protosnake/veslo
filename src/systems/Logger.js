@@ -43,6 +43,10 @@ class DebugLogger {
   }
 
   async initBackendPolling() {
+    // The debug backend only exists in the Vite dev server; on static hosting
+    // there is nothing to poll, so skip it (F2 still shows the overlay locally).
+    if (import.meta.env.PROD) return;
+
     // Check backend status immediately and every 3 seconds
     const check = async () => {
       try {

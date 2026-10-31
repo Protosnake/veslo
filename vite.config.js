@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 
 export default defineConfig({
+  // Relative base so the build works from any subpath (e.g. GitHub Pages
+  // project sites at /veslo/) as well as from a custom domain root.
+  base: './',
   server: {
     port: 5174
   },
