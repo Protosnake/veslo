@@ -44,6 +44,11 @@ function isIOSDevice() {
 
 const INSTALL_PROMPT_KEY = 'veslo_install_prompt_dismissed';
 
+const PARTNER_SWEAR_KEYS = Array.from(
+  { length: 18 },
+  (_, index) => `partner.swear.${index + 1}`
+);
+
 function installPromptDismissed() {
   try {
     return localStorage.getItem(INSTALL_PROMPT_KEY) === '1';
@@ -204,10 +209,24 @@ class Game {
     this.highScore = parseInt(localStorage.getItem('veslo_high_score') || '0', 10);
     this.lastGameOver = null;
 
+    this.partnerBubble = document.createElement('div');
+    this.partnerBubble.className = 'partner-bubble';
+    this.partnerBubble.setAttribute('aria-live', 'polite');
+    document.getElementById('ui-layer')?.appendChild(this.partnerBubble);
+    this.partnerBubbleAnchor = new THREE.Vector3();
+    this.partnerSwearTimer = 0;
+    this.partnerSwearCooldown = 0;
+    this.partnerSwearIndex = -1;
+
     // Core 3D engine
     this.renderer = new GameRenderer(this.container);
     this.world = new RiverWorld(this.renderer.scene);
-    this.boat = new Boat(this.renderer.scene, this.world, (reason) => this.onBoatCrash(reason));
+    this.boat = new Boat(
+      this.renderer.scene,
+      this.world,
+      (reason) => this.onBoatCrash(reason),
+      () => this.onRockBump()
+    );
 
     // Smuggler Manager
     this.smugglerManager = new SmugglerManager(
@@ -516,6 +535,7 @@ class Game {
     this.smugglerManager.reset();
     this.wildlifeManager.reset();
     rankSystem.reset();
+    this.hidePartnerBubble();
     this.updateHUD();
 
     // Fresh drone feed for the new mission
@@ -807,6 +827,7 @@ class Game {
   onBoatCrash(reason) {
     if (this.state !== 'PLAYING') return;
     this.state = 'GAMEOVER';
+    this.hidePartnerBubble();
     this.clearInput();
     this.renderer.triggerScreenShake(1.3);
     this.world.triggerCrowdReaction();
@@ -824,9 +845,57 @@ class Game {
     this.gameOverModal.classList.remove('hidden');
   }
 
+  onRockBump() {
+    if (this.state !== 'PLAYING') return;
+    this.renderer.triggerScreenShake(0.25);
+    this.showPartnerSwear();
+  }
+
+  showPartnerSwear() {
+    if (!this.partnerBubble || this.partnerSwearCooldown > 0) return;
+    this.partnerSwearCooldown = 2.4;
+    this.partnerSwearTimer = 2.1;
+    let index = Math.floor(Math.random() * PARTNER_SWEAR_KEYS.length);
+    if (index === this.partnerSwearIndex) {
+      index = (index + 1 + Math.floor(Math.random() * (PARTNER_SWEAR_KEYS.length - 1))) % PARTNER_SWEAR_KEYS.length;
+    }
+    this.partnerSwearIndex = index;
+    this.partnerBubble.textContent = t(PARTNER_SWEAR_KEYS[index]);
+    this.partnerBubble.classList.add('visible');
+  }
+
+  hidePartnerBubble() {
+    if (!this.partnerBubble) return;
+    this.partnerSwearTimer = 0;
+    this.partnerSwearCooldown = 0;
+    this.partnerSwearIndex = -1;
+    this.partnerBubble.classList.remove('visible');
+  }
+
+  updatePartnerBubble(dt) {
+    if (this.partnerSwearCooldown > 0) this.partnerSwearCooldown -= dt;
+    if (!this.partnerBubble || this.partnerSwearTimer <= 0) return;
+
+    this.partnerSwearTimer -= dt;
+    if (this.partnerSwearTimer <= 0 || this.state !== 'PLAYING') {
+      this.partnerBubble.classList.remove('visible');
+      return;
+    }
+
+    this.partnerBubbleAnchor.copy(this.boat.position);
+    this.partnerBubbleAnchor.y += 3.6;
+    this.renderer.camera.updateMatrixWorld();
+    this.partnerBubbleAnchor.project(this.renderer.camera);
+    const x = (this.partnerBubbleAnchor.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-this.partnerBubbleAnchor.y * 0.5 + 0.5) * window.innerHeight;
+    this.partnerBubble.style.left = `${x}px`;
+    this.partnerBubble.style.top = `${y}px`;
+  }
+
   onGameOver(breachedSmuggler) {
     if (this.state !== 'PLAYING') return;
     this.state = 'GAMEOVER';
+    this.hidePartnerBubble();
     this.clearInput();
     this.renderer.triggerScreenShake(0.8);
     this.world.triggerCrowdReaction();
@@ -1153,6 +1222,7 @@ class Game {
       this.boat.position.z
     );
     this.renderer.updateCamera(dt);
+    this.updatePartnerBubble(dt);
 
     // The compass tape must follow the camera every frame to stay smooth;
     // it is a single GPU-composited transform, so this is cheap.

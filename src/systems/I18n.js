@@ -124,6 +124,26 @@ const translations = {
     'crash.west': 'ТВОЮ НАЛЄВО, КУДИ ТИ ЇДЕШ?',
     'crash.east': 'ХОЛЕРА, ДАВАЙ ВЗАД!',
 
+    // ── Partner Rock-Bump Swears ──
+    'partner.swear.1': "Ярік, блядь!",
+    'partner.swear.2': 'Обережно, сука!',
+    'partner.swear.3': 'Шамаіч, не души!',
+    'partner.swear.4': 'Єбать його в рот!',
+    'partner.swear.5': 'Сука!',
+    'partner.swear.6': 'Пізда!',
+    'partner.swear.7': 'Піздец нахуй!',
+    'partner.swear.8': "В'їбалися нахуй!",
+    'partner.swear.9': '3 наряда вне очереді!',
+    'partner.swear.10': 'Їбать його в рот!',
+    'partner.swear.11': 'Ти шо довбойоб?',
+    'partner.swear.12': 'Блядь куда ти їдеш?',
+    'partner.swear.13': 'Сука придурошне!',
+    'partner.swear.14': 'Да... єбать-єбать...',
+    'partner.swear.15': 'Ти сказал, шо ти шарішь в етой тємє!',
+    'partner.swear.16': 'Прітормозі!',
+    'partner.swear.17': 'Прівикні к аппарату!',
+    'partner.swear.18': 'Остановітє я сойду!',
+
     // ── WebGL Fallback ──
     'error.webgl.eyebrow': 'ТРАНСЛЯЦІЯ НЕДОСТУПНА',
     'error.webgl.title': 'WEBGL НЕДОСТУПНИЙ',
@@ -256,6 +276,26 @@ const translations = {
     'crash.south': 'CRASHED ONTO SOUTH BEACH!',
     'crash.west': 'CRASHED INTO WEST REEF BARRIER!',
     'crash.east': 'CRASHED INTO EAST REEF BARRIER!',
+
+    // ── Partner Rock-Bump Swears ──
+    'partner.swear.1': 'Yarik, for fuck sake!',
+    'partner.swear.2': 'Careful, you bitch!',
+    'partner.swear.3': "Shamaich, don't crowd me!",
+    'partner.swear.4': 'Fuck him in the mouth!',
+    'partner.swear.5': 'Bitch!',
+    'partner.swear.6': 'Cunt!',
+    'partner.swear.7': 'Fucked to hell!',
+    'partner.swear.8': 'We smashed right into it!',
+    'partner.swear.9': 'Three extra duties out of turn!',
+    'partner.swear.10': 'Fuck him in the mouth!',
+    'partner.swear.11': 'Are you a fucking idiot?',
+    'partner.swear.12': 'Where the fuck are you going?',
+    'partner.swear.13': 'You fucking moron!',
+    'partner.swear.14': 'Yeah... fuck-fuck...',
+    'partner.swear.15': 'You said you knew this topic!',
+    'partner.swear.16': 'Slow the fuck down!',
+    'partner.swear.17': 'Get used to the machine!',
+    'partner.swear.18': "Stop, I'm getting out!",
 
     // ── WebGL Fallback ──
     'error.webgl.eyebrow': 'FEED UNAVAILABLE',

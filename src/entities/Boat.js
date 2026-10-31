@@ -3,10 +3,11 @@ import { sound } from '../systems/Audio.js';
 import { PLAY_MIN_X, PLAY_MAX_X, PLAY_MIN_Z, PLAY_MAX_Z } from '../world/Bounds.js';
 
 export class Boat {
-  constructor(scene, riverWorld, onLandCrash) {
+  constructor(scene, riverWorld, onLandCrash, onRockBump) {
     this.scene = scene;
     this.world = riverWorld;
     this.onLandCrash = onLandCrash;
+    this.onRockBump = onRockBump;
 
     // Kinematics & Physics
     this.position = new THREE.Vector3(0, 0, 0);
@@ -32,6 +33,7 @@ export class Boat {
     this.slapCooldown = 0;
     this.slapArcAngle = 0;
     this.isCrashed = false;
+    this.rockBumpCooldown = 0;
 
     // Scratch state reused every frame to keep the hot path allocation-free.
     this.yAxis = new THREE.Vector3(0, 1, 0);
@@ -343,6 +345,7 @@ export class Boat {
     this.slapTime = 0;
     this.slapCooldown = 0;
     this.isCrashed = false;
+    this.rockBumpCooldown = 0;
 
     this.group.position.copy(this.position);
     this.group.rotation.set(0, 0, 0);
@@ -380,9 +383,55 @@ export class Boat {
     return this.hullHitbox;
   }
 
+  bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier) {
+    let normalX = 0;
+    let normalZ = 0;
+
+    if (rockHit) {
+      const dx = this.position.x - rockHit.x;
+      const dz = this.position.z - rockHit.z;
+      const distance = Math.hypot(dx, dz) || 1;
+      normalX = dx / distance;
+      normalZ = dz / distance;
+      const minDistance = rockHit.radius + 2.5;
+      this.position.x = rockHit.x + normalX * minDistance;
+      this.position.z = rockHit.z + normalZ * minDistance;
+    } else if (hitWestBarrier) {
+      this.position.x = PLAY_MIN_X;
+      normalX = 1;
+    } else if (hitEastBarrier) {
+      this.position.x = PLAY_MAX_X;
+      normalX = -1;
+    }
+
+    const normalSpeed = this.velocity.x * normalX + this.velocity.z * normalZ;
+    const impact = normalSpeed < -0.4;
+
+    if (impact) {
+      const restitution = 0.35;
+      this.velocity.x -= (1 + restitution) * normalSpeed * normalX;
+      this.velocity.z -= (1 + restitution) * normalSpeed * normalZ;
+    }
+    this.velocity.multiplyScalar(0.55);
+    this.speed = this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
+    this.angularVelocity *= 0.5;
+
+    if (impact && rockHit && this.world.emitRockImpact) {
+      this.world.emitRockImpact(this.position.x, this.position.z, rockHit);
+    }
+
+    if (impact && this.rockBumpCooldown <= 0) {
+      this.rockBumpCooldown = 1.2;
+      if (this.onRockBump) this.onRockBump(rockHit);
+    }
+  }
+
   update(dt, input) {
     if (this.slapCooldown > 0) {
       this.slapCooldown -= dt;
+    }
+    if (this.rockBumpCooldown > 0) {
+      this.rockBumpCooldown -= dt;
     }
 
     let throttle = 0;
@@ -491,29 +540,20 @@ export class Boat {
       }
     }
 
-    if (
-      !this.isCrashed &&
-      (hitNorthBank || hitSouthBank || hitWestBarrier || hitEastBarrier || rockHit)
-    ) {
-      const hitRock = Boolean(rockHit);
+    if (!this.isCrashed && (hitNorthBank || hitSouthBank)) {
       this.isCrashed = true;
       this.speed = 0;
       this.velocity.set(0, 0, 0);
       this.angularVelocity = 0;
 
-      if (hitRock && this.world.emitRockImpact) {
-        this.world.emitRockImpact(this.position.x, this.position.z, rockHit);
-      }
-
       if (this.onLandCrash) {
-        let reason = 'riverbank';
-        if (hitNorthBank) reason = 'north';
-        else if (hitSouthBank) reason = 'south';
-        else if (hitWestBarrier || (hitRock && this.position.x < 0)) reason = 'west';
-        else if (hitEastBarrier || hitRock) reason = 'east';
-        this.onLandCrash(reason);
+        this.onLandCrash(hitNorthBank ? 'north' : 'south');
       }
       return;
+    }
+
+    if (!this.isCrashed && (rockHit || hitWestBarrier || hitEastBarrier)) {
+      this.bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier);
     }
 
     const speedRatio = Math.abs(this.speed) / this.maxSpeed;

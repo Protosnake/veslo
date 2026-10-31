@@ -325,6 +325,44 @@ html, body {
   100% { opacity: 0; transform: translate(-50%, -140%) scale(0.8); }
 }
 
+/* Partner speech bubble above the boat */
+.partner-bubble {
+  position: absolute;
+  z-index: 40;
+  transform: translate(-50%, -100%);
+  max-width: clamp(180px, 42vw, 360px);
+  padding: 9px 14px;
+  background: rgba(10, 18, 13, 0.94);
+  border: 2px solid var(--primary-color);
+  border-radius: 12px;
+  color: #ffe66a;
+  font-family: var(--osd-mono);
+  font-size: clamp(12px, 1.4vw, 16px);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 20px rgba(255, 208, 0, 0.15);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.partner-bubble.visible {
+  opacity: 1;
+}
+
+.partner-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 9px solid transparent;
+  border-top-color: var(--primary-color);
+}
+
 /* Modal Overlay (Start & Game Over Screens) */
 .modal-overlay {
   position: absolute;
