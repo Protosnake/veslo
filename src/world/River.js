@@ -13,14 +13,18 @@ const RIVER_SWELL = [
   [0.20, 0.80, 0.050, -1.60, 0.9]  // bank reflection chop
 ];
 
+function waveAngleGLSL(kx, kz, speed, phase) {
+  return [
+    kx ? `${kx.toFixed(3)} * p.x` : null,
+    kz ? `${kz.toFixed(3)} * p.y` : null,
+    `${speed.toFixed(3)} * t`,
+    phase ? `${phase.toFixed(3)}` : null
+  ].filter(Boolean).join(' + ');
+}
+
 function waveGradientGLSL(name, waves) {
   const lines = waves.map(([kx, kz, amp, speed, phase]) => {
-    const angle = [
-      kx ? `${kx.toFixed(3)} * p.x` : null,
-      kz ? `${kz.toFixed(3)} * p.y` : null,
-      `${speed.toFixed(3)} * t`,
-      phase ? `${phase.toFixed(3)}` : null
-    ].filter(Boolean).join(' + ');
+    const angle = waveAngleGLSL(kx, kz, speed, phase);
     const wavelength = Math.hypot(kx, kz).toFixed(3);
     return `  g += vec2(${(amp * kx).toFixed(4)}, ${(amp * kz).toFixed(4)}) * cos(${angle}) * (1.0 - smoothstep(0.8, 2.5, ${wavelength} * pixelSize));`;
   });
@@ -32,34 +36,27 @@ ${lines.join('\n')}
 }`;
 }
 
+function waveHeightGLSL(name, waves) {
+  const lines = waves.map(([kx, kz, amp, speed, phase]) => {
+    const angle = waveAngleGLSL(kx, kz, speed, phase);
+    return `  h += ${amp.toFixed(4)} * sin(${angle});`;
+  });
+
+  return `float ${name}(vec2 p, float t) {
+  float h = 0.0;
+${lines.join('\n')}
+  return h;
+}`;
+}
+
+const RIVER_SWELL_HEIGHT_GLSL = waveHeightGLSL('riverSwellHeight', RIVER_SWELL);
+
 const RIVER_NORMAL_GLSL = `
 ${waveGradientGLSL('riverSwellGrad', RIVER_SWELL)}
 vec3 riverWaveNormal(vec2 p, float t, float pixelSize) {
   vec2 g = riverSwellGrad(p, t, pixelSize);
   return normalize(vec3(-g.x, 1.0, -g.y));
 }`;
-
-const _waveSample = { y: 0, dx: 0, dz: 0 };
-
-function sampleWaterInto(out, x, z, t) {
-  let y = 0;
-  let dx = 0;
-  let dz = 0;
-
-  for (let i = 0; i < RIVER_SWELL.length; i++) {
-    const [kx, kz, amp, speed, phase] = RIVER_SWELL[i];
-    const angle = kx * x + kz * z + speed * t + phase;
-    const c = Math.cos(angle);
-    y += amp * Math.sin(angle);
-    dx += amp * kx * c;
-    dz += amp * kz * c;
-  }
-
-  out.y = y;
-  out.dx = dx;
-  out.dz = dz;
-  return out;
-}
 
 
 export class RiverWorld {
@@ -69,8 +66,9 @@ export class RiverWorld {
     this.particles = [];
     this.particleIndex = 0;
 
-    this.reedsList = [];
-    this.crowdList = [];
+    this.reedsWind = { value: 0 };
+    this.crowdTime = { value: 0 };
+    this.crowdShock = { value: 0 };
     this.crowdShockTime = 0;
 
     // Shared river current (world units/sec). Weather can later modify this object.
@@ -81,12 +79,15 @@ export class RiverWorld {
 
     this.riverHalfWidth = 16;
     this.riverSamples = this.buildRiverCenterline();
+    this.rockColliders = [];
 
     this.createBanks();
+    this.createGravelPath();
     this.createWater();
+    this.createRiverBoundaries(); // East & West natural barriers (rocks, boulders, reeds)
     this.createReedsAndVegetation();
+    this.createBankVegetation();
     this.createEnvironmentDetails();
-    this.createRiverBoundaries(); // East & West natural barriers (rocks, reeds, warning posts)
     this.createForests();
     this.createAppalledCrowd();
     this.createParticleSystem();
@@ -111,9 +112,29 @@ export class RiverWorld {
       new THREE.Vector3(340, 0, -200)
     );
 
-    for (let i = 0; i <= 80; i++) points.push(westBend.getPoint(i / 80));
+    for (let i = 0; i < 80; i++) points.push(westBend.getPoint(i / 80));
     for (let x = -45; x <= 45; x += 2.5) points.push(new THREE.Vector3(x, 0, 0));
     for (let i = 1; i <= 100; i++) points.push(eastBend.getPoint(i / 100));
+
+    // Continue both ends far into the fog so the river/water surface never
+    // visibly stops. The playable stretch and its barriers stay unchanged.
+    const extensionLength = 800;
+    const extensionStep = 5;
+
+    const westOut = new THREE.Vector3().subVectors(points[0], points[1]).normalize();
+    const westExtension = [];
+    for (let d = extensionStep; d <= extensionLength; d += extensionStep) {
+      westExtension.push(points[0].clone().addScaledVector(westOut, d));
+    }
+    points.unshift(...westExtension.reverse());
+
+    const eastOut = new THREE.Vector3()
+      .subVectors(points[points.length - 1], points[points.length - 2])
+      .normalize();
+    const eastEnd = points[points.length - 1].clone();
+    for (let d = extensionStep; d <= extensionLength; d += extensionStep) {
+      points.push(eastEnd.clone().addScaledVector(eastOut, d));
+    }
 
     const samples = [];
     for (let i = 0; i < points.length; i++) {
@@ -222,8 +243,8 @@ export class RiverWorld {
     ));
 
     // Close the polygon far away on the same side of the river.
-    points.push(new THREE.Vector2(600, farSide * -600));
-    points.push(new THREE.Vector2(-600, farSide * -600));
+    points.push(new THREE.Vector2(2500, farSide * -2500));
+    points.push(new THREE.Vector2(-2500, farSide * -2500));
 
     return new THREE.Shape(points);
   }
@@ -231,11 +252,12 @@ export class RiverWorld {
   createBanks() {
     const northMaterial = new THREE.MeshLambertMaterial({ color: 0x3d6630, side: THREE.DoubleSide });
     const southMaterial = new THREE.MeshLambertMaterial({ color: 0x4f8339, side: THREE.DoubleSide });
-    const dirtMaterial = new THREE.MeshLambertMaterial({ color: 0x4b3826, side: THREE.DoubleSide });
+    const dirtMaterial = new THREE.MeshLambertMaterial({ color: 0x557a37, emissive: 0x1b2a12, side: THREE.DoubleSide });
+    const lipMaterial = new THREE.MeshLambertMaterial({ color: 0x4f7333, emissive: 0x16230f, side: THREE.DoubleSide });
     const sandMaterial = new THREE.MeshLambertMaterial({ color: 0xbdb07d, side: THREE.DoubleSide });
 
     // Northern bank plateau (high border side)
-    const northGeo = new THREE.ShapeGeometry(this.buildLandShape(-this.riverHalfWidth - 2.2, -1));
+    const northGeo = new THREE.ShapeGeometry(this.buildLandShape(-this.riverHalfWidth - 1.9, -1));
     northGeo.rotateX(-Math.PI / 2);
     const northBank = new THREE.Mesh(northGeo, northMaterial);
     northBank.position.y = 4.5;
@@ -257,13 +279,195 @@ export class RiverWorld {
     this.scene.add(wall);
 
     // Dirt lip on top of the cliff, plus the sandy southern shoreline
-    const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.2, -this.riverHalfWidth, 4.52), dirtMaterial);
+    const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.5, -this.riverHalfWidth + 0.15, 4.52), lipMaterial);
     dirtLip.receiveShadow = true;
     this.scene.add(dirtLip);
 
     const sand = new THREE.Mesh(this.buildRibbonGeometry(this.riverHalfWidth, this.riverHalfWidth + 2.6, 0.0), sandMaterial);
     sand.receiveShadow = true;
     this.scene.add(sand);
+  }
+
+  createGravelPath() {
+    const points = [
+      { x: 60, y: 4.66, z: -66 },
+      { x: 47, y: 4.66, z: -57 },
+      { x: 35, y: 4.66, z: -49 },
+      { x: 26, y: 4.66, z: -42 },
+      { x: 19, y: 4.66, z: -36 },
+      { x: 14.2, y: 4.65, z: -31 },
+      { x: 10.6, y: 4.62, z: -27 },
+      { x: 8.8, y: 4.56, z: -23.5 },
+      { x: 8.8, y: 4.55, z: -19.5 },
+      { x: 8.8, y: 4.54, z: -17.8 }
+    ];
+
+    const path = {
+      x: 8.8,
+      halfWidth: 1.5,
+      zMin: -66,
+      zMax: -17.8,
+      walkStartZ: -23.5,
+      reedLineZ: -17.75,
+      emergeZ: -14.7,
+      reedZMin: -25,
+      reedZMax: -19.45
+    };
+    this.gravelPath = path;
+
+    const positions = [];
+    const indices = [];
+
+    points.forEach((point, i) => {
+      const prev = points[Math.max(0, i - 1)];
+      const next = points[Math.min(points.length - 1, i + 1)];
+      const tx = next.x - prev.x;
+      const tz = next.z - prev.z;
+      const length = Math.hypot(tx, tz) || 1;
+      const nx = -tz / length;
+      const nz = tx / length;
+
+      positions.push(
+        point.x + nx * path.halfWidth, point.y, point.z + nz * path.halfWidth,
+        point.x - nx * path.halfWidth, point.y, point.z - nz * path.halfWidth
+      );
+
+      if (i > 0) {
+        const a = (i - 1) * 2;
+        const b = a + 1;
+        const c = i * 2;
+        const d = c + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    });
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshLambertMaterial({ color: 0x6f5a42, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+
+    const heightAt = (z) => {
+      if (z <= points[0].z) return points[0].y;
+
+      for (let i = 1; i < points.length; i++) {
+        if (z <= points[i].z) {
+          const a = points[i - 1];
+          const b = points[i];
+          const t = (z - a.z) / (b.z - a.z);
+          return a.y + (b.y - a.y) * t;
+        }
+      }
+      return points[points.length - 1].y;
+    };
+    path.heightAt = heightAt;
+
+    const segments = [];
+    let totalLength = 0;
+
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1];
+      const b = points[i];
+      const length = Math.hypot(b.x - a.x, b.z - a.z);
+      segments.push({ a, b, length, start: totalLength });
+      totalLength += length;
+    }
+
+    const samplePath = (distance) => {
+      const d = Math.max(0, Math.min(totalLength, distance));
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        if (d <= segment.start + segment.length || i === segments.length - 1) {
+          const t = (d - segment.start) / segment.length;
+          return {
+            x: segment.a.x + (segment.b.x - segment.a.x) * t,
+            y: segment.a.y + (segment.b.y - segment.a.y) * t,
+            z: segment.a.z + (segment.b.z - segment.a.z) * t
+          };
+        }
+      }
+      return points[points.length - 1];
+    };
+
+    path.length = totalLength;
+    path.sample = samplePath;
+    path.smugglerSpawnDistance = totalLength * 0.55;
+
+    path.frameAt = (distance) => {
+      const sample = samplePath(distance);
+      const ahead = samplePath(Math.min(totalLength, distance + 0.5));
+      const behind = samplePath(Math.max(0, distance - 0.5));
+      let tx = ahead.x - behind.x;
+      let tz = ahead.z - behind.z;
+      const length = Math.hypot(tx, tz) || 1;
+      tx /= length;
+      tz /= length;
+
+      return {
+        x: sample.x,
+        y: sample.y,
+        z: sample.z,
+        tx,
+        tz,
+        nx: tz,
+        nz: -tx,
+        heading: Math.atan2(tx, tz)
+      };
+    };
+
+    path.isNear = (x, z, padding) => {
+      const paddingSq = padding * padding;
+
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1];
+        const b = points[i];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const lengthSq = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / lengthSq));
+        const px = a.x + dx * t;
+        const pz = a.z + dz * t;
+        const distX = x - px;
+        const distZ = z - pz;
+
+        if (distX * distX + distZ * distZ <= paddingSq) return true;
+      }
+      return false;
+    };
+
+    const pebbleCount = 180;
+    const pebbleGeo = new THREE.DodecahedronGeometry(0.12, 0);
+    const pebbleMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const pebbles = new THREE.InstancedMesh(pebbleGeo, pebbleMat, pebbleCount);
+    const dummy = new THREE.Object3D();
+    const tint = new THREE.Color();
+
+    for (let i = 0; i < pebbleCount; i++) {
+      const sample = samplePath(Math.random() * totalLength);
+      const scale = 0.45 + Math.random() * 0.8;
+      const offset = (Math.random() - 0.5) * path.halfWidth * 1.5;
+
+      dummy.position.set(
+        sample.x + offset,
+        sample.y + 0.03,
+        sample.z + (Math.random() - 0.5) * path.halfWidth * 1.5
+      );
+      dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      dummy.scale.set(scale * (0.7 + Math.random() * 0.6), scale * 0.45, scale);
+      dummy.updateMatrix();
+      pebbles.setMatrixAt(i, dummy.matrix);
+      pebbles.setColorAt(i, tint.setHSL(0.09, 0.12, 0.32 + Math.random() * 0.17));
+    }
+
+    pebbles.instanceMatrix.needsUpdate = true;
+    if (pebbles.instanceColor) pebbles.instanceColor.needsUpdate = true;
+    pebbles.receiveShadow = true;
+    this.scene.add(pebbles);
   }
 
   createWater() {
@@ -280,7 +484,6 @@ export class RiverWorld {
       segAcross,
       segAlong
     );
-    this.waterBasePos = this.waterGeo.attributes.position.clone();
 
     // Bake a shallow-to-deep tint so the surface is not one flat slab of blue.
     // River palette leans green-teal: silty shallows lighten toward the banks.
@@ -332,11 +535,26 @@ export class RiverWorld {
           '#include <common>',
           `#include <common>
 varying vec3 vWaterWorldPos;
-varying vec2 vWaterUv;`
+varying vec2 vWaterUv;
+uniform float uTime;
+${RIVER_SWELL_HEIGHT_GLSL}`
         )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
+float waterBankDist = min(uv.x, 1.0 - uv.x) * ${waterWidth.toFixed(2)};
+float waterWaveBankDist = max(0.0, waterBankDist - 0.6);
+float waterBankT = clamp(waterWaveBankDist / 3.0, 0.0, 1.0);
+float waterBankFade = waterBankT * waterBankT * (3.0 - 2.0 * waterBankT);
+float waterEndT = clamp(min(uv.y, 1.0 - uv.y) / 0.01, 0.0, 1.0);
+float waterEndFade = waterEndT * waterEndT * (3.0 - 2.0 * waterEndT);
+float waterFade = waterBankFade * waterEndFade;
+float waterShoreDrop = 0.0;
+if (waterBankDist < 1.1) {
+  float waterShoreT = 1.0 - waterBankDist / 1.1;
+  waterShoreDrop = -0.28 * waterShoreT * waterShoreT;
+}
+transformed.y += riverSwellHeight(transformed.xz, uTime) * waterFade + waterShoreDrop;
 vWaterWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
 vWaterUv = uv;`
         );
@@ -361,7 +579,9 @@ float waterFoamAA = max(fwidth(waterBankDist), 0.0001) * 1.5;
 float waterFoam = 1.0 - smoothstep(waterFoamBand * 0.55 - waterFoamAA, waterFoamBand + waterFoamAA, waterBankDist);
 float waterEndFade = smoothstep(0.0, 0.01, min(vWaterUv.y, 1.0 - vWaterUv.y));
 waterFoam *= waterEndFade;
-diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.88, 0.86), waterFoam * 0.55);`
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.88, 0.86), waterFoam * 0.35);
+float waterShoreAlpha = smoothstep(0.0, 0.9, waterBankDist);
+diffuseColor.a *= mix(0.55, 1.0, waterShoreAlpha);`
         )
         .replace(
           '#include <normal_fragment_maps>',
@@ -402,12 +622,125 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
     return this.current;
   }
 
+  // Signed distance from the river centerline (negative = north bank side).
+  lateralOffsetAt(x, z) {
+    let bestSq = Infinity;
+    let bestOffset = 0;
+
+    for (let i = 0; i < this.riverSamples.length; i++) {
+      const s = this.riverSamples[i];
+      const dx = x - s.p.x;
+      const dz = z - s.p.z;
+      const distanceSq = dx * dx + dz * dz;
+
+      if (distanceSq < bestSq) {
+        bestSq = distanceSq;
+        bestOffset = dx * s.n.x + dz * s.n.z;
+      }
+    }
+    return bestOffset;
+  }
+
+  findRockCollision(x, z, radius) {
+    let nearest = null;
+    let nearestDistanceSq = Infinity;
+
+    for (let i = 0; i < this.rockColliders.length; i++) {
+      const rock = this.rockColliders[i];
+      const dx = x - rock.x;
+      const dz = z - rock.z;
+      const minDistance = radius + rock.radius;
+      const distanceSq = dx * dx + dz * dz;
+
+      if (distanceSq <= minDistance * minDistance && distanceSq < nearestDistanceSq) {
+        nearest = rock;
+        nearestDistanceSq = distanceSq;
+      }
+    }
+    return nearest;
+  }
+
+  isNearRock(x, z, padding = 0) {
+    for (let i = 0; i < this.rockColliders.length; i++) {
+      const rock = this.rockColliders[i];
+      const dx = x - rock.x;
+      const dz = z - rock.z;
+      const minDistance = (rock.visualRadius ?? rock.radius) + padding;
+
+      if (dx * dx + dz * dz < minDistance * minDistance) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  emitRockImpact(boatX, boatZ, rock) {
+    const dx = boatX - rock.x;
+    const dz = boatZ - rock.z;
+    const distance = Math.hypot(dx, dz) || 1;
+    const x = rock.x + (dx / distance) * rock.radius;
+    const z = rock.z + (dz / distance) * rock.radius;
+
+    this.emitSplash(x, z, 22, 0xd7e8e3);
+
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.2 + Math.random() * 2.6;
+      this.emitParticle(
+        x + (Math.random() - 0.5) * 0.35,
+        0.35 + Math.random() * 0.5,
+        z + (Math.random() - 0.5) * 0.35,
+        Math.cos(angle) * speed,
+        1.5 + Math.random() * 2.5,
+        Math.sin(angle) * speed,
+        0x73787b,
+        0.7 + Math.random() * 0.7,
+        0.5 + Math.random() * 0.35
+      );
+    }
+  }
+
+  addReedSway(material) {
+    const windUniform = this.reedsWind;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uWindTime = windUniform;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+uniform float uWindTime;
+attribute float aBaseY;`
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+#ifdef USE_INSTANCING
+vec4 reedWorld = instanceMatrix * vec4(transformed, 1.0);
+float reedPhase = instanceMatrix[3].x * 1.7 + instanceMatrix[3].z * 2.3;
+float reedHeight = max(0.0, reedWorld.y - aBaseY);
+float reedBendX = cos(uWindTime * 1.8 + reedPhase) * 0.08;
+float reedBendZ = sin(uWindTime * 2.2 + reedPhase) * 0.12;
+transformed.x += (reedBendX * reedHeight) / max(length(instanceMatrix[0].xyz), 0.001);
+transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0.001);
+#endif`
+        );
+    };
+    material.customProgramCacheKey = () => 'reed-sway';
+  }
+
   createReedsAndVegetation() {
+    // Density multiplier for the straight, playable stretch. The curving
+    // background sections keep their full coverage.
+    const playDensity = 0.5;
     const stalkMat = new THREE.MeshLambertMaterial({ color: 0x5e7839, flatShading: true });
     const cattailMat = new THREE.MeshLambertMaterial({ color: 0x482b14 });
     const leafMat = new THREE.MeshLambertMaterial({ color: 0x6e8f42 });
     const flowerMat = new THREE.MeshLambertMaterial({ color: 0xfff0fa });
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x737678, flatShading: true });
+
+    this.addReedSway(stalkMat);
+    this.addReedSway(leafMat);
+    this.addReedSway(cattailMat);
 
     const clumpPositions = [
       // Dense north-shore reed belt
@@ -429,208 +762,833 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
       { x: 12, z: 15.3 }, { x: 22, z: 15.1 }, { x: 29, z: 15.2 }
     ];
 
+    // All reeds are batched into a handful of InstancedMeshes. The dense
+    // shoreline belts reuse those same meshes, and the wind sway is evaluated
+    // in the vertex shader, so denser planting adds no draw calls or per-frame
+    // CPU work.
+    const stalks = [];
+    const altStalks = [];
+    const heads = [];
+    const tips = [];
+    const leaves = [];
+    const rocks = [];
+    const pads = [];
+    const flowers = [];
+
     clumpPositions.forEach((pos, cIndex) => {
-      const clump = new THREE.Group();
-      clump.position.set(pos.x, pos.y || 0, pos.z);
+      const path = this.gravelPath;
+      if (
+        path &&
+        pos.z > path.reedZMin &&
+        pos.z < path.reedZMax &&
+        path.isNear(pos.x, pos.z, path.halfWidth + 0.75)
+      ) {
+        return;
+      }
 
-      const stalkCount = 11 + (pos.y ? 6 : 0) + Math.floor(Math.sin(cIndex * 3) * 3 + 3);
+      const baseY = pos.y || 0;
+      const stalkCount = Math.max(
+        2,
+        Math.round((11 + (pos.y ? 6 : 0) + Math.floor(Math.sin(cIndex * 3) * 3 + 3)) * playDensity)
+      );
+
       for (let i = 0; i < stalkCount; i++) {
-        const stalkGroup = new THREE.Group();
         const height = (pos.y ? 2.8 : 2.1) + Math.random() * (pos.y ? 1.8 : 1.6);
-        const ox = (Math.random() - 0.5) * 2.6;
-        const oz = (Math.random() - 0.5) * 1.4;
+        const x = pos.x + (Math.random() - 0.5) * 2.6;
+        const z = pos.z + (Math.random() - 0.5) * 1.4;
 
-        const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, height, 4), stalkMat);
-        stalk.position.y = height / 2;
-        stalk.castShadow = true;
-        stalkGroup.add(stalk);
+        if (this.isNearRock(x, z, 0.18)) continue;
+
+        stalks.push({ x, y: baseY, z, sy: height, baseY });
 
         if (Math.random() > 0.4) {
-          const cattailHead = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.55, 5), cattailMat);
-          cattailHead.position.y = height * 0.85;
-          cattailHead.castShadow = true;
-          stalkGroup.add(cattailHead);
-
-          const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.25, 4), stalkMat);
-          tip.position.y = height * 0.85 + 0.35;
-          stalkGroup.add(tip);
+          heads.push({ x, y: baseY + height * 0.85 - 0.275, z, sy: 0.55, baseY });
+          tips.push({ x, y: baseY + height * 0.85 + 0.225, z, sy: 0.25, baseY });
         }
 
-        const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.04, height * 0.7, 0.16), leafMat);
-        leaf.position.set(0.08, height * 0.35, 0);
-        leaf.rotation.z = 0.2;
-        stalkGroup.add(leaf);
-
-        stalkGroup.position.set(ox, 0, oz);
-        clump.add(stalkGroup);
-
-        this.reedsList.push({
-          group: stalkGroup,
-          baseRotZ: stalkGroup.rotation.z,
-          seed: pos.x + i * 1.3
+        leaves.push({
+          x: x + 0.08,
+          y: baseY,
+          z,
+          sy: height * 0.7,
+          rz: 0.2,
+          baseY
         });
       }
 
       if (Math.random() > 0.3) {
         const rockSize = 0.35 + Math.random() * 0.4;
-        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rockSize, 0), rockMat);
-        rock.position.set(pos.x + (Math.random() - 0.5) * 1.5, (pos.y || 0) + 0.1, pos.z + (Math.random() - 0.5) * 0.6);
-        rock.rotation.set(Math.random(), Math.random(), Math.random());
-        rock.castShadow = true;
-        this.scene.add(rock);
+        rocks.push({
+          x: pos.x + (Math.random() - 0.5) * 1.5,
+          y: baseY + 0.1,
+          z: pos.z + (Math.random() - 0.5) * 0.6,
+          s: rockSize,
+          rx: Math.random(),
+          ry: Math.random(),
+          rz: Math.random()
+        });
       }
 
       if (!pos.y) {
         for (let l = 0; l < 2; l++) {
-          const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.02, 6), leafMat);
           const pzOffset = pos.z < 0 ? 0.9 : -0.9;
-          pad.position.set(pos.x + (Math.random() - 0.5) * 2.0, 0.03, pos.z + pzOffset + (Math.random() - 0.5) * 0.5);
-          this.scene.add(pad);
+          const px = pos.x + (Math.random() - 0.5) * 2.0;
+          const pz = pos.z + pzOffset + (Math.random() - 0.5) * 0.5;
+          pads.push({ x: px, y: 0.03, z: pz, baseY: 0 });
 
           if (l === 0) {
-            const flower = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.15, 5), flowerMat);
-            flower.position.set(pad.position.x, 0.1, pad.position.z);
-            this.scene.add(flower);
+            flowers.push({ x: px, y: 0.1, z: pz });
           }
         }
       }
-
-      this.scene.add(clump);
     });
 
-    // Extra scattered reeds fill out the shoreline into a dense, natural belt
-    const extraStalkGeo = new THREE.CylinderGeometry(0.045, 0.07, 1, 4);
-    const extraHeadGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.45, 5);
-
     const addExtraReed = (x, y, z, sizeScale = 1) => {
-      const group = new THREE.Group();
-      group.position.set(x, y, z);
+      const path = this.gravelPath;
+      if (
+        path &&
+        z > path.reedZMin &&
+        z < path.reedZMax &&
+        path.isNear(x, z, path.halfWidth + 0.45)
+      ) {
+        return;
+      }
+
+      if (this.isNearRock(x, z, 0.18)) return;
+
+      // Reject reeds that would sit inside the northern cliff/lip (buried and
+      // poking through the ground) or float in the air just past its edge.
+      const lateral = this.lateralOffsetAt(x, z);
+      if (y > 1 && lateral > -16.05) return;
+      if (y <= 1 && lateral < -16.05) return;
 
       const height = (1.7 + Math.random() * 1.8) * sizeScale;
-      const stalk = new THREE.Mesh(extraStalkGeo, Math.random() > 0.5 ? stalkMat : leafMat);
-      stalk.position.y = height / 2;
-      stalk.scale.y = height;
-      stalk.rotation.y = Math.random() * Math.PI;
-      stalk.castShadow = true;
-      group.add(stalk);
+      const target = Math.random() > 0.5 ? stalks : altStalks;
+      target.push({ x, y, z, sy: height, ry: Math.random() * Math.PI, baseY: y });
 
       if (Math.random() > 0.7) {
-        const head = new THREE.Mesh(extraHeadGeo, cattailMat);
-        head.position.y = height * 0.84;
-        head.castShadow = true;
-        group.add(head);
+        heads.push({ x, y: y + height * 0.84 - 0.225, z, sy: 0.45, baseY: y });
       }
 
-      this.scene.add(group);
-      this.reedsList.push({
-        group,
-        baseRotZ: 0,
-        seed: x * 1.7 + z * 2.3
-      });
+      if (Math.random() > 0.45) {
+        leaves.push({
+          x: x + (Math.random() - 0.5) * 0.18,
+          y,
+          z,
+          sy: height * (0.45 + Math.random() * 0.25),
+          rz: (Math.random() - 0.5) * 0.8,
+          baseY: y
+        });
+      }
     };
 
-    // Dense rows leaning into the water along the north shore
-    for (let row = 0; row < 4; row++) {
-      const zBase = -14.4 + row * 0.52;
-      for (let x = -40; x <= 40; x += 2.3 + Math.random() * 1.2) {
-        addExtraReed(
-          x + (Math.random() - 0.5) * 1.2,
-          0,
-          zBase + (Math.random() - 0.5) * 0.5,
-          0.85 + Math.random() * 0.5
+    const addReedPatch = ({
+      y = 0,
+      xMin,
+      xMax,
+      zMin,
+      zMax,
+      patchCount,
+      patchRadiusX,
+      patchRadiusZ,
+      reedMin,
+      reedMax,
+      scaleMin,
+      scaleMax
+    }) => {
+      for (let patch = 0; patch < patchCount; patch++) {
+        const centerX = xMin + Math.random() * (xMax - xMin);
+        const centerZ = zMin + Math.random() * (zMax - zMin);
+        const reedCount = Math.max(
+          2,
+          Math.round((reedMin + Math.random() * (reedMax - reedMin + 1)) * playDensity)
         );
+
+        for (let i = 0; i < reedCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const spread = Math.sqrt(Math.random());
+          addExtraReed(
+            centerX + Math.cos(angle) * spread * patchRadiusX,
+            y,
+            centerZ + Math.sin(angle) * spread * patchRadiusZ,
+            scaleMin + Math.random() * (scaleMax - scaleMin)
+          );
+        }
+      }
+    };
+
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: -16.2,
+      zMax: -15.2,
+      patchCount: 88,
+      patchRadiusX: 3.2,
+      patchRadiusZ: 0.65,
+      reedMin: 10,
+      reedMax: 18,
+      scaleMin: 0.8,
+      scaleMax: 1.35
+    });
+
+    addReedPatch({
+      y: 4.5,
+      xMin: -48,
+      xMax: 48,
+      zMin: -19.4,
+      zMax: -17.7,
+      patchCount: 75,
+      patchRadiusX: 3.4,
+      patchRadiusZ: 1.3,
+      reedMin: 9,
+      reedMax: 15,
+      scaleMin: 1.1,
+      scaleMax: 1.65
+    });
+
+    addReedPatch({
+      y: 4.5,
+      xMin: -48,
+      xMax: 48,
+      zMin: -17.7,
+      zMax: -16.7,
+      patchCount: 68,
+      patchRadiusX: 3.2,
+      patchRadiusZ: 0.7,
+      reedMin: 9,
+      reedMax: 16,
+      scaleMin: 1.0,
+      scaleMax: 1.55
+    });
+
+    addReedPatch({
+      y: 4.5,
+      xMin: -48,
+      xMax: 48,
+      zMin: -18.4,
+      zMax: -16.9,
+      patchCount: 100,
+      patchRadiusX: 3.5,
+      patchRadiusZ: 0.9,
+      reedMin: 11,
+      reedMax: 18,
+      scaleMin: 1.2,
+      scaleMax: 1.85
+    });
+
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: -16.0,
+      zMax: -15.35,
+      patchCount: 95,
+      patchRadiusX: 3.4,
+      patchRadiusZ: 0.35,
+      reedMin: 10,
+      reedMax: 18,
+      scaleMin: 1.6,
+      scaleMax: 2.2
+    });
+
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: 15.05,
+      zMax: 16.4,
+      patchCount: 130,
+      patchRadiusX: 3.4,
+      patchRadiusZ: 0.85,
+      reedMin: 12,
+      reedMax: 20,
+      scaleMin: 0.8,
+      scaleMax: 1.4
+    });
+
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: 16.2,
+      zMax: 17.5,
+      patchCount: 84,
+      patchRadiusX: 3.2,
+      patchRadiusZ: 0.6,
+      reedMin: 8,
+      reedMax: 14,
+      scaleMin: 0.65,
+      scaleMax: 1.1
+    });
+
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: 14.4,
+      zMax: 15.3,
+      patchCount: 62,
+      patchRadiusX: 2.8,
+      patchRadiusZ: 0.5,
+      reedMin: 6,
+      reedMax: 12,
+      scaleMin: 0.55,
+      scaleMax: 0.95
+    });
+
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: -15.6,
+      zMax: -14.7,
+      patchCount: 52,
+      patchRadiusX: 2.8,
+      patchRadiusZ: 0.45,
+      reedMin: 6,
+      reedMax: 11,
+      scaleMin: 0.6,
+      scaleMax: 1.0
+    });
+
+    // Extra coverage behind the northern reed belt so no bare dirt shows
+    // through anywhere along the high bank.
+    addReedPatch({
+      y: 4.5,
+      xMin: -48,
+      xMax: 48,
+      zMin: -21.5,
+      zMax: -18.0,
+      patchCount: 110,
+      patchRadiusX: 3.2,
+      patchRadiusZ: 1.0,
+      reedMin: 9,
+      reedMax: 16,
+      scaleMin: 1.0,
+      scaleMax: 1.7
+    });
+
+    // Dense lip row right on the bank edge so the smooth strip between the
+    // bank reeds and the water is closed up.
+    addReedPatch({
+      y: 4.5,
+      xMin: -48,
+      xMax: 48,
+      zMin: -17.4,
+      zMax: -16.15,
+      patchCount: 210,
+      patchRadiusX: 3.4,
+      patchRadiusZ: 0.1,
+      reedMin: 10,
+      reedMax: 18,
+      scaleMin: 1.0,
+      scaleMax: 1.6
+    });
+
+    // Tall reeds rooted at the waterline in front of the northern cliff, so
+    // the bank face is hidden behind a wall of vegetation instead of reading
+    // as a bare brown/dark band from the water.
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: -15.5,
+      zMax: -14.6,
+      patchCount: 220,
+      patchRadiusX: 3.6,
+      patchRadiusZ: 0.25,
+      reedMin: 12,
+      reedMax: 20,
+      scaleMin: 1.3,
+      scaleMax: 2.1
+    });
+
+    addReedPatch({
+      xMin: -48,
+      xMax: 48,
+      zMin: -15.9,
+      zMax: -14.9,
+      patchCount: 190,
+      patchRadiusX: 3.6,
+      patchRadiusZ: 0.3,
+      reedMin: 10,
+      reedMax: 18,
+      scaleMin: 0.9,
+      scaleMax: 1.7
+    });
+
+    // Fill the bald patches around the ends of the rock barriers on both banks.
+    for (const side of [-1, 1]) {
+      addReedPatch({
+        y: 4.5,
+        xMin: side < 0 ? -44 : 26,
+        xMax: side < 0 ? -26 : 44,
+        zMin: -27,
+        zMax: -18.0,
+        patchCount: 36,
+        patchRadiusX: 3.0,
+        patchRadiusZ: 2.0,
+        reedMin: 10,
+        reedMax: 18,
+        scaleMin: 1.0,
+        scaleMax: 1.7
+      });
+
+      addReedPatch({
+        xMin: side < 0 ? -44 : 26,
+        xMax: side < 0 ? -26 : 44,
+        zMin: 16.0,
+        zMax: 26,
+        patchCount: 30,
+        patchRadiusX: 3.0,
+        patchRadiusZ: 2.0,
+        reedMin: 10,
+        reedMax: 18,
+        scaleMin: 0.9,
+        scaleMax: 1.5
+      });
+    }
+
+    // Follow the curving sections beyond the playable stretch. These reeds are
+    // placed in river space (not fixed world Z), so the shoreline belts stay
+    // glued to the banks as the channel bends away into the fog.
+    for (let i = 0; i < this.riverSamples.length; i += 2) {
+      const sample = this.riverSamples[i];
+      if (Math.abs(sample.p.x) < 46) continue;
+      if (Math.hypot(sample.p.x, sample.p.z) > 500) continue;
+
+      // Northern bank: waterline, cliff lip and plateau rows. Offsets are kept
+      // clear of the cliff/lip geometry so no reed grows through the ground.
+      const bands = [
+        { offset: -15.0, half: 0.6, y: 0, scale: [0.9, 1.6] },
+        { offset: -15.5, half: 0.4, y: 0, scale: [1.3, 2.0] },
+        { offset: -16.4, half: 0.35, y: 4.5, scale: [1.0, 1.8] },
+        { offset: -17.2, half: 1.0, y: 4.5, scale: [0.9, 1.5] },
+        { offset: -20.8, half: 1.7, y: 4.5, scale: [0.9, 1.5] },
+        { offset: -24.5, half: 1.6, y: 4.5, scale: [0.8, 1.35] }
+      ];
+
+      const topBankDensity = 0.5;
+
+      for (const band of bands) {
+        if (Math.random() > 0.97) continue;
+
+        const reedCount = Math.max(
+          2,
+          Math.round((8 + Math.floor(Math.random() * 8)) * topBankDensity)
+        );
+
+        for (let j = 0; j < reedCount; j++) {
+          const along = (Math.random() - 0.5) * 4.5;
+          const offset = band.offset + (Math.random() - 0.5) * band.half * 2;
+          const x = sample.p.x + sample.n.x * offset + sample.t.x * along;
+          const z = sample.p.z + sample.n.z * offset + sample.t.z * along;
+
+          addExtraReed(
+            x,
+            band.y,
+            z,
+            band.scale[0] + Math.random() * (band.scale[1] - band.scale[0])
+          );
+        }
+      }
+
+      // Southern shore.
+      if (Math.random() < 0.94) {
+        const reedCount = 6 + Math.floor(Math.random() * 6);
+
+        for (let j = 0; j < reedCount; j++) {
+          const along = (Math.random() - 0.5) * 4.5;
+          const offset = 15.8 + (Math.random() - 0.5) * 3.0;
+          const x = sample.p.x + sample.n.x * offset + sample.t.x * along;
+          const z = sample.p.z + sample.n.z * offset + sample.t.z * along;
+
+          addExtraReed(x, 0, z, 0.85 + Math.random() * 0.7);
+        }
       }
     }
 
-    // Taller clumps on the north bank behind the walking path
-    for (let row = 0; row < 2; row++) {
-      const zBase = -17.2 - row * 1.1;
-      for (let x = -36; x <= 36; x += 2.8 + Math.random() * 1.4) {
-        addExtraReed(
-          x + (Math.random() - 0.5) * 1.4,
-          4.5,
-          zBase + (Math.random() - 0.5) * 0.7,
-          1.15 + Math.random() * 0.45
-        );
+    const pathEnd = this.gravelPath;
+    if (pathEnd) {
+      const endFrame = pathEnd.frameAt(pathEnd.length - 0.1);
+
+      for (let i = 0; i < 140; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spread = Math.sqrt(Math.random());
+        const x = endFrame.x + Math.cos(angle) * spread * 3.4;
+        const z = endFrame.z + Math.sin(angle) * spread * 1.5;
+        const height = 2.6 + Math.random() * 2.2;
+        const baseY = 4.5;
+
+        stalks.push({ x, y: baseY, z, sy: height, ry: Math.random() * Math.PI, baseY });
+
+        if (Math.random() > 0.3) {
+          heads.push({ x, y: baseY + height * 0.84 - 0.225, z, sy: 0.45, baseY });
+        }
+
+        if (Math.random() > 0.2) {
+          leaves.push({
+            x: x + (Math.random() - 0.5) * 0.2,
+            y: baseY,
+            z,
+            sy: height * (0.5 + Math.random() * 0.25),
+            rz: (Math.random() - 0.5) * 0.8,
+            baseY
+          });
+        }
       }
     }
 
-    // Softer reed fringe on the south shore
-    for (let row = 0; row < 2; row++) {
-      const zBase = 14.6 + row * 0.55;
-      for (let x = -38; x <= 38; x += 3.1 + Math.random() * 1.4) {
-        addExtraReed(
-          x + (Math.random() - 0.5) * 1.3,
-          0,
-          zBase + (Math.random() - 0.5) * 0.45,
-          0.9 + Math.random() * 0.45
-        );
+    const dummy = new THREE.Object3D();
+    const buildInstanced = (geometry, material, items, castShadow = true) => {
+      if (!items.length) return;
+      const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+      const bases = new Float32Array(items.length);
+
+      items.forEach((it, i) => {
+        dummy.position.set(it.x, it.y, it.z);
+        dummy.rotation.set(it.rx || 0, it.ry || 0, it.rz || 0);
+        dummy.scale.set(it.s ?? it.sx ?? 1, it.sy ?? it.s ?? 1, it.s ?? it.sz ?? 1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        bases[i] = it.baseY || 0;
+      });
+
+      geometry.setAttribute('aBaseY', new THREE.InstancedBufferAttribute(bases, 1));
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.castShadow = castShadow;
+      mesh.receiveShadow = false;
+      this.scene.add(mesh);
+    };
+
+    const stalkGeo = new THREE.CylinderGeometry(0.045, 0.07, 1, 4);
+    stalkGeo.translate(0, 0.5, 0);
+    const headGeo = new THREE.CylinderGeometry(0.09, 0.09, 1, 5);
+    headGeo.translate(0, 0.5, 0);
+    const tipGeo = new THREE.CylinderGeometry(0.02, 0.03, 1, 4);
+    tipGeo.translate(0, 0.5, 0);
+    const leafGeo = new THREE.BoxGeometry(0.04, 1, 0.16);
+    leafGeo.translate(0, 0.5, 0);
+    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+    const padGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.02, 6);
+    const flowerGeo = new THREE.ConeGeometry(0.12, 0.15, 5);
+
+    buildInstanced(stalkGeo, stalkMat, stalks);
+    buildInstanced(stalkGeo.clone(), leafMat, altStalks);
+    buildInstanced(headGeo, cattailMat, heads);
+    buildInstanced(tipGeo, stalkMat, tips);
+    buildInstanced(leafGeo, leafMat, leaves);
+    buildInstanced(rockGeo, rockMat, rocks);
+    buildInstanced(padGeo, leafMat, pads, false);
+    buildInstanced(flowerGeo, flowerMat, flowers, false);
+  }
+
+  createBankVegetation() {
+    const bushGeo = new THREE.IcosahedronGeometry(1, 0);
+    const grassGeo = new THREE.ConeGeometry(0.1, 1, 4);
+    grassGeo.translate(0, 0.5, 0);
+
+    const bushMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const grassMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+
+    const bushes = [];
+    const grass = [];
+
+    for (let patch = 0; patch < 96; patch++) {
+      const centerX = -68 + Math.random() * 136;
+      const centerZ = 20 + Math.random() * 36;
+      const count = 3 + Math.floor(Math.random() * 5);
+
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spread = Math.sqrt(Math.random()) * (2.5 + Math.random() * 3.5);
+        const scale = 0.35 + Math.random() * 0.7;
+
+        bushes.push({
+          x: centerX + Math.cos(angle) * spread,
+          z: centerZ + Math.sin(angle) * spread,
+          sx: scale * (0.9 + Math.random() * 0.5),
+          sy: scale * (0.55 + Math.random() * 0.4),
+          sz: scale * (0.9 + Math.random() * 0.5),
+          ry: Math.random() * Math.PI * 2
+        });
       }
     }
+
+    for (let patch = 0; patch < 240; patch++) {
+      const centerX = -68 + Math.random() * 136;
+      const centerZ = 17.3 + Math.random() * 42;
+      const count = 6 + Math.floor(Math.random() * 7);
+
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spread = Math.sqrt(Math.random()) * (1.4 + Math.random() * 2.6);
+
+        grass.push({
+          x: centerX + Math.cos(angle) * spread,
+          z: centerZ + Math.sin(angle) * spread,
+          sx: 0.7 + Math.random() * 1.0,
+          sy: 0.5 + Math.random() * 1.5,
+          sz: 0.7 + Math.random() * 1.0,
+          ry: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    // The high northern bank gets the same treatment: thick tufts and low
+    // bushes swallow the dirt lip and any bare ground behind the reed belt.
+    for (let patch = 0; patch < 220; patch++) {
+      const centerX = -70 + Math.random() * 140;
+      const centerZ = -27 + Math.random() * 8;
+
+      for (let i = 0; i < 9 + Math.floor(Math.random() * 8); i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spread = Math.sqrt(Math.random()) * (1.5 + Math.random() * 3.0);
+
+        grass.push({
+          x: centerX + Math.cos(angle) * spread,
+          y: 4.5,
+          z: centerZ + Math.sin(angle) * spread,
+          sx: 0.8 + Math.random() * 1.1,
+          sy: 0.9 + Math.random() * 2.0,
+          sz: 0.8 + Math.random() * 1.1,
+          ry: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    for (let patch = 0; patch < 70; patch++) {
+      const centerX = -70 + Math.random() * 140;
+      const centerZ = -27 + Math.random() * 5;
+      const count = 2 + Math.floor(Math.random() * 4);
+
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spread = Math.sqrt(Math.random()) * (2.0 + Math.random() * 3.5);
+        const scale = 0.35 + Math.random() * 0.6;
+
+        bushes.push({
+          x: centerX + Math.cos(angle) * spread,
+          y: 4.5,
+          z: centerZ + Math.sin(angle) * spread,
+          sx: scale * (0.9 + Math.random() * 0.5),
+          sy: scale * (0.55 + Math.random() * 0.4),
+          sz: scale * (0.9 + Math.random() * 0.5),
+          ry: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    // Dense low tufts along the sand-to-grass transition so the beach edge
+    // doesn't read as a bare lawn between the reeds and the bushes.
+    for (let patch = 0; patch < 150; patch++) {
+      const centerX = -64 + Math.random() * 128;
+      const centerZ = 17.6 + Math.random() * 9;
+      const count = 8 + Math.floor(Math.random() * 8);
+
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spread = Math.sqrt(Math.random()) * (1.2 + Math.random() * 2.2);
+
+        grass.push({
+          x: centerX + Math.cos(angle) * spread,
+          z: centerZ + Math.sin(angle) * spread,
+          sx: 0.6 + Math.random() * 0.9,
+          sy: 0.45 + Math.random() * 1.2,
+          sz: 0.6 + Math.random() * 0.9,
+          ry: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    const dummy = new THREE.Object3D();
+    const tint = new THREE.Color();
+
+    const build = (geometry, material, items, colorFn, castShadow) => {
+      const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+
+      items.forEach((it, i) => {
+        const baseY = it.y ?? 0;
+        const y = baseY + (it.sy ? it.sy * 0.55 : 0);
+        dummy.position.set(it.x, geometry === bushGeo ? y : baseY, it.z);
+        dummy.rotation.set(0, it.ry, 0);
+        dummy.scale.set(it.sx, it.sy, it.sz);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        mesh.setColorAt(i, colorFn(tint, it));
+      });
+
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.castShadow = castShadow;
+      mesh.receiveShadow = false;
+      this.scene.add(mesh);
+    };
+
+    build(
+      bushGeo,
+      bushMat,
+      bushes,
+      (color) => color.setHSL(0.28 + Math.random() * 0.05, 0.42, 0.16 + Math.random() * 0.09),
+      true
+    );
+    build(
+      grassGeo,
+      grassMat,
+      grass,
+      (color) => color.setHSL(0.24 + Math.random() * 0.08, 0.5, 0.24 + Math.random() * 0.12),
+      false
+    );
   }
 
   createRiverBoundaries() {
     // Natural impassable barriers at West (X = -32 to -35) and East (X = +32 to +35)
-    // Rocks, boulders, thick standing камыши, and warning barrier posts
+    // Rocks, boulders, and thick standing камыши
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x525659, flatShading: true });
     const mossRockMat = new THREE.MeshLambertMaterial({ color: 0x48523c, flatShading: true });
-    const postMat = new THREE.MeshLambertMaterial({ color: 0xd92626 });
-    const signMat = new THREE.MeshLambertMaterial({ color: 0xffea00 });
     const reedMat = new THREE.MeshLambertMaterial({ color: 0x4a6b2f, flatShading: true });
     const cattailMat = new THREE.MeshLambertMaterial({ color: 0x3d220e });
+    this.addReedSway(reedMat);
+    this.addReedSway(cattailMat);
+
+    const rocks = [];
+    const mossRocks = [];
+    const stalks = [];
+    const heads = [];
 
     const boundarySides = [-33.5, 33.5];
+    const reedClusters = [];
 
     boundarySides.forEach((baseX) => {
       const isWest = baseX < 0;
-      const barrierGroup = new THREE.Group();
+      const riverSide = isWest ? 1 : -1;
 
-      // Ridge of rocks & boulders across Z from -15 to +15
-      for (let z = -15; z <= 15; z += 2.2) {
-        const rSize = 1.2 + Math.random() * 0.9;
-        const mat = Math.random() > 0.5 ? rockMat : mossRockMat;
-        const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(rSize, 1), mat);
-        const xOffset = (Math.random() - 0.5) * 1.8;
-        boulder.position.set(baseX + xOffset, 0.4 + Math.random() * 0.3, z + (Math.random() - 0.5) * 0.5);
-        boulder.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-        boulder.castShadow = true;
-        boulder.receiveShadow = true;
-        barrierGroup.add(boulder);
+      let z = -16.5;
+      while (z <= 16.5) {
+        const clusterZ = z + (Math.random() - 0.5) * 1.4;
+        const clusterX = baseX + riverSide * (0.2 + Math.random() * 1.6);
+        const clusterSize = 1 + Math.floor(Math.random() * 3);
 
-        // Dense clump of камыши between the barrier boulders
-        const reedClump = new THREE.Group();
-        reedClump.position.set(baseX + xOffset + (isWest ? 1.0 : -1.0), 0, z);
-        for (let s = 0; s < 5; s++) {
-          const h = 2.2 + Math.random() * 1.2;
-          const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, h, 4), reedMat);
-          stalk.position.set((Math.random() - 0.5) * 0.8, h / 2, (Math.random() - 0.5) * 0.8);
-          reedClump.add(stalk);
-
-          if (s % 2 === 0) {
-            const head = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 5), cattailMat);
-            head.position.set(stalk.position.x, h * 0.82, stalk.position.z);
-            reedClump.add(head);
-          }
+        for (let i = 0; i < clusterSize; i++) {
+          const size = 0.9 + Math.random() * 1.5;
+          const x = clusterX + riverSide * (Math.random() * 2.0 - 0.2);
+          const zz = clusterZ + (Math.random() - 0.5) * 2.4;
+          const target = Math.random() > 0.48 ? rocks : mossRocks;
+          target.push({
+            x,
+            y: 0.25 + Math.random() * 0.55,
+            z: zz,
+            s: size,
+            rx: Math.random() * Math.PI,
+            ry: Math.random() * Math.PI,
+            rz: Math.random() * Math.PI
+          });
+          this.rockColliders.push({
+            x,
+            z: zz,
+            radius: size * 0.88,
+            visualRadius: size
+          });
         }
-        barrierGroup.add(reedClump);
+
+        reedClusters.push({ clusterX, clusterZ, riverSide });
+        z += 2.0 + Math.random() * 2.4;
       }
 
-      // Wooden Warning Barrier Posts
-      for (let z = -12; z <= 12; z += 8) {
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 4.2, 6), postMat);
-        post.position.set(baseX + (isWest ? 1.5 : -1.5), 1.6, z);
-        post.castShadow = true;
-        barrierGroup.add(post);
-
-        const sign = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 0.12), signMat);
-        sign.position.set(baseX + (isWest ? 1.5 : -1.5), 3.2, z);
-        sign.rotation.y = isWest ? Math.PI / 2 : -Math.PI / 2;
-        sign.castShadow = true;
-        barrierGroup.add(sign);
+      for (let i = 0; i < 7; i++) {
+        const size = 0.6 + Math.random() * 1.3;
+        const x = baseX + riverSide * (1.8 + Math.random() * 2.8);
+        const zz = -15 + Math.random() * 30;
+        const target = Math.random() > 0.5 ? rocks : mossRocks;
+        target.push({
+          x,
+          y: 0.2 + Math.random() * 0.45,
+          z: zz,
+          s: size,
+          rx: Math.random() * Math.PI,
+          ry: Math.random() * Math.PI,
+          rz: Math.random() * Math.PI
+        });
+        this.rockColliders.push({
+          x,
+          z: zz,
+          radius: size * 0.88,
+          visualRadius: size
+        });
       }
-
-      this.scene.add(barrierGroup);
     });
+
+    const addBoundaryReed = (x, z, height) => {
+      if (this.isNearRock(x, z, 0.16)) return;
+
+      // At the northern end of a barrier the rock line runs into the high
+      // bank; stand those reeds on the bank top instead of letting them clip
+      // through the ground.
+      const baseY = this.lateralOffsetAt(x, z) < -15.9 ? 4.5 : 0;
+
+      stalks.push({ x, y: baseY, z, sy: height, baseY });
+
+      if (Math.random() > 0.45) {
+        heads.push({ x, y: baseY + height * 0.82 - 0.3, z, sy: 0.6, baseY });
+      }
+    };
+
+    reedClusters.forEach(({ clusterX, clusterZ, riverSide }) => {
+      const clumpCount = Math.random() > 0.25 ? 5 + Math.floor(Math.random() * 3) : 0;
+      const clumpX = clusterX + riverSide * (0.4 + Math.random() * 0.8);
+
+      for (let s = 0; s < clumpCount; s++) {
+        addBoundaryReed(
+          clumpX + (Math.random() - 0.5) * 1.1,
+          clusterZ + (Math.random() - 0.5) * 1.8,
+          2.1 + Math.random() * 1.4
+        );
+      }
+    });
+
+    this.rockColliders.forEach((rock) => {
+      const ringCount = 12 + Math.floor(Math.random() * 8);
+
+      for (let i = 0; i < ringCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = rock.radius + 0.3 + Math.random() * 1.0;
+
+        addBoundaryReed(
+          rock.x + Math.cos(angle) * radius,
+          rock.z + Math.sin(angle) * radius,
+          1.8 + Math.random() * 1.8
+        );
+      }
+    });
+
+    const dummy = new THREE.Object3D();
+    const build = (geometry, material, items, receiveShadow = false) => {
+      if (!items.length) return;
+      const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+      items.forEach((it, i) => {
+        dummy.position.set(it.x, it.y, it.z);
+        dummy.rotation.set(it.rx || 0, it.ry || 0, it.rz || 0);
+        dummy.scale.set(it.s ?? it.sx ?? 1, it.sy ?? it.s ?? 1, it.s ?? it.sz ?? 1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      });
+      if (material === reedMat || material === cattailMat) {
+        const bases = new Float32Array(items.length);
+        items.forEach((it, i) => {
+          bases[i] = it.baseY ?? 0;
+        });
+        geometry.setAttribute('aBaseY', new THREE.InstancedBufferAttribute(bases, 1));
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = receiveShadow;
+      this.scene.add(mesh);
+    };
+
+    const rockGeo = new THREE.DodecahedronGeometry(1, 1);
+    const stalkGeo = new THREE.CylinderGeometry(0.05, 0.07, 1, 4);
+    stalkGeo.translate(0, 0.5, 0);
+    const headGeo = new THREE.CylinderGeometry(0.1, 0.1, 1, 5);
+    headGeo.translate(0, 0.5, 0);
+
+    build(rockGeo, rockMat, rocks, true);
+    build(rockGeo.clone(), mossRockMat, mossRocks, true);
+    build(stalkGeo, reedMat, stalks);
+    build(headGeo, cattailMat, heads);
   }
 
   createEnvironmentDetails() {
@@ -641,29 +1599,18 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
 
     for (let x = -28; x <= 28; x += 14) {
       const post = new THREE.Mesh(postGeo, postMat);
-      post.position.set(x, 4, -17.5);
+      post.position.set(x, 4, -19.8);
       post.castShadow = true;
       this.scene.add(post);
 
       const signBoard = new THREE.Mesh(signGeo, signMat);
-      signBoard.position.set(x, 5.2, -17.5);
+      signBoard.position.set(x, 5.2, -19.8);
       signBoard.castShadow = true;
       this.scene.add(signBoard);
     }
 
     this.createWatchtower(-20, -21);
     this.createWatchtower(20, -21);
-
-    this.buoys = [];
-    const buoyMat = new THREE.MeshLambertMaterial({ color: 0xff4422 });
-    const buoyGeo = new THREE.SphereGeometry(0.45, 8, 6);
-    for (let i = 0; i < 6; i++) {
-      const buoy = new THREE.Mesh(buoyGeo, buoyMat);
-      buoy.position.set(-25 + i * 10, 0, 14.8);
-      buoy.castShadow = true;
-      this.scene.add(buoy);
-      this.buoys.push({ mesh: buoy, baseX: buoy.position.x, baseZ: buoy.position.z, seed: i * 2.1 });
-    }
   }
 
   // Dense mixed forest belts along both banks plus a canopy wall that closes off
@@ -673,13 +1620,17 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
     const samples = this.riverSamples;
     const trees = [];
 
-    const plant = (s, side, offset, scale) => {
-      const x = s.p.x + s.n.x * offset * side + (Math.random() - 0.5) * 3.5;
-      const z = s.p.z + s.n.z * offset * side + (Math.random() - 0.5) * 3.5;
-
+    const addTree = (x, z, side, scale) => {
       // Keep the mission area readable: no trees on the beach, the patrol path
       // or in the water.
-      if (Math.abs(x) < 47 && z > -24 && z < 28) return;
+      if (Math.abs(x) < 47 && z > -23 && z < 25) return;
+
+      // Keep the gravel path clear so it stays visible as it bends into the trees.
+      if (this.gravelPath && this.gravelPath.isNear(x, z, 2.4)) return;
+
+      // The river now continues far past the play space; don't populate the
+      // fogged-out extensions with trees.
+      if (Math.hypot(x, z) > 450) return;
 
       trees.push({
         x,
@@ -689,6 +1640,12 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
         rotation: Math.random() * Math.PI * 2,
         pine: Math.random() > 0.22
       });
+    };
+
+    const plant = (s, side, offset, scale) => {
+      const x = s.p.x + s.n.x * offset * side + (Math.random() - 0.5) * 3.5;
+      const z = s.p.z + s.n.z * offset * side + (Math.random() - 0.5) * 3.5;
+      addTree(x, z, side, scale);
     };
 
     for (let i = 4; i < samples.length - 4; i += 4) {
@@ -703,6 +1660,24 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
         // Sparse taller canopy wall behind the belt
         if (i % 12 === 0) {
           plant(s, side, 95 + Math.random() * 40, 1.35);
+        }
+      }
+    }
+
+    for (const side of [-1, 1]) {
+      const groveCount = side < 0 ? 14 : 10;
+      for (let g = 0; g < groveCount; g++) {
+        const groveX = -58 + Math.random() * 116;
+        const groveZ = side < 0 ? -28 - Math.random() * 36 : 28 + Math.random() * 36;
+        const treeCount = 5 + Math.floor(Math.random() * 5);
+
+        for (let i = 0; i < treeCount; i++) {
+          addTree(
+            groveX + (Math.random() - 0.5) * 14,
+            groveZ + (Math.random() - 0.5) * 14,
+            side,
+            0.9 + Math.random() * 0.5
+          );
         }
       }
     }
@@ -820,114 +1795,128 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
   }
 
   createAppalledCrowd() {
-    this.crowdList = [];
     const skinMat = new THREE.MeshLambertMaterial({ color: 0xf5c29b });
+    const pantsMat = new THREE.MeshLambertMaterial({ color: 0x1f2937 });
+    const clothesMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const beanieMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+    const markMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+
+    const crowdTime = this.crowdTime;
+    const crowdShock = this.crowdShock;
+    const addBob = (material) => {
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.uCrowdTime = crowdTime;
+        shader.uniforms.uCrowdShock = crowdShock;
+        shader.vertexShader = shader.vertexShader
+          .replace(
+            '#include <common>',
+            `#include <common>
+uniform float uCrowdTime;
+uniform float uCrowdShock;
+attribute float aCrowdPhase;`
+          )
+          .replace(
+            '#include <project_vertex>',
+            `vec4 mvPosition = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+  mvPosition.y += sin(uCrowdTime * 3.5 + aCrowdPhase) * 0.06 + uCrowdShock;
+#endif
+mvPosition = modelViewMatrix * mvPosition;
+gl_Position = projectionMatrix * mvPosition;`
+          );
+      };
+      material.customProgramCacheKey = () => 'crowd-bob';
+    };
+    [skinMat, pantsMat, clothesMat, beanieMat, markMat].forEach(addBob);
+
     const jacketColors = [
       0xcc3333, 0x2a75d3, 0xffa500, 0x8b35bc, 0x228b22,
       0xd9447e, 0x17a2b8, 0x343a40, 0xf8f9fa, 0x9c27b0
     ];
 
-    const spectatorCount = 22;
+    const parts = {
+      legs: { geo: new THREE.BoxGeometry(0.14, 0.6, 0.16), mat: pantsMat, items: [], colored: false },
+      bodies: { geo: new THREE.BoxGeometry(0.45, 0.65, 0.32), mat: clothesMat, items: [], colored: true },
+      heads: { geo: new THREE.SphereGeometry(0.2, 7, 7), mat: skinMat, items: [], colored: false },
+      beanies: { geo: new THREE.SphereGeometry(0.21, 6, 6), mat: beanieMat, items: [], colored: false },
+      arms: { geo: new THREE.CylinderGeometry(0.06, 0.06, 1, 4), mat: clothesMat, items: [], colored: true },
+      marks: { geo: new THREE.CylinderGeometry(0.05, 0.03, 1, 4), mat: markMat, items: [], colored: false },
+      dots: { geo: new THREE.SphereGeometry(0.05, 4, 4), mat: markMat, items: [], colored: false }
+    };
+
+    const personDummy = new THREE.Object3D();
+    const partDummy = new THREE.Object3D();
+    const worldMatrix = new THREE.Matrix4();
+    const addPart = (key, personMatrix, phase, color, x, y, z, rx = 0, ry = 0, rz = 0, length = 1) => {
+      partDummy.position.set(x, y, z);
+      partDummy.rotation.set(rx, ry, rz);
+      partDummy.scale.set(1, length, 1);
+      partDummy.updateMatrix();
+      worldMatrix.multiplyMatrices(personMatrix, partDummy.matrix);
+      parts[key].items.push({ matrix: worldMatrix.clone(), phase, color });
+    };
+
+    const spectatorCount = 13;
     for (let i = 0; i < spectatorCount; i++) {
-      const person = new THREE.Group();
+      const jacketColor = new THREE.Color(jacketColors[i % jacketColors.length]);
+      const seed = i * 1.5;
 
-      const jacketColor = jacketColors[i % jacketColors.length];
-      const clothesMat = new THREE.MeshLambertMaterial({ color: jacketColor });
-      const pantsMat = new THREE.MeshLambertMaterial({ color: 0x1f2937 });
+      const px = -28 + ((i + 0.5) / spectatorCount) * 56 + (Math.random() - 0.5) * 5.5;
+      const pz = 17.2 + Math.random() * 4.4;
 
-      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.16), pantsMat);
-      legL.position.set(-0.12, 0.3, 0);
-      person.add(legL);
+      personDummy.position.set(px, 0, pz);
+      personDummy.rotation.set(0, Math.PI + (Math.random() - 0.5) * 0.4, 0);
+      personDummy.updateMatrix();
+      const personMatrix = personDummy.matrix.clone();
 
-      const legR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.6, 0.16), pantsMat);
-      legR.position.set(0.12, 0.3, 0);
-      person.add(legR);
-
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.65, 0.32), clothesMat);
-      body.position.set(0, 0.85, 0);
-      body.castShadow = true;
-      person.add(body);
-
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 7, 7), skinMat);
-      head.position.set(0, 1.32, 0);
-      head.castShadow = true;
-      person.add(head);
+      addPart('legs', personMatrix, seed, null, -0.12, 0.3, 0);
+      addPart('legs', personMatrix, seed, null, 0.12, 0.3, 0);
+      addPart('bodies', personMatrix, seed, jacketColor, 0, 0.85, 0);
+      addPart('heads', personMatrix, seed, null, 0, 1.32, 0);
 
       if (i % 3 === 0) {
-        const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.21, 6, 6), new THREE.MeshLambertMaterial({ color: 0x111111 }));
-        beanie.position.set(0, 1.4, 0);
-        person.add(beanie);
+        addPart('beanies', personMatrix, seed, null, 0, 1.4, 0);
       }
 
       const poseType = i % 4;
-      const armMat = clothesMat;
-
       if (poseType === 0) {
-        const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.45, 4), armMat);
-        armL.position.set(-0.25, 1.15, 0);
-        armL.rotation.z = Math.PI / 1.3;
-        person.add(armL);
-
-        const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.45, 4), armMat);
-        armR.position.set(0.25, 1.15, 0);
-        armR.rotation.z = -Math.PI / 1.3;
-        person.add(armR);
+        addPart('arms', personMatrix, seed, jacketColor, -0.25, 1.15, 0, 0, 0, Math.PI / 1.3, 0.45);
+        addPart('arms', personMatrix, seed, jacketColor, 0.25, 1.15, 0, 0, 0, -Math.PI / 1.3, 0.45);
       } else if (poseType === 1) {
-        const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.55, 4), armMat);
-        armL.position.set(-0.15, 0.95, -0.3);
-        armL.rotation.x = -Math.PI / 2;
-        person.add(armL);
-
-        const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.45, 4), armMat);
-        armR.position.set(0.25, 0.8, 0);
-        person.add(armR);
+        addPart('arms', personMatrix, seed, jacketColor, -0.15, 0.95, -0.3, -Math.PI / 2, 0, 0, 0.55);
+        addPart('arms', personMatrix, seed, jacketColor, 0.25, 0.8, 0, 0, 0, 0, 0.45);
       } else if (poseType === 2) {
-        const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 4), armMat);
-        armL.position.set(-0.28, 1.2, 0);
-        armL.rotation.z = Math.PI / 1.8;
-        person.add(armL);
-
-        const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 4), armMat);
-        armR.position.set(0.28, 1.2, 0);
-        armR.rotation.z = -Math.PI / 1.8;
-        person.add(armR);
+        addPart('arms', personMatrix, seed, jacketColor, -0.28, 1.2, 0, 0, 0, Math.PI / 1.8, 0.5);
+        addPart('arms', personMatrix, seed, jacketColor, 0.28, 1.2, 0, 0, 0, -Math.PI / 1.8, 0.5);
       } else {
-        const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.45, 4), armMat);
-        armR.position.set(0.12, 1.1, -0.15);
-        armR.rotation.x = -Math.PI / 2.5;
-        armR.rotation.z = -0.5;
-        person.add(armR);
+        addPart('arms', personMatrix, seed, jacketColor, 0.12, 1.1, -0.15, -Math.PI / 2.5, 0, -0.5, 0.45);
       }
 
-      let exclamationMark = null;
       if (i % 2 === 0) {
-        exclamationMark = new THREE.Group();
-        const markMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
-        const markBar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.03, 0.35, 4), markMat);
-        markBar.position.y = 1.95;
-        exclamationMark.add(markBar);
-        const markDot = new THREE.Mesh(new THREE.SphereGeometry(0.05, 4, 4), markMat);
-        markDot.position.y = 1.68;
-        exclamationMark.add(markDot);
-        person.add(exclamationMark);
+        addPart('marks', personMatrix, seed, null, 0, 1.95, 0, 0, 0, 0, 0.35);
+        addPart('dots', personMatrix, seed, null, 0, 1.68, 0);
       }
-
-      const px = -28 + (i / spectatorCount) * 56 + (Math.random() - 0.5) * 2.5;
-      const pz = 17.6 + (Math.sin(i * 1.7) * 0.5 + 0.5) * 3.0;
-      const py = 0.0;
-
-      person.position.set(px, py, pz);
-      person.rotation.y = Math.PI + (Math.random() - 0.5) * 0.4;
-
-      this.scene.add(person);
-      this.crowdList.push({
-        group: person,
-        baseY: py,
-        baseRotY: person.rotation.y,
-        seed: i * 1.5,
-        exclamation: exclamationMark
-      });
     }
+
+    Object.values(parts).forEach((part) => {
+      if (!part.items.length) return;
+      const mesh = new THREE.InstancedMesh(part.geo, part.mat, part.items.length);
+      const phases = new Float32Array(part.items.length);
+
+      part.items.forEach((item, i) => {
+        mesh.setMatrixAt(i, item.matrix);
+        phases[i] = item.phase;
+        if (part.colored) mesh.setColorAt(i, item.color);
+      });
+
+      part.geo.setAttribute('aCrowdPhase', new THREE.InstancedBufferAttribute(phases, 1));
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      this.scene.add(mesh);
+    });
   }
 
   triggerCrowdReaction() {
@@ -935,71 +1924,121 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
   }
 
   createParticleSystem() {
-    this.maxParticles = 280;
+    this.maxParticles = 220;
     this.particleIndex = 0;
 
     const pGeo = new THREE.SphereGeometry(0.2, 5, 4);
+    this.particleOpacity = new Float32Array(this.maxParticles);
+    this.particleOpacityAttr = new THREE.InstancedBufferAttribute(this.particleOpacity, 1);
+    this.particleOpacityAttr.setUsage(THREE.DynamicDrawUsage);
+    pGeo.setAttribute('aOpacity', this.particleOpacityAttr);
+
     const pMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.85,
+      depthWrite: false
     });
+    pMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+attribute float aOpacity;
+varying float vParticleOpacity;`
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+vParticleOpacity = aOpacity;`
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+varying float vParticleOpacity;`
+        )
+        .replace(
+          '#include <dithering_fragment>',
+          `#include <dithering_fragment>
+gl_FragColor.a *= vParticleOpacity;`
+        );
+    };
+    pMat.customProgramCacheKey = () => 'particle-alpha';
 
-    this.particleMeshGroup = new THREE.Group();
-    this.scene.add(this.particleMeshGroup);
+    this.particleMesh = new THREE.InstancedMesh(pGeo, pMat, this.maxParticles);
+    this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.particleMesh.frustumCulled = false;
+    this.particleMesh.castShadow = false;
+    this.particleMesh.receiveShadow = false;
+
+    this.particleDummy = new THREE.Object3D();
+    this._particleColor = new THREE.Color();
+    const zeroMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
 
     this.particlePool = [];
     for (let i = 0; i < this.maxParticles; i++) {
-      const mesh = new THREE.Mesh(pGeo, pMat.clone());
-      mesh.visible = false;
-      this.particleMeshGroup.add(mesh);
+      this.particleMesh.setMatrixAt(i, zeroMatrix);
+      this.particleMesh.setColorAt(i, this._particleColor.setHex(0xffffff));
       this.particlePool.push({
-        mesh,
         active: false,
         vx: 0,
         vy: 0,
         vz: 0,
         life: 0,
         maxLife: 1,
-        baseScale: 1
+        baseScale: 1,
+        x: 0,
+        y: 0,
+        z: 0
       });
     }
+    this.particleMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    this.particleMesh.instanceMatrix.needsUpdate = true;
+    this.particleMesh.instanceColor.needsUpdate = true;
+    this.scene.add(this.particleMesh);
   }
 
   emitParticle(x, y, z, vx, vy, vz, color = 0xffffff, size = 1, maxLife = 0.8) {
-    const p = this.particlePool[this.particleIndex];
+    const index = this.particleIndex;
     this.particleIndex = (this.particleIndex + 1) % this.maxParticles;
+    const p = this.particlePool[index];
 
     p.active = true;
-    p.mesh.visible = true;
-    p.mesh.position.set(x, y, z);
-    p.mesh.scale.setScalar(size);
+    p.x = x;
+    p.y = y;
+    p.z = z;
     p.baseScale = size;
-    p.mesh.material.color.setHex(color);
-    p.mesh.material.opacity = 0.85;
     p.vx = vx;
     p.vy = vy;
     p.vz = vz;
     p.life = 0;
     p.maxLife = maxLife;
+    this.particleOpacity[index] = 0.85;
+    this.particleOpacityAttr.needsUpdate = true;
+
+    this.particleMesh.setColorAt(index, this._particleColor.setHex(color));
+    this.particleMesh.instanceColor.needsUpdate = true;
   }
 
   emitEngineWake(motorPos, forwardVector, speed, isReverse = false) {
     // Exact wake generated at the outboard motor location!
     // Streams strictly in the opposite direction of motion
-    const streamDir = isReverse ? forwardVector.clone() : forwardVector.clone().negate();
-    const perp = new THREE.Vector3(-streamDir.z, 0, streamDir.x); // lateral spreading vector
+    const streamX = isReverse ? forwardVector.x : -forwardVector.x;
+    const streamZ = isReverse ? forwardVector.z : -forwardVector.z;
+    const perpX = -streamZ; // lateral spreading vector
+    const perpZ = streamX;
 
     const count = Math.min(3, Math.floor(Math.abs(speed) * 0.12) + 1);
     for (let i = 0; i < count; i++) {
       // V-shaped wake pattern
       const lateral = (i === 0 ? 0 : (i === 1 ? 0.38 : -0.38));
-      const px = motorPos.x + streamDir.x * 0.4 + perp.x * lateral;
-      const pz = motorPos.z + streamDir.z * 0.4 + perp.z * lateral;
+      const px = motorPos.x + streamX * 0.4 + perpX * lateral;
+      const pz = motorPos.z + streamZ * 0.4 + perpZ * lateral;
 
       const spd = 0.6 + Math.random() * 0.7;
-      const vx = streamDir.x * spd + perp.x * (lateral * 0.5);
-      const vz = streamDir.z * spd + perp.z * (lateral * 0.5);
+      const vx = streamX * spd + perpX * (lateral * 0.5);
+      const vz = streamZ * spd + perpZ * (lateral * 0.5);
 
       this.emitParticle(
         px,
@@ -1042,79 +2081,25 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
   update(dt) {
     this.time += dt;
 
-    const pos = this.waterGeo.attributes.position;
-    const normals = this.waterGeo.attributes.normal;
-    const uvs = this.waterGeo.attributes.uv;
-    const base = this.waterBasePos;
-    const count = pos.count;
-
-    for (let i = 0; i < count; i++) {
-      const x = base.getX(i);
-      const z = base.getZ(i);
-      const u = uvs.getX(i);
-      const v = uvs.getY(i);
-
-      const bankDist = Math.min(u, 1 - u) * this.waterWidth;
-      const waveBankDist = Math.max(0, bankDist - 0.6);
-      const bankT = Math.min(1, waveBankDist / 3);
-      const bankFade = bankT * bankT * (3 - 2 * bankT);
-      const endT = Math.min(1, Math.min(v, 1 - v) / 0.01);
-      const endFade = endT * endT * (3 - 2 * endT);
-      const fade = bankFade * endFade;
-
-      let shoreDrop = 0;
-      if (bankDist < 0.6) {
-        const shoreT = 1 - bankDist / 0.6;
-        shoreDrop = -0.22 * shoreT * shoreT;
-      }
-
-      sampleWaterInto(_waveSample, x, z, this.time);
-
-      pos.setY(i, _waveSample.y * fade + shoreDrop);
-
-      const nx = -_waveSample.dx * fade;
-      const ny = 1;
-      const nz = -_waveSample.dz * fade;
-      const inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
-      normals.setXYZ(i, nx * inv, ny * inv, nz * inv);
-    }
-    pos.needsUpdate = true;
-    normals.needsUpdate = true;
+    // Water displacement and reed sway both run on the GPU now. The CPU only
+    // uploads two scalar uniforms per frame instead of rewriting thousands of
+    // vertex positions/normals and per-stalk transforms.
+    this.reedsWind.value = this.time;
 
     const waterShader = this.waterMat.userData.shader;
     if (waterShader) {
       waterShader.uniforms.uTime.value = this.time;
     }
 
-    for (let i = 0; i < this.reedsList.length; i++) {
-      const r = this.reedsList[i];
-      const breeze = Math.sin(this.time * 2.2 + r.seed) * 0.12;
-      r.group.rotation.z = r.baseRotZ + breeze;
-      r.group.rotation.x = Math.cos(this.time * 1.8 + r.seed) * 0.08;
-    }
-
     if (this.crowdShockTime > 0) {
       this.crowdShockTime -= dt;
     }
 
-    const shockPulse = this.crowdShockTime > 0 ? Math.sin(this.crowdShockTime * 15) * 0.4 : 0;
-    for (let i = 0; i < this.crowdList.length; i++) {
-      const p = this.crowdList[i];
-      const bob = Math.sin(this.time * 3.5 + p.seed) * 0.06;
-      p.group.position.y = p.baseY + bob + shockPulse;
-      p.group.rotation.y = p.baseRotY + Math.sin(this.time * 5 + p.seed) * 0.12;
+    this.crowdTime.value = this.time;
+    this.crowdShock.value =
+      this.crowdShockTime > 0 ? Math.sin(this.crowdShockTime * 15) * 0.4 : 0;
 
-      if (p.exclamation) {
-        p.exclamation.position.y = Math.sin(this.time * 6 + p.seed) * 0.15 + (this.crowdShockTime > 0 ? 0.3 : 0);
-      }
-    }
-
-    if (this.buoys) {
-      this.buoys.forEach((b) => {
-        b.mesh.position.y = Math.sin(this.time * 2.5 + b.seed) * 0.15;
-      });
-    }
-
+    const dummy = this.particleDummy;
     for (let i = 0; i < this.maxParticles; i++) {
       const p = this.particlePool[i];
       if (!p.active) continue;
@@ -1122,23 +2107,33 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
       p.life += dt;
       if (p.life >= p.maxLife) {
         p.active = false;
-        p.mesh.visible = false;
+        this.particleOpacity[i] = 0;
+        dummy.position.set(0, 0, 0);
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        this.particleMesh.setMatrixAt(i, dummy.matrix);
         continue;
       }
 
-      p.mesh.position.x += p.vx * dt;
-      p.mesh.position.y += p.vy * dt;
-      p.mesh.position.z += p.vz * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
 
       p.vy -= 9.8 * dt;
-      if (p.mesh.position.y < 0.04) {
-        p.mesh.position.y = 0.04;
+      if (p.y < 0.04) {
+        p.y = 0.04;
         p.vy = 0;
       }
 
       const progress = p.life / p.maxLife;
-      p.mesh.material.opacity = (1 - progress) * 0.85;
-      p.mesh.scale.setScalar(p.baseScale * (1 + progress * 0.9));
+      this.particleOpacity[i] = (1 - progress) * 0.85;
+      dummy.position.set(p.x, p.y, p.z);
+      dummy.scale.setScalar(p.baseScale * (1 + progress * 0.9));
+      dummy.updateMatrix();
+      this.particleMesh.setMatrixAt(i, dummy.matrix);
     }
+
+    this.particleMesh.instanceMatrix.needsUpdate = true;
+    this.particleOpacityAttr.needsUpdate = true;
   }
 }

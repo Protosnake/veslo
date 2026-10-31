@@ -42,6 +42,7 @@ class Game {
       alt: document.getElementById('osd-alt'),
       spd: document.getElementById('osd-spd'),
       hdg: document.getElementById('osd-hdg'),
+      fps: document.getElementById('osd-fps'),
       batteryFill: document.getElementById('osd-battery-fill'),
       batteryVal: document.getElementById('osd-battery-val'),
       gps: document.getElementById('osd-gps'),
@@ -51,6 +52,12 @@ class Game {
 
     this.missionTime = 0;
     this.battery = 100;
+    this.fps = 0;
+    this.fpsFrames = 0;
+    this.fpsElapsed = 0;
+    this.osdTimer = 0;
+    this.osdInterval = 0.1;
+    this.cameraDir = new THREE.Vector3();
     this.prevThreatCount = 0;
     this.lowBatteryWarned = false;
     this.alertTimeout = null;
@@ -85,6 +92,7 @@ class Game {
       targetWorldPos: new THREE.Vector3()
     };
 
+    this.idleInput = { forward: false, backward: false, left: false, right: false };
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     this.waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -396,8 +404,7 @@ class Game {
   }
 
   getCameraHeading() {
-    const dir = new THREE.Vector3();
-    this.renderer.camera.getWorldDirection(dir);
+    const dir = this.renderer.camera.getWorldDirection(this.cameraDir);
     const deg = (Math.atan2(dir.x, -dir.z) * 180) / Math.PI;
     return (deg + 360) % 360;
   }
@@ -409,14 +416,20 @@ class Game {
     this.osd.headingTape.style.transform = `translateX(${x}px)`;
   }
 
-  updateOSD(dt) {
+  updateFps(rawDt) {
+    this.fpsFrames++;
+    this.fpsElapsed += rawDt;
+    if (this.fpsElapsed < 0.5) return;
+
+    this.fps = Math.round(this.fpsFrames / this.fpsElapsed);
+    this.fpsFrames = 0;
+    this.fpsElapsed = 0;
+    if (this.osd.fps) this.osd.fps.textContent = String(this.fps);
+  }
+
+  updateOSD() {
     if (!this.osd.root) return;
     const playing = this.state === 'PLAYING';
-
-    if (playing) {
-      this.missionTime += dt;
-      this.battery = Math.max(6, this.battery - dt * 0.22);
-    }
 
     const total = this.missionTime;
     const secs = Math.floor(total);
@@ -486,20 +499,30 @@ class Game {
   animate() {
     requestAnimationFrame(() => this.animate());
 
-    const dt = Math.min(this.clock.getDelta(), 0.1);
+    const rawDt = this.clock.getDelta();
+    const dt = Math.min(rawDt, 0.1);
+    this.updateFps(rawDt);
 
     if (this.state === 'PLAYING') {
+      this.missionTime += dt;
+      this.battery = Math.max(6, this.battery - dt * 0.22);
       this.boat.update(dt, this.input);
       this.smugglerManager.update(dt, this.boat);
     } else {
-      this.boat.update(dt, { forward: false, backward: false, left: false, right: false });
+      this.boat.update(dt, this.idleInput);
     }
 
     this.world.update(dt);
 
     this.renderer.updateCamera(dt);
 
-    this.updateOSD(dt);
+    // DOM telemetry only needs a low refresh rate; updating a dozen text nodes
+    // and styles every frame causes avoidable layout/paint work.
+    this.osdTimer += dt;
+    if (this.osdTimer >= this.osdInterval) {
+      this.osdTimer = 0;
+      this.updateOSD();
+    }
     this.renderer.render();
   }
 }

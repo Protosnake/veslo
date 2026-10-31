@@ -19,7 +19,9 @@ export class SmugglerManager {
   reset() {
     this.smugglers.forEach((s) => s.destroy());
     this.smugglers = [];
-    this.spawnTimer = 2.5; // generous initial breathing room
+    this.spawnTimer = 0.7;
+    this.firstWave = true;
+    this.waveCount = 0;
     this.totalSmacked = 0;
     this.score = 0;
     this.isRunning = true;
@@ -31,17 +33,38 @@ export class SmugglerManager {
   }
 
   getSpawnInterval() {
-    const minInterval = 2.5;
-    const baseInterval = 5.5;
-    const interval = baseInterval - Math.min(3.0, (this.score / 100) * 0.07);
-    return Math.max(minInterval, interval);
+    if (this.waveCount <= 2) return 9 + Math.random() * 4;
+
+    const pressure = Math.min(1, this.score / 1400);
+    const baseInterval = 7.5 - pressure * 3.5;
+    return baseInterval * (0.7 + Math.random() * 0.6);
   }
 
-  spawnSmuggler() {
-    const xPos = -26 + Math.random() * 52;
+  getGroupSize() {
+    const roll = Math.random();
+
+    if (this.waveCount <= 2) return 1;
+    if (this.waveCount <= 4) return roll < 0.6 ? 1 : 2;
+    if (this.waveCount <= 6) {
+      if (roll < 0.45) return 1;
+      if (roll < 0.75) return 2;
+      return 3;
+    }
+
+    if (roll < 0.35) return 1;
+    if (roll < 0.65) return 2;
+    if (roll < 0.85) return 3;
+    return 4;
+  }
+
+  spawnSmuggler(spawnDistanceOffset = 0) {
+    const path = this.world.gravelPath;
+    const xPos = path
+      ? path.x + (Math.random() - 0.5) * path.halfWidth * 1.2
+      : -26 + Math.random() * 52;
     // Base speed: 0.75 units/sec (takes ~40s to cross river, boat is 30x faster so motor reverse kills are easy!)
     const baseSpeed = 0.75 * this.getSpeedMultiplier() + (Math.random() - 0.5) * 0.1;
-    const smuggler = new Smuggler(this.scene, this.world, xPos, baseSpeed);
+    const smuggler = new Smuggler(this.scene, this.world, xPos, baseSpeed, spawnDistanceOffset);
     this.smugglers.push(smuggler);
   }
 
@@ -51,7 +74,16 @@ export class SmugglerManager {
     // Spawn timer
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      this.spawnSmuggler();
+      const groupSize = this.firstWave ? 1 : this.getGroupSize();
+      this.firstWave = false;
+      let spawnDistanceOffset = 0;
+
+      for (let i = 0; i < groupSize; i++) {
+        this.spawnSmuggler(spawnDistanceOffset);
+        spawnDistanceOffset += 1.4 + Math.random() * 1.8;
+      }
+
+      this.waveCount += 1;
       this.spawnTimer = this.getSpawnInterval();
     }
 

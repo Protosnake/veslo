@@ -1,4 +1,6 @@
 // Web Audio API procedural sound synthesizer for Veslo
+import wildlifeUrl from '../assets/wildlife.ogg?url';
+
 class SoundSystem {
   constructor() {
     this.ctx = null;
@@ -6,6 +8,9 @@ class SoundSystem {
     this.engineOsc = null;
     this.engineGain = null;
     this.engineRunning = false;
+    this.wildlifeSample = null;
+    this.wildlifePromise = null;
+    this.wildlifeSource = null;
   }
 
   init() {
@@ -18,7 +23,47 @@ class SoundSystem {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
+    this.loadWildlife();
     this.startEngineSound();
+  }
+
+  loadWildlife() {
+    if (!this.ctx || this.wildlifePromise) return this.wildlifePromise;
+
+    this.wildlifePromise = fetch(wildlifeUrl)
+      .then((response) => response.arrayBuffer())
+      .then((data) => new Promise((resolve, reject) => {
+        this.ctx.decodeAudioData(data, resolve, reject);
+      }))
+      .then((buffer) => {
+        this.wildlifeSample = buffer;
+        this.startWildlife();
+      })
+      .catch(() => {
+        this.wildlifeSample = null;
+      });
+
+    return this.wildlifePromise;
+  }
+
+  startWildlife() {
+    if (!this.ctx || !this.wildlifeSample || this.wildlifeSource) return;
+
+    try {
+      const t = this.ctx.currentTime;
+      const source = this.ctx.createBufferSource();
+      source.buffer = this.wildlifeSample;
+      source.loop = true;
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.07, t + 2);
+
+      source.connect(gain);
+      gain.connect(this.ctx.destination);
+      source.start(t);
+      this.wildlifeSource = source;
+    } catch (e) {}
   }
 
   startEngineSound() {
@@ -35,7 +80,7 @@ class SoundSystem {
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(160, this.ctx.currentTime);
 
-      this.engineGain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+      this.engineGain.gain.setValueAtTime(0.045, this.ctx.currentTime);
 
       this.engineOsc.connect(filter);
       filter.connect(this.engineGain);
@@ -53,7 +98,7 @@ class SoundSystem {
     try {
       const t = this.ctx.currentTime;
       const targetFreq = 40 + throttle * 80;
-      const targetGain = 0.02 + throttle * 0.06;
+      const targetGain = 0.04 + throttle * 0.09;
       this.engineOsc.frequency.setTargetAtTime(targetFreq, t, 0.08);
       this.engineGain.gain.setTargetAtTime(targetGain, t, 0.08);
     } catch (e) {}
@@ -96,39 +141,54 @@ class SoundSystem {
     if (!this.ctx || this.isMuted) return;
     try {
       const t = this.ctx.currentTime;
+      const pitch = 420 + Math.random() * 100;
 
-      // Heavy wooden bonk smack (100 pts)
       const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-
+      const oscGain = this.ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(340, t);
-      osc.frequency.exponentialRampToValueAtTime(55, t + 0.16);
-
-      gain.gain.setValueAtTime(0.2625, t);
-      gain.gain.exponentialRampToValueAtTime(0.0075, t + 0.18);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      osc.frequency.setValueAtTime(pitch, t);
+      osc.frequency.exponentialRampToValueAtTime(70, t + 0.12);
+      oscGain.gain.setValueAtTime(0.21, t);
+      oscGain.gain.exponentialRampToValueAtTime(0.006, t + 0.14);
+      osc.connect(oscGain);
+      oscGain.connect(this.ctx.destination);
       osc.start(t);
-      osc.stop(t + 0.2);
+      osc.stop(t + 0.16);
 
-      // Noise slap slap
-      const bufferSize = Math.floor(this.ctx.sampleRate * 0.12);
+      const sub = this.ctx.createOscillator();
+      const subGain = this.ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(160 + Math.random() * 30, t);
+      sub.frequency.exponentialRampToValueAtTime(45, t + 0.16);
+      subGain.gain.setValueAtTime(0.12, t);
+      subGain.gain.exponentialRampToValueAtTime(0.005, t + 0.18);
+      sub.connect(subGain);
+      subGain.connect(this.ctx.destination);
+      sub.start(t);
+      sub.stop(t + 0.2);
+
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.08);
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.03));
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.018));
       }
 
       const noise = this.ctx.createBufferSource();
       noise.buffer = buffer;
 
-      const noiseGain = this.ctx.createGain();
-      noiseGain.gain.setValueAtTime(0.225, t);
-      noiseGain.gain.exponentialRampToValueAtTime(0.0075, t + 0.12);
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1500 + Math.random() * 450, t);
+      filter.frequency.exponentialRampToValueAtTime(600, t + 0.08);
+      filter.Q.setValueAtTime(0.7, t);
 
-      noise.connect(noiseGain);
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.16, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.006, t + 0.08);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
       noiseGain.connect(this.ctx.destination);
       noise.start(t);
     } catch (e) {}
@@ -241,7 +301,8 @@ class SoundSystem {
     if (!this.ctx || this.isMuted) return;
     try {
       const t = this.ctx.currentTime;
-      const bufferSize = Math.floor(this.ctx.sampleRate * 0.25);
+
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.18);
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
@@ -253,19 +314,38 @@ class SoundSystem {
 
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(700, t);
-      filter.frequency.linearRampToValueAtTime(350, t + 0.25);
-      filter.Q.setValueAtTime(1.2, t);
+      filter.frequency.setValueAtTime(2400 + Math.random() * 500, t);
+      filter.frequency.exponentialRampToValueAtTime(700, t + 0.18);
+      filter.Q.setValueAtTime(0.7, t);
 
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(0.18, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.1, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.004, t + 0.18);
 
       noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.ctx.destination);
-
+      filter.connect(noiseGain);
+      noiseGain.connect(this.ctx.destination);
       noise.start(t);
+
+      for (let i = 0; i < 3; i++) {
+        const start = t + 0.015 + i * (0.035 + Math.random() * 0.02);
+        const freq = 220 + Math.random() * 260;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.7, start + 0.06);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.035 + Math.random() * 0.015, start + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0005, start + 0.07);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.08);
+      }
     } catch (e) {}
   }
 

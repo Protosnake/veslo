@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sound } from '../systems/Audio.js';
 
 // Shared geometry cache to avoid runtime allocations / memory leaks
 const SHARED_GEO = {
@@ -19,14 +20,35 @@ const CAP_COLORS = [0x222222, 0xd82b2b, 0x1e3f66, 0x5a189a];
 const BAG_COLORS = [0x785633, 0x3d352e, 0x24422e];
 
 export class Smuggler {
-  constructor(scene, riverWorld, startX, baseSpeed) {
+  constructor(scene, riverWorld, startX, baseSpeed, spawnDistanceOffset = 0) {
     this.scene = scene;
     this.world = riverWorld;
     this.baseSpeed = baseSpeed;
     this.currentSpeed = baseSpeed;
 
-    // Spawn on the north bank and walk into the reeds before entering the water
-    this.position = new THREE.Vector3(startX, 4.5, -20 + Math.random() * 1.5);
+    // Spawn out along the gravel road and follow it down to the reeds
+    this.path = riverWorld.gravelPath;
+    this.pathDistance = 0;
+    this.pathOffset = 0;
+
+    if (this.path && this.path.frameAt) {
+      const spawnJitter = (Math.random() - 0.5) * 12;
+      this.pathDistance = THREE.MathUtils.clamp(
+        this.path.smugglerSpawnDistance + spawnDistanceOffset + spawnJitter,
+        0,
+        Math.max(0, this.path.length - 8)
+      );
+      this.pathOffset = (Math.random() - 0.5) * this.path.halfWidth * 1.1;
+      const frame = this.path.frameAt(this.pathDistance);
+      this.position = new THREE.Vector3(
+        frame.x + frame.nx * this.pathOffset,
+        frame.y,
+        frame.z + frame.nz * this.pathOffset
+      );
+    } else {
+      const startZ = -20 + Math.random() * 1.5;
+      this.position = new THREE.Vector3(startX, 4.5, startZ);
+    }
     this.targetZ = 16.5;
 
     // AI & Smooth Movement
@@ -38,9 +60,10 @@ export class Smuggler {
     // State: walking -> hidden in reeds -> swimming
     this.state = 'walking';
     this.walkPhase = Math.random() * Math.PI * 2;
-    this.walkSpeed = 1.4 + Math.random() * 0.5;
-    this.reedLineZ = -16.4;
-    this.emergeZ = -14.7;
+    this.walkSpeed = this.path ? 4.2 + Math.random() * 0.9 : 1.4 + Math.random() * 0.5;
+    this.reedLineZ = this.path ? this.path.reedLineZ : -16.4;
+    this.emergeZ = this.path ? this.path.emergeZ : -14.7;
+    this.emergeX = this.position.x;
     this.hideDelay = 0;
 
     this.isDead = false;
@@ -172,7 +195,43 @@ export class Smuggler {
     this.group.add(this.walkerGroup);
   }
 
-  updateWalking(dt) {
+  chooseEmergeX(boat) {
+    const minX = -27;
+    const maxX = 27;
+    const minDistance = 6;
+    const maxDistance = 13;
+    const boatX = boat ? boat.position.x : 0;
+    const boatZ = boat ? boat.position.z : 0;
+    const preferredSide = Math.sign(this.path.x - boatX) || (Math.random() > 0.5 ? 1 : -1);
+    const candidates = [];
+
+    for (let i = 0; i < 12; i++) {
+      const side = i < 9 ? preferredSide : -preferredSide;
+      const distance = minDistance + Math.random() * (maxDistance - minDistance);
+      candidates.push({
+        x: THREE.MathUtils.clamp(boatX + side * distance, minX, maxX),
+        distance: 0
+      });
+    }
+
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      candidate.distance = Math.hypot(candidate.x - boatX, this.emergeZ - boatZ);
+    }
+
+    const safe = candidates.filter((candidate) => candidate.distance >= minDistance);
+    if (safe.length) {
+      return safe[Math.floor(Math.random() * safe.length)].x;
+    }
+
+    let farthest = candidates[0];
+    for (let i = 1; i < candidates.length; i++) {
+      if (candidates[i].distance > farthest.distance) farthest = candidates[i];
+    }
+    return farthest.x;
+  }
+
+  updateWalking(dt, boat) {
     this.walkPhase += dt * (4 + this.walkSpeed * 2);
 
     const stride = Math.sin(this.walkPhase);
@@ -182,14 +241,65 @@ export class Smuggler {
     this.walkArmR.rotation.x = stride * 0.5;
     this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.04;
 
-    this.position.z += this.walkSpeed * dt;
-    this.position.y = 4.5;
-    this.group.position.copy(this.position);
-    this.group.rotation.y = 0;
+    let stepSpeed = this.walkSpeed;
+    let lateralOffset = this.pathOffset;
+    let reachedEnd = false;
 
-    if (this.position.z >= this.reedLineZ) {
+    if (this.path && this.path.frameAt) {
+      let frame = this.path.frameAt(this.pathDistance);
+
+      if (boat) {
+        const boatNearMouth = Math.hypot(
+          boat.position.x - this.path.x,
+          boat.position.z - this.path.emergeZ
+        ) < 11;
+
+        if (boatNearMouth) {
+          const side = Math.sign(
+            (frame.x - boat.position.x) * frame.nx +
+            (frame.z - boat.position.z) * frame.nz
+          ) || (this.pathOffset >= 0 ? 1 : -1);
+
+          lateralOffset = side * this.path.halfWidth * 0.65;
+          stepSpeed *= 0.55;
+        }
+      }
+
+      this.pathDistance = Math.min(this.path.length, this.pathDistance + stepSpeed * dt);
+      frame = this.path.frameAt(this.pathDistance);
+      this.position.set(
+        frame.x + frame.nx * lateralOffset,
+        frame.y,
+        frame.z + frame.nz * lateralOffset
+      );
+      this.group.position.copy(this.position);
+      this.group.rotation.y = frame.heading;
+      reachedEnd = this.pathDistance >= this.path.length - 0.02;
+    } else {
+      let targetX = this.position.x;
+
+      if (boat) {
+        const boatNearMouth = Math.hypot(boat.position.x, boat.position.z + 14) < 9.5;
+
+        if (boatNearMouth) {
+          const side = Math.sign(-boat.position.x) || 1;
+          targetX = this.position.x + side * 1.0;
+          stepSpeed *= 0.55;
+        }
+      }
+
+      this.position.x += (targetX - this.position.x) * Math.min(1, dt * 4);
+      this.position.z += stepSpeed * dt;
+      this.position.y = 4.5;
+      this.group.position.copy(this.position);
+      this.group.rotation.y = 0;
+      reachedEnd = this.position.z >= this.reedLineZ;
+    }
+
+    if (reachedEnd) {
       this.state = 'hidden';
       this.hideDelay = 0.5 + Math.random() * 0.4;
+      this.emergeX = this.chooseEmergeX(boat);
       this.group.visible = false;
       this.walkerGroup.visible = false;
       this.world.emitParticle(
@@ -263,7 +373,7 @@ export class Smuggler {
     }
 
     if (this.state === 'walking') {
-      this.updateWalking(dt);
+      this.updateWalking(dt, boat);
       return;
     }
 
@@ -274,10 +384,11 @@ export class Smuggler {
         this.group.visible = true;
         this.swimmerGroup.visible = true;
         this.walkerGroup.visible = false;
-        this.position.set(this.position.x, 0, this.emergeZ);
+        this.position.set(this.emergeX, 0, this.emergeZ);
         this.group.position.copy(this.position);
         this.group.rotation.set(0, 0, 0);
         this.world.emitSplash(this.position.x, this.position.z, 10, 0xdff2fc);
+        sound.playSplash();
       }
       return;
     }

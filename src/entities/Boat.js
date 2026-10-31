@@ -32,6 +32,16 @@ export class Boat {
     this.slapArcAngle = 0;
     this.isCrashed = false;
 
+    // Scratch state reused every frame to keep the hot path allocation-free.
+    this.yAxis = new THREE.Vector3(0, 1, 0);
+    this.propOffset = new THREE.Vector3();
+    this.propWorldPos = new THREE.Vector3();
+    this.wakeForward = new THREE.Vector3();
+    this.whackHitbox = { center: new THREE.Vector3(), radius: 2.8 };
+    this.motorHitbox = { center: new THREE.Vector3(), radius: 2.2 };
+    this.hullHitbox = { center: new THREE.Vector3(), radius: 2.6 };
+    this.engineSoundTimer = 0;
+
     this.createBoatModel();
     this.reset();
   }
@@ -352,32 +362,21 @@ export class Boat {
       return null;
     }
 
-    const bladeOffset = new THREE.Vector3(2.6, 0, 0);
-    bladeOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.angle + this.slapArcAngle);
-
-    const hitCenter = this.position.clone().add(bladeOffset);
-    return {
-      center: hitCenter,
-      radius: 2.8 // generous reach
-    };
+    this.propOffset.set(2.6, 0, 0).applyAxisAngle(this.yAxis, this.angle + this.slapArcAngle);
+    this.whackHitbox.center.copy(this.position).add(this.propOffset);
+    return this.whackHitbox;
   }
 
   getMotorHitbox() {
-    const motorOffset = new THREE.Vector3(-2.1, 0, 0);
-    motorOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.angle);
-    return {
-      center: this.position.clone().add(motorOffset),
-      radius: 2.2 // reliable propeller reach
-    };
+    this.propOffset.set(-2.1, 0, 0).applyAxisAngle(this.yAxis, this.angle);
+    this.motorHitbox.center.copy(this.position).add(this.propOffset);
+    return this.motorHitbox;
   }
 
   getHullHitbox() {
-    const hullOffset = new THREE.Vector3(0.5, 0, 0);
-    hullOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.angle);
-    return {
-      center: this.position.clone().add(hullOffset),
-      radius: 2.6 // reliable hull contact
-    };
+    this.propOffset.set(0.5, 0, 0).applyAxisAngle(this.yAxis, this.angle);
+    this.hullHitbox.center.copy(this.position).add(this.propOffset);
+    return this.hullHitbox;
   }
 
   update(dt, input) {
@@ -463,33 +462,67 @@ export class Boat {
     const hitWestBarrier = this.position.x <= -31.5;
     const hitEastBarrier = this.position.x >= 31.5;
 
-    if (!this.isCrashed && (hitNorthBank || hitSouthBank || hitWestBarrier || hitEastBarrier)) {
+    let rockHit = null;
+    if (!this.isCrashed && this.world.findRockCollision) {
+      const hullRadius = 1.15;
+      rockHit = this.world.findRockCollision(
+        this.position.x + forwardX * 1.15,
+        this.position.z + forwardZ * 1.15,
+        hullRadius
+      );
+
+      if (!rockHit) {
+        rockHit = this.world.findRockCollision(this.position.x, this.position.z, hullRadius);
+      }
+
+      if (!rockHit) {
+        rockHit = this.world.findRockCollision(
+          this.position.x - forwardX * 0.85,
+          this.position.z - forwardZ * 0.85,
+          hullRadius
+        );
+      }
+    }
+
+    if (
+      !this.isCrashed &&
+      (hitNorthBank || hitSouthBank || hitWestBarrier || hitEastBarrier || rockHit)
+    ) {
+      const hitRock = Boolean(rockHit);
       this.isCrashed = true;
       this.speed = 0;
       this.velocity.set(0, 0, 0);
       this.angularVelocity = 0;
+
+      if (hitRock && this.world.emitRockImpact) {
+        this.world.emitRockImpact(this.position.x, this.position.z, rockHit);
+      }
+
       if (this.onLandCrash) {
         let reason = 'riverbank';
         if (hitNorthBank) reason = 'north';
         else if (hitSouthBank) reason = 'south';
-        else if (hitWestBarrier) reason = 'west';
-        else if (hitEastBarrier) reason = 'east';
+        else if (hitWestBarrier || (hitRock && this.position.x < 0)) reason = 'west';
+        else if (hitEastBarrier || hitRock) reason = 'east';
         this.onLandCrash(reason);
       }
       return;
     }
 
     const speedRatio = Math.abs(this.speed) / this.maxSpeed;
-    sound.updateEngine(speedRatio);
+    this.engineSoundTimer -= dt;
+    if (this.engineSoundTimer <= 0) {
+      this.engineSoundTimer = 0.1;
+      sound.updateEngine(speedRatio);
+    }
 
     // Engine wake strictly emitted directly behind the outboard motor propeller
     if (Math.abs(this.speed) > 1.2 && this.world) {
-      const propPos = this.position.clone().add(
-        new THREE.Vector3(-1.8, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.angle)
-      );
-      const fwdVec = new THREE.Vector3(forwardX, 0, forwardZ);
+      this.propOffset.set(-1.8, 0, 0).applyAxisAngle(this.yAxis, this.angle);
+      this.propWorldPos.copy(this.position).add(this.propOffset);
+      this.wakeForward.set(forwardX, 0, forwardZ);
       if (this.world.emitEngineWake) {
-        this.world.emitEngineWake(propPos, fwdVec, this.speed, this.speed < 0);
+        this.world.emitEngineWake(this.propWorldPos, this.wakeForward, this.speed, this.speed < 0);
       } else if (this.world.emitWake) {
         this.world.emitWake(this.position.x, this.position.z, this.angle, Math.abs(this.speed));
       }

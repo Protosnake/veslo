@@ -66,10 +66,12 @@ export class GameRenderer {
       throw new WebGLUnavailableError(lastError);
     }
 
+    // Rendering is fill-rate bound on high-DPI displays; 1.5x keeps the image
+    // crisp while avoiding the 4x pixel cost of an uncapped 2x buffer.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
 
@@ -111,8 +113,8 @@ export class GameRenderer {
     this.sun = new THREE.DirectionalLight(0xfffaf0, 1.4);
     this.sun.position.set(30, 50, 20);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.width = 2048;
-    this.sun.shadow.mapSize.height = 2048;
+    this.sun.shadow.mapSize.width = 1024;
+    this.sun.shadow.mapSize.height = 1024;
     this.sun.shadow.camera.near = 10;
     this.sun.shadow.camera.far = 120;
 
