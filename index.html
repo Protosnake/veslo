@@ -21,6 +21,15 @@
     <!-- Three.js Canvas Container -->
     <div id="canvas-container"></div>
 
+    <!-- Watchtower binocular viewport -->
+    <div id="binocular-overlay" class="binocular-overlay" aria-hidden="true"></div>
+
+    <!-- Drone feed hand-off -->
+    <div id="drone-connect" class="drone-connect" aria-hidden="true">
+      <div class="osd-snow"></div>
+      <div class="osd-signal-loss-bar"><span data-i18n="osd.connecting">CONNECTING</span></div>
+    </div>
+
     <!-- Drone Camera Viewfinder -->
     <div id="drone-osd" class="drone-osd">
       <div class="osd-scanlines"></div>

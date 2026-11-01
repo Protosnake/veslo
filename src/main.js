@@ -6,6 +6,9 @@ import { SmugglerManager } from './entities/SmugglerManager.js';
 import { WildlifeManager } from './entities/WildlifeManager.js';
 import { BirdManager } from './entities/Birds.js';
 import { Minivan } from './entities/Minivan.js';
+import { WatchtowerSoldier } from './entities/WatchtowerSoldier.js';
+import { Drone } from './entities/Drone.js';
+import { ConnectScreen } from './systems/ConnectScreen.js';
 import { sound } from './systems/Audio.js';
 import { rankSystem } from './systems/RankSystem.js';
 import { mountRankSprites, rankIconMarkup } from './systems/RankSprites.js';
@@ -303,19 +306,33 @@ class Game {
     this.birdManager = new BirdManager(this.renderer.scene, this.world, this.wildlifeManager);
 
     this.minivan = new Minivan(this.renderer.scene);
+    this.soldier = new WatchtowerSoldier(this.renderer.scene);
+    this.drone = new Drone(this.renderer.scene);
+    this.soldier.group.scale.setScalar(0.78);
+    this.binocularOverlay = document.getElementById('binocular-overlay');
+    this.connectScreen = new ConnectScreen(document.getElementById('drone-connect'));
     this.intro = {
       time: 0,
       spawned: false,
       vanDuration: 3.2,
-      transitionStart: 6.0,
-      duration: 8.5,
+      vanDelay: 1.8,
+      soldierEnd: 2.0,
+      binocularEnd: 6.8,
+      droneRevealEnd: 9.4,
+      droneScale: 1.6,
+      duration: 12.0,
       vanStart: 0,
       vanDrop: 0,
       vanSpeed: 0,
       vanHideTimer: 0,
       exhaustTimer: 0,
       doorClosePlayed: false,
-      fovH: 50,
+      fovH: 55,
+      binocularFov: 12,
+      tower: null,
+      poses: null,
+      droneRevealStartPos: new THREE.Vector3(),
+      droneRevealEndPos: new THREE.Vector3(),
       startPose: { position: new THREE.Vector3(), look: new THREE.Vector3() },
       targetPose: { position: new THREE.Vector3(), look: new THREE.Vector3() }
     };
@@ -344,6 +361,14 @@ class Game {
     this.initEvents();
     onLocaleChange(() => this.refreshLocale());
     this.updateHUD();
+    // Compile the hidden cinematic actors while the start modal is up, so
+    // their first appearance does not hitch the intro.
+    if (typeof this.renderer.renderer.compileAsync === 'function') {
+      this.renderer.renderer.compileAsync(this.renderer.scene, this.renderer.camera).catch(() => {});
+    } else {
+      this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera);
+    }
+    if (import.meta.env.DEV) window.__vesloGame = this;
     this.animate();
   }
 
@@ -644,8 +669,8 @@ class Game {
       return;
     }
 
-    // Drop off where the road disappears into the woods. The fixed drone shot
-    // only sees the last stretch, so the van enters from off-screen.
+    // Drop off where the road disappears into the woods. The watchtower sees
+    // the last stretch, so the van enters from off-screen.
     const dropDistance = path.introDropDistance ?? path.length * 0.45;
     const dropFrame = path.frameAt(dropDistance);
 
@@ -658,13 +683,48 @@ class Game {
     intro.exhaustTimer = 0;
     intro.doorClosePlayed = false;
 
-    // Fixed high drone POV over the north plateau, framed on the drop point.
-    intro.startPose.position.set(
-      dropFrame.x - 4,
-      dropFrame.y + 32,
-      dropFrame.z + 26
-    );
-    intro.startPose.look.set(dropFrame.x, dropFrame.y + 1, dropFrame.z);
+    const tower = (this.world.watchtowers || []).find((item) => item.x > 0)
+      || (this.world.watchtowers || [])[0];
+    if (!tower) {
+      this.finishIntro();
+      return;
+    }
+    intro.tower = tower;
+
+    const floorY = tower.floorY;
+    const eyeY = floorY + 1.47;
+    intro.poses = {
+      guard: {
+        position: new THREE.Vector3(tower.x + 1.3, floorY + 1.8, tower.z - 4.6),
+        look: new THREE.Vector3(tower.x, floorY + 1.35, tower.z + 0.2)
+      },
+      eye: {
+        position: new THREE.Vector3(tower.x, eyeY, tower.z - 0.55),
+        look: new THREE.Vector3(dropFrame.x, dropFrame.y + 1, dropFrame.z)
+      },
+      reveal: {
+        position: new THREE.Vector3(tower.x + 1.5, tower.topY + 3.0, tower.z + 12.5),
+        look: new THREE.Vector3(tower.x, tower.topY + 0.2, tower.z - 18)
+      }
+    };
+
+    intro.droneRevealStartPos.set(tower.x, tower.topY - 2.5, tower.z - 2.4);
+    intro.droneRevealEndPos.set(tower.x, tower.topY + 3.6, tower.z - 4.2);
+
+    intro.startPose.position.copy(intro.poses.guard.position);
+    intro.startPose.look.copy(intro.poses.guard.look);
+
+    this.soldier.reset();
+    this.soldier.group.position.set(tower.x, floorY, tower.z);
+    this.soldier.group.rotation.y = Math.PI;
+    this.soldier.group.scale.setScalar(0.78);
+    this.soldier.setMode('binoculars', true);
+    this.soldier.setVisible(true);
+
+    this.drone.setVisible(false);
+    this.drone.group.scale.setScalar(intro.droneScale);
+    if (this.binocularOverlay) this.binocularOverlay.classList.remove('is-active');
+    this.connectScreen.hide();
 
     this.renderer.settleFollow(this.boat.position.x, this.boat.position.z);
     intro.targetPose = this.renderer.getGameplayPose();
@@ -681,17 +741,64 @@ class Game {
     sound.playExhaustPuff();
   }
 
+  getIntroDronePosition(t) {
+    const intro = this.intro;
+    if (t < intro.binocularEnd) return intro.droneRevealStartPos.clone();
+    if (t < intro.droneRevealEnd) {
+      const k = THREE.MathUtils.smoothstep(t, intro.binocularEnd, intro.droneRevealEnd);
+      return intro.droneRevealStartPos.clone().lerp(intro.droneRevealEndPos, k);
+    }
+    return intro.droneRevealEndPos.clone();
+  }
+
+  getIntroCameraPose(t) {
+    const intro = this.intro;
+    const poses = intro.poses;
+    if (!poses) return null;
+
+    if (t < intro.soldierEnd) {
+      return {
+        position: poses.guard.position.clone(),
+        look: poses.guard.look.clone(),
+        fov: 58
+      };
+    }
+
+    if (t < intro.binocularEnd) {
+      return {
+        position: poses.eye.position.clone(),
+        look: poses.eye.look.clone(),
+        fov: intro.binocularFov
+      };
+    }
+
+    if (t < intro.droneRevealEnd) {
+      return {
+        position: poses.reveal.position.clone(),
+        look: poses.reveal.look.clone(),
+        fov: 58
+      };
+    }
+
+    return null;
+  }
+
   updateIntro(dt) {
     const intro = this.intro;
     intro.time += dt;
     const t = intro.time;
     const path = this.world.gravelPath;
+    const vanT = Math.max(0, t - intro.vanDelay);
     const spawnTime = intro.vanDuration + 0.55;
     const doorCloseTime = intro.vanDuration + 1.55;
 
     if (path && path.frameAt) {
-      if (t <= intro.vanDuration) {
-        const k = THREE.MathUtils.smoothstep(t, 0, intro.vanDuration);
+      if (t < intro.vanDelay) {
+        this.minivan.setPose(path.frameAt(intro.vanStart), 0);
+        this.minivan.update(dt, 0);
+        sound.updateVanEngine(0.22);
+      } else if (vanT <= intro.vanDuration) {
+        const k = THREE.MathUtils.smoothstep(vanT, 0, intro.vanDuration);
         const distance = THREE.MathUtils.lerp(intro.vanStart, intro.vanDrop, k);
         // Drift onto the shoulder before coming to a stop, never after.
         const lateral = 2.6 * THREE.MathUtils.smoothstep(k, 0.7, 1);
@@ -709,36 +816,54 @@ class Game {
       }
     }
 
-    if (t >= doorCloseTime) {
+    if (vanT >= doorCloseTime) {
       this.minivan.closeDoors();
       if (!intro.doorClosePlayed) {
         intro.doorClosePlayed = true;
         sound.playVanDoorClose();
       }
-    } else if (t >= intro.vanDuration) {
+    } else if (vanT >= intro.vanDuration) {
       this.minivan.openDoors();
     }
 
-    if (!intro.spawned && t >= spawnTime) {
+    if (!intro.spawned && vanT >= spawnTime) {
       this.spawnIntroSmugglers();
     }
 
     this.smugglerManager.updateIntro(dt, this.boat);
 
-    if (t >= intro.transitionStart) {
-      const duration = Math.max(0.001, intro.duration - intro.transitionStart);
-      const k = THREE.MathUtils.clamp((t - intro.transitionStart) / duration, 0, 1);
-      const eased = k * k * (3 - 2 * k);
-      const position = intro.startPose.position.clone().lerp(intro.targetPose.position, eased);
-      const look = intro.startPose.look.clone().lerp(intro.targetPose.look, eased);
-      this.renderer.setManualCamera(position, look);
-      this.renderer.setHorizontalFovOverride(
-        THREE.MathUtils.lerp(
-          intro.fovH,
-          this.renderer.getGameplayHorizontalFov(),
-          eased
-        )
-      );
+    let soldierVisible = false;
+    if (t < intro.binocularEnd) {
+      this.soldier.setMode('binoculars');
+      soldierVisible = t < intro.soldierEnd;
+    }
+    this.soldier.setVisible(soldierVisible);
+    this.soldier.update(dt);
+
+    if (this.binocularOverlay) {
+      const overlayOn = t >= intro.soldierEnd && t < intro.binocularEnd;
+      this.binocularOverlay.classList.toggle('is-active', overlayOn);
+    }
+
+    this.drone.setVisible(t >= intro.binocularEnd);
+    if (t >= intro.binocularEnd) {
+      const dronePos = this.getIntroDronePosition(t);
+      this.drone.setPose(dronePos.x, dronePos.y, dronePos.z, Math.PI);
+      this.drone.update(dt);
+    }
+
+    const pose = this.getIntroCameraPose(t);
+    if (pose) {
+      this.renderer.setManualCamera(pose.position, pose.look);
+      this.renderer.setHorizontalFovOverride(pose.fov);
+    }
+
+    const connecting = t >= intro.droneRevealEnd && t < intro.duration;
+    if (connecting) {
+      if (!this.connectScreen.active) this.connectScreen.show();
+      this.connectScreen.update(dt);
+    } else if (this.connectScreen.active) {
+      this.connectScreen.hide();
     }
 
     if (t >= intro.duration) {
@@ -835,6 +960,11 @@ class Game {
     document.body.classList.remove('intro');
     this.intro.vanHideTimer = 1.0;
     sound.stopVanEngine();
+    this.soldier.setVisible(false);
+    this.drone.setVisible(false);
+    this.drone.group.scale.setScalar(this.intro.droneScale);
+    if (this.binocularOverlay) this.binocularOverlay.classList.remove('is-active');
+    this.connectScreen.hide();
     this.renderer.clearManualCamera();
     this.renderer.clearHorizontalFovOverride();
     this.clearInput();

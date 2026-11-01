@@ -46,6 +46,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'osd.wind': 'WIND',
     'osd.sat': 'SAT',
     'osd.threats': 'ПОРУШНИКИ',
+    'osd.connecting': 'CONNECTING',
 
     // ── OSD Alerts ──
     'osd.alert.uplinkEstablished': 'ЗВ`ЯЗОК ВСТАНОВЛЕНО',
@@ -222,6 +223,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'osd.wind': 'WIND',
     'osd.sat': 'SAT',
     'osd.threats': 'THREATS',
+    'osd.connecting': 'CONNECTING',
 
     // ── OSD Alerts ──
     'osd.alert.uplinkEstablished': 'UPLINK ESTABLISHED',

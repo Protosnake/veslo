@@ -86,6 +86,7 @@ export class RiverWorld {
     this.northBankY = NORTH_BANK_Y;
     this.riverSamples = this.buildRiverCenterline();
     this.rockColliders = [];
+    this.watchtowers = [];
 
     this.createBanks();
     this.createGravelPath();
@@ -423,6 +424,10 @@ export class RiverWorld {
     };
 
     path.length = totalLength;
+    // Keep the intro drop near the reed line so the watchtower binocular shot
+    // has a clear line of sight down the gravel corridor.
+    path.introDropDistance = Math.max(EXTENSION_LENGTH + 8, totalLength - sz(14));
+    path.introVanStartDistance = Math.max(0, path.introDropDistance - 30);
     path.sample = samplePath;
     // Spawn just a short walk from the reed line so waves reach the water
     // quickly instead of trekking the whole (now longer) road.
@@ -1797,8 +1802,12 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
   createWatchtower(x, z) {
     const tower = new THREE.Group();
     const woodMat = new THREE.MeshLambertMaterial({ color: 0x4f361c, flatShading: true });
+    // Raise the cabin clear of the tall north-bank reeds so the watchtower
+    // binocular shot still sees the road and the van.
+    const rise = 9;
 
-    const legGeo = new THREE.CylinderGeometry(0.18, 0.22, 9, 5);
+    const legHeight = 9 + rise;
+    const legGeo = new THREE.CylinderGeometry(0.18, 0.22, legHeight, 5);
     const offsets = [
       [-1.2, -1.2],
       [1.2, -1.2],
@@ -1807,39 +1816,83 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     ];
     offsets.forEach(([ox, oz]) => {
       const leg = new THREE.Mesh(legGeo, woodMat);
-      leg.position.set(ox, 5.5, oz);
+      leg.position.set(ox, 1 + legHeight / 2, oz);
       leg.castShadow = true;
       tower.add(leg);
     });
 
-    const cabin = new THREE.Mesh(
-      new THREE.BoxGeometry(3.2, 2.2, 3.2),
-      new THREE.MeshLambertMaterial({ color: 0x2e3828 })
-    );
-    cabin.position.set(0, 10.5, 0);
-    cabin.castShadow = true;
-    tower.add(cabin);
+    const cabinMat = new THREE.MeshLambertMaterial({ color: 0x2e3828, side: THREE.DoubleSide });
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x3a2a18, side: THREE.DoubleSide });
+
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.18, 3.2), floorMat);
+    floor.position.set(0, 9.41 + rise, 0);
+    floor.castShadow = true;
+    tower.add(floor);
+
+    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.12, 3.2), cabinMat);
+    ceiling.position.set(0, 11.54 + rise, 0);
+    ceiling.castShadow = true;
+    tower.add(ceiling);
+
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 0.12), cabinMat);
+    backWall.position.set(0, 10.5 + rise, -1.54);
+    backWall.castShadow = true;
+    tower.add(backWall);
+
+    for (const side of [-1, 1]) {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.2, 3.2), cabinMat);
+      sideWall.position.set(side * 1.54, 10.5 + rise, 0);
+      sideWall.castShadow = true;
+      tower.add(sideWall);
+    }
+
+    const sill = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.6, 0.12), cabinMat);
+    sill.position.set(0, 9.7 + rise, 1.54);
+    sill.castShadow = true;
+    tower.add(sill);
+
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.36, 0.12), cabinMat);
+    lintel.position.set(0, 11.42 + rise, 1.54);
+    lintel.castShadow = true;
+    tower.add(lintel);
+
+    for (const side of [-1, 1]) {
+      const windowPanel = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.24, 0.12), cabinMat);
+      windowPanel.position.set(side * 1.325, 10.62 + rise, 1.54);
+      windowPanel.castShadow = true;
+      tower.add(windowPanel);
+    }
+
+    const consoleShelf = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.42), floorMat);
+    consoleShelf.position.set(0, 10.02 + rise, 1.24);
+    consoleShelf.castShadow = true;
+    tower.add(consoleShelf);
 
     const roof = new THREE.Mesh(
       new THREE.ConeGeometry(2.8, 1.5, 4),
       new THREE.MeshLambertMaterial({ color: 0x1c1c1c })
     );
     roof.rotation.y = Math.PI / 4;
-    roof.position.set(0, 12.3, 0);
+    roof.position.set(0, 12.3 + rise, 0);
     roof.castShadow = true;
     tower.add(roof);
 
-    const lightHead = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.4, 0.8, 8),
-      new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffeeaa, emissiveIntensity: 0.6 })
-    );
-    lightHead.rotation.x = -Math.PI / 3;
-    lightHead.position.set(0, 10.2, 1.8);
-    tower.add(lightHead);
+    const cabinLight = new THREE.PointLight(0xffdfae, 6, 8, 2);
+    cabinLight.position.set(0, 10.9 + rise, 0.6);
+    tower.add(cabinLight);
 
-    tower.position.set(x, -3.0, z);
+    const towerY = -3.0;
+    tower.position.set(x, towerY, z);
     tower.rotation.y = Math.PI;
     this.scene.add(tower);
+
+    this.watchtowers.push({
+      x,
+      z,
+      y: towerY,
+      floorY: towerY + 9.5 + rise,
+      topY: towerY + 13.05 + rise
+    });
   }
 
   createAppalledCrowd() {
