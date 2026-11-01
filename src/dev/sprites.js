@@ -169,25 +169,6 @@ function buildSoldierIdle(stage) {
   };
 }
 
-// Two rigs side by side for comparison shots / showing something off.
-function buildSoldierDuo(stage) {
-  const left = new Soldier({ pose: 'idle' });
-  left.group.position.x = -0.55;
-  const right = new Soldier({ pose: 'idle' });
-  right.group.position.x = 0.55;
-  stage.add(left.group, right.group);
-  return {
-    roots: [left.group, right.group],
-    reset: () => {
-      left.setPose('idle', true);
-      right.setPose('idle', true);
-    },
-    update: (dt) => {
-      left.update(dt);
-      right.update(dt);
-    }
-  };
-}
 
 export const SPRITE_GROUPS = [
   {
@@ -303,13 +284,6 @@ export const SPRITE_GROUPS = [
         note: 'Shared soldier: helmet, plate carrier and 15 articulated joints. The same model the boat crew and watchtower use.',
         source: 'src/entities/Soldier.js',
         build: buildSoldierIdle
-      },
-      {
-        id: 'soldiers-duo',
-        label: 'Soldiers — duo',
-        note: 'Two shared soldier rigs side by side, for comparison shots.',
-        source: 'src/entities/Soldier.js',
-        build: buildSoldierDuo
       },
       {
         id: 'soldier-binoculars',
