@@ -191,7 +191,9 @@ export class SmugglerManager {
       if (!s.isDead && s.state === 'swimming') {
         // Priority 1: Oar Whack (+100 pts)
         let whacked = false;
-        for (const whackHitbox of whackHitboxes) {
+        // A shallow dive is still within oar reach; a deep one is not.
+        const canWhack = !s.isDiving || s.propVulnerable;
+        for (const whackHitbox of canWhack ? whackHitboxes : []) {
           const distWhack = Math.hypot(s.position.x - whackHitbox.center.x, s.position.z - whackHitbox.center.z);
           if (distWhack <= whackHitbox.radius) {
             s.smack();
@@ -207,7 +209,7 @@ export class SmugglerManager {
 
         // Priority 2: Outboard Engine / Propeller Chop (+500 pts!)
         const distMotor = Math.hypot(s.position.x - motorHitbox.center.x, s.position.z - motorHitbox.center.z);
-        if (distMotor <= motorHitbox.radius) {
+        if (distMotor <= motorHitbox.radius && (!s.isDiving || s.propVulnerable)) {
           s.shred();
           boat.applyMotorShred();
           this.totalSmacked++;
@@ -219,7 +221,7 @@ export class SmugglerManager {
 
         // Priority 3: Boat Hull Ramming (+50 pts)
         const distHull = Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z);
-        if (distHull <= hullHitbox.radius) {
+        if (distHull <= hullHitbox.radius && !s.isDiving) {
           s.ram();
           boat.applyRamImpact();
           this.totalSmacked++;

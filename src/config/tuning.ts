@@ -25,6 +25,8 @@ export interface TuningConfig {
   initialBattery: number;
   /** Extra smugglers spawned immediately at run start. */
   initialSpawnCount: number;
+  /** Debug: swimmers spawned just before the escape line to trigger a fast fail. */
+  failSpawnCount: number;
   /** Kill-streak window in seconds. */
   killStreakSeconds: number;
   /** Request a screen wake lock for the duration of a run. */
@@ -36,6 +38,7 @@ export interface TuningConfig {
 export const TUNING: TuningConfig = {
   initialBattery: 100,
   initialSpawnCount: 0,
+  failSpawnCount: 0,
   killStreakSeconds: 5,
   wakeLock: true,
   stork: {

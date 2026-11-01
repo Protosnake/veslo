@@ -3,6 +3,7 @@ import { GameRenderer } from './core/Renderer.js';
 import { RiverWorld } from './world/River.js';
 import { Boat } from './entities/Boat.js';
 import { BoatCrew } from './entities/BoatCrew.js';
+import { sz } from './world/Bounds.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { WildlifeManager } from './entities/WildlifeManager.js';
 import { BirdManager } from './entities/Birds.js';
@@ -104,6 +105,9 @@ function isSpriteViewerEnabled() {
   );
 }
 
+// Seconds the game-over camera chases the escaping smuggler before it stops.
+const GAME_OVER_FOLLOW_SECONDS = 4;
+
 const INITIAL_BATTERY =
   readBatteryPercent(new URLSearchParams(window.location.search).get('battery'))
   ?? readBatteryPercent(import.meta.env.VITE_START_BATTERY)
@@ -113,6 +117,13 @@ const INITIAL_SPAWN_COUNT =
   readSpawnCount(new URLSearchParams(window.location.search).get('spawn'))
   ?? readSpawnCount(import.meta.env.VITE_INITIAL_SPAWN)
   ?? TUNING.initialSpawnCount;
+
+const FAIL_SPAWN_PARAMS = new URLSearchParams(window.location.search);
+const FAIL_SPAWN_COUNT =
+  readSpawnCount(FAIL_SPAWN_PARAMS.get('escape'))
+  ?? (FAIL_SPAWN_PARAMS.has('escape') ? 6 : null)
+  ?? readSpawnCount(import.meta.env.VITE_ESCAPE_SPAWN)
+  ?? TUNING.failSpawnCount;
 
 const KILL_STREAK_WINDOW =
   readSeconds(new URLSearchParams(window.location.search).get('streak'))
@@ -689,6 +700,12 @@ class Game {
 
     acquireWakeLock();
     this.startIntro();
+
+    // Fast-fail debug spawn: jump straight past the intro so the fail state is
+    // one second away instead of ten.
+    if (FAIL_SPAWN_COUNT > 0) {
+      this.intro.time = this.intro.duration;
+    }
   }
 
   startIntro() {
@@ -946,6 +963,23 @@ class Game {
     }
   }
 
+  // Debug: drop swimmers just short of the escape line so a fail can be tested
+  // without waiting for a full crossing. Enable with ?escape=N.
+  spawnFailSwimmers() {
+    if (FAIL_SPAWN_COUNT <= 0) return;
+
+    const z = sz(15.25);
+    const halfWidth = this.world.riverHalfWidth ?? 24;
+    const centerX = this.boat.position.x;
+
+    for (let i = 0; i < FAIL_SPAWN_COUNT; i++) {
+      const spread = (i - (FAIL_SPAWN_COUNT - 1) / 2) * 4;
+      const jitter = (Math.random() - 0.5) * 2;
+      const x = THREE.MathUtils.clamp(centerX + spread + jitter, -halfWidth + 3, halfWidth - 3);
+      this.smugglerManager.spawnSwimmingAt(x, z);
+    }
+  }
+
   skipIntro() {
     if (this.state !== 'INTRO') return;
 
@@ -1001,6 +1035,7 @@ class Game {
     this.glitchOsd(450);
     this.showOsdAlert(t('osd.alert.uplinkActive'), 'ok', 2.2);
     this.spawnDebugSwimmers();
+    this.spawnFailSwimmers();
   }
 
   updateVanVisibility(dt) {
@@ -1237,7 +1272,7 @@ class Game {
       endLook: focusPoint,
       follow,
       followElapsed: 0,
-      followDuration: follow?.escapeRunSeconds ?? 5,
+      followDuration: follow ? GAME_OVER_FOLLOW_SECONDS : 5,
       startFov: this.renderer.getGameplayHorizontalFov(),
       endFov: 52
     };

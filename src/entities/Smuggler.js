@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
 import { sx, sz } from '../world/Bounds.js';
+import { DIFFICULTY_TUNING } from '../config/difficulty.js';
 import { Soldier, randomSmugglerOutfit } from './Soldier.js';
 
 // Shared geometry cache to avoid runtime allocations / memory leaks
@@ -141,6 +142,15 @@ export class Smuggler {
     this.wobbleSeed = Math.random() * 100;
     this.wobbleFreq = 1.8 + Math.random() * 1.2;
     this.isPanicking = false;
+    this.sprintTimer = 0;
+    this.sprintCooldown = 0;
+    this.isDiving = false;
+    this.diveTimer = 0;
+    this.diveDepth = 0;
+    this.propVulnerable = false;
+    this.diveCooldown = 0;
+    this.diveCount = 0;
+    this.diveRecoverTimer = 0;
     this.currentHeading = Math.PI / 2; // facing south
     this.wildlifeScareTimer = 0;
     this.wildlifeScareX = 0;
@@ -332,6 +342,37 @@ export class Smuggler {
     }
   }
 
+  startDive() {
+    const dive = DIFFICULTY_TUNING.dive;
+    this.isDiving = true;
+    this.diveTimer = dive.minDuration + Math.random() * (dive.maxDuration - dive.minDuration);
+    this.diveDepth = dive.minDepth + Math.random() * (dive.maxDepth - dive.minDepth);
+    this.propVulnerable = this.diveDepth < dive.safeDepth;
+    // Exhaustion: every consecutive dive costs more before the next one.
+    this.diveCooldown = Math.min(
+      dive.maxCooldown,
+      dive.cooldown * dive.cooldownGrowth ** this.diveCount
+    );
+    this.diveCount += 1;
+    this.diveRecoverTimer = 0;
+    this.sprintTimer = 0;
+
+    if (this.world.emitSplash) {
+      this.world.emitSplash(this.position.x, this.position.z, 9, 0xdff2fc);
+    }
+  }
+
+  endDive() {
+    this.isDiving = false;
+    this.diveTimer = 0;
+    this.diveDepth = 0;
+    this.propVulnerable = false;
+
+    if (this.world.emitSplash) {
+      this.world.emitSplash(this.position.x, this.position.z, 5, 0xdff2fc);
+    }
+  }
+
   findNearbyWildlife(wildlife) {
     if (!wildlife || !wildlife.length) return null;
 
@@ -443,11 +484,7 @@ export class Smuggler {
     const target = this.walkTarget;
 
     this.walkPhase += dt * (6 + this.walkSpeed * 1.6);
-    const stride = Math.sin(this.walkPhase);
-    this.walkLegL.rotation.x = stride * 0.78;
-    this.walkLegR.rotation.x = -stride * 0.78;
-    this.walkArmL.rotation.x = -stride * 0.58;
-    this.walkArmR.rotation.x = stride * 0.58;
+    this.applyRunPose(Math.sin(this.walkPhase), 0.1);
     this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.05;
 
     this.position.set(
@@ -491,6 +528,8 @@ export class Smuggler {
     this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.02;
     this.walkArmL.rotation.x = Math.sin(this.walkPhase) * 0.12;
     this.walkArmR.rotation.x = -Math.sin(this.walkPhase) * 0.12;
+    this.soldier.legs.left.knee.rotation.x = 0.08;
+    this.soldier.legs.right.knee.rotation.x = 0.08;
 
     if (this.waitTimer <= 0) {
       this.state = 'walking';
@@ -519,14 +558,33 @@ export class Smuggler {
     this.walkerGroup.visible = false;
   }
 
+  // Natural run cycle: bent knees on the swing leg, counter-swinging bent
+  // arms and a forward lean, instead of stiff straight legs.
+  applyRunPose(stride, lean = 0.12, amplitude = 1) {
+    const legs = this.soldier.legs;
+    const arms = this.soldier.arms;
+    const swing = stride * amplitude;
+
+    legs.left.hip.rotation.x = swing * 0.75;
+    legs.right.hip.rotation.x = -swing * 0.75;
+    legs.left.knee.rotation.x = 0.12 + Math.max(0, -swing) * 2.0;
+    legs.right.knee.rotation.x = 0.12 + Math.max(0, swing) * 2.0;
+    legs.left.ankle.rotation.x = -Math.max(0, -swing) * 0.35;
+    legs.right.ankle.rotation.x = -Math.max(0, swing) * 0.35;
+
+    arms.left.shoulder.rotation.x = -swing * 0.7;
+    arms.right.shoulder.rotation.x = swing * 0.7;
+    arms.left.elbow.rotation.x = -0.8;
+    arms.right.elbow.rotation.x = -0.8;
+
+    this.soldier.joints.spine.rotation.x = lean + Math.abs(swing) * 0.03;
+    this.soldier.joints.head.rotation.x = -lean * 0.6;
+  }
+
   updateWalking(dt, boat) {
     this.walkPhase += dt * (4 + this.walkSpeed * 2);
 
-    const stride = Math.sin(this.walkPhase);
-    this.walkLegL.rotation.x = stride * 0.65;
-    this.walkLegR.rotation.x = -stride * 0.65;
-    this.walkArmL.rotation.x = -stride * 0.5;
-    this.walkArmR.rotation.x = stride * 0.5;
+    this.applyRunPose(Math.sin(this.walkPhase), 0.12);
     this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.04;
 
     const stepSpeed = this.walkSpeed;
@@ -716,6 +774,50 @@ export class Smuggler {
     let avoidX = 0;
     let avoidZ = 0;
 
+    // Burst swim when the hull gets close: a short, readable dodge rather than
+    // a constant speed advantage. If the hull is closing on a line that will run
+    // them over, they may dive instead (and may misjudge it).
+    const sprint = DIFFICULTY_TUNING.sprint;
+    const dive = DIFFICULTY_TUNING.dive;
+
+    if (this.diveCooldown > 0) this.diveCooldown = Math.max(0, this.diveCooldown - dt);
+    if (this.isDiving) {
+      this.diveTimer -= dt;
+      if (this.diveTimer <= 0) this.endDive();
+    } else if (distToBoat > dive.senseRadius * 1.5 && this.diveCount > 0) {
+      // Away from the boat they get their breath back, one step at a time.
+      this.diveRecoverTimer += dt;
+      if (this.diveRecoverTimer >= dive.recoverySeconds) {
+        this.diveRecoverTimer = 0;
+        this.diveCount -= 1;
+      }
+    } else {
+      this.diveRecoverTimer = 0;
+    }
+
+    if (!this.isDiving) {
+      if (this.sprintCooldown > 0) this.sprintCooldown = Math.max(0, this.sprintCooldown - dt);
+      if (this.sprintTimer > 0) this.sprintTimer = Math.max(0, this.sprintTimer - dt);
+
+      const toX = this.position.x - boat.position.x;
+      const toZ = this.position.z - boat.position.z;
+      const dist = Math.hypot(toX, toZ) || 1;
+      const boatSpeed = Math.hypot(boat.velocity.x, boat.velocity.z);
+      const closing = (boat.velocity.x * toX + boat.velocity.z * toZ) / dist;
+      const lateral =
+        boatSpeed > 0.001
+          ? Math.abs(boat.velocity.x * toZ - boat.velocity.z * toX) / boatSpeed
+          : Infinity;
+      const trapped = dist < dive.senseRadius && closing > 4 && lateral < 2.6;
+
+      if (trapped && this.diveCooldown <= 0 && Math.random() < dive.chance) {
+        this.startDive();
+      } else if (distToBoat < sprint.senseRadius && this.sprintCooldown <= 0) {
+        this.sprintTimer = sprint.duration;
+        this.sprintCooldown = sprint.cooldown;
+      }
+    }
+
     if (distToBoat < detectionRadius) {
       this.isPanicking = true;
       const awayX = this.position.x - boat.position.x;
@@ -768,6 +870,13 @@ export class Smuggler {
       moveZ = moveZ * 0.25 + (avoidZ / avoidLen) * 1.3;
     }
 
+    if (this.isDiving) {
+      // Submerged: hold position. The dive is a commitment, not a free dodge.
+      this.currentSpeed = 0;
+    } else if (this.sprintTimer > 0) {
+      this.currentSpeed *= sprint.multiplier;
+    }
+
     // Normalize
     const len = Math.hypot(moveX, moveZ);
     if (len > 0.001) {
@@ -784,7 +893,9 @@ export class Smuggler {
 
     // Clamp inside river boundaries
     this.position.x = Math.max(sx(-36), Math.min(sx(36), this.position.x));
-    this.position.y = Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.05;
+    this.position.y = this.isDiving
+      ? -this.diveDepth + Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.03
+      : Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.05;
     this.resolveRockCollisions();
 
     // Smooth heading rotation interpolation
@@ -798,7 +909,9 @@ export class Smuggler {
     this.group.rotation.y = -this.currentHeading + Math.PI / 2;
 
     // Breaststroke: panicked swimmers churn faster.
-    this.animateSwim(dt, this.isPanicking || this.wildlifeScareTimer > 0 ? 1.6 : 1.05);
+    const strokeRate =
+      this.sprintTimer > 0 ? 2.3 : this.isPanicking || this.wildlifeScareTimer > 0 ? 1.6 : 1.05;
+    this.animateSwim(dt, strokeRate);
 
     // Small swimming ripple trail
     if (Math.random() < 0.2) {
@@ -843,11 +956,7 @@ export class Smuggler {
 
     this.walkPhase += dt * (8 + this.escapeSpeed * 1.6);
 
-    const stride = Math.sin(this.walkPhase);
-    this.walkLegL.rotation.x = stride * 0.8;
-    this.walkLegR.rotation.x = -stride * 0.8;
-    this.walkArmL.rotation.x = -stride * 0.65;
-    this.walkArmR.rotation.x = stride * 0.65;
+    this.applyRunPose(Math.sin(this.walkPhase), 0.24, 1.1);
     this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.06;
 
     this.position.z += this.escapeSpeed * dt;
