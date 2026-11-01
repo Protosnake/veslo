@@ -12,6 +12,45 @@ export const SOLDIER_MATS = {
   })
 };
 
+const SMUGGLER_MATS = {
+  charcoal: {
+    cloth: new THREE.MeshLambertMaterial({ color: 0x1b1d1f, flatShading: true }),
+    hat: new THREE.MeshLambertMaterial({ color: 0x101113, flatShading: true })
+  },
+  olive: {
+    cloth: new THREE.MeshLambertMaterial({ color: 0x2b3026, flatShading: true }),
+    hat: new THREE.MeshLambertMaterial({ color: 0x151810, flatShading: true })
+  },
+  navy: {
+    cloth: new THREE.MeshLambertMaterial({ color: 0x1a2029, flatShading: true }),
+    hat: new THREE.MeshLambertMaterial({ color: 0x0d1116, flatShading: true })
+  }
+};
+
+export const SMUGGLER_OUTFITS = ['smuggler-charcoal', 'smuggler-olive', 'smuggler-navy'];
+
+export function randomSmugglerOutfit() {
+  return SMUGGLER_OUTFITS[Math.floor(Math.random() * SMUGGLER_OUTFITS.length)];
+}
+
+// One rig, two looks. Same joints, same poses; only the cloth colour, vest and
+// headwear change. The smuggler is the same soldier in muted civilian colours
+// without a carrier.
+const OUTFITS = {
+  soldier: {
+    cloth: SOLDIER_MATS.uniform,
+    boots: SOLDIER_MATS.boot,
+    hat: SOLDIER_MATS.vest,
+    vest: SOLDIER_MATS.vest
+  },
+  ...Object.fromEntries(
+    SMUGGLER_OUTFITS.map((key) => {
+      const look = SMUGGLER_MATS[key.replace('smuggler-', '')];
+      return [key, { cloth: look.cloth, boots: SOLDIER_MATS.boot, hat: look.hat, vest: null }];
+    })
+  )
+};
+
 const GEO = {
   pelvis: new THREE.BoxGeometry(0.36, 0.2, 0.26),
   thigh: new THREE.BoxGeometry(0.18, 0.42, 0.2),
@@ -95,9 +134,11 @@ function buildMesh(geometry, material, position) {
 }
 
 export class Soldier {
-  constructor({ pose = 'idle' } = {}) {
+  constructor({ pose = 'idle', outfit = 'soldier' } = {}) {
     this.group = new THREE.Group();
     this.mode = pose;
+    this.outfit = outfit;
+    this.look = OUTFITS[outfit] || OUTFITS.soldier;
     this.targets = SOLDIER_POSES[pose] || SOLDIER_POSES.idle;
     this.jointLabels = SOLDIER_JOINT_LABELS;
 
@@ -106,7 +147,7 @@ export class Soldier {
   }
 
   build() {
-    this.group.add(buildMesh(GEO.pelvis, SOLDIER_MATS.uniform, [0, 0.93, 0]));
+    this.group.add(buildMesh(GEO.pelvis, this.look.cloth, [0, 0.93, 0]));
 
     this.legs = {
       left: this.createLeg(-1),
@@ -117,8 +158,10 @@ export class Soldier {
     spine.position.y = 1.03;
     this.group.add(spine);
 
-    spine.add(buildMesh(GEO.torso, SOLDIER_MATS.uniform, [0, 0.26, 0]));
-    spine.add(buildMesh(GEO.vest, SOLDIER_MATS.vest, [0, 0.3, 0.01]));
+    spine.add(buildMesh(GEO.torso, this.look.cloth, [0, 0.26, 0]));
+    if (this.look.vest) {
+      spine.add(buildMesh(GEO.vest, this.look.vest, [0, 0.3, 0.01]));
+    }
 
     const neck = new THREE.Group();
     neck.position.y = 0.52;
@@ -129,7 +172,7 @@ export class Soldier {
     head.position.y = 0.08;
     neck.add(head);
     head.add(buildMesh(GEO.head, SOLDIER_MATS.skin, [0, 0.13, 0]));
-    head.add(buildMesh(GEO.helmet, SOLDIER_MATS.vest, [0, 0.14, 0]));
+    head.add(buildMesh(GEO.helmet, this.look.hat, [0, 0.14, 0]));
 
     this.arms = {
       left: this.createArm(-1, spine),
@@ -159,17 +202,17 @@ export class Soldier {
     const hip = new THREE.Group();
     hip.position.set(side * 0.115, 0.92, 0);
     this.group.add(hip);
-    hip.add(buildMesh(GEO.thigh, SOLDIER_MATS.uniform, [0, -0.21, 0]));
+    hip.add(buildMesh(GEO.thigh, this.look.cloth, [0, -0.21, 0]));
 
     const knee = new THREE.Group();
     knee.position.y = -0.42;
     hip.add(knee);
-    knee.add(buildMesh(GEO.shin, SOLDIER_MATS.uniform, [0, -0.16, 0]));
+    knee.add(buildMesh(GEO.shin, this.look.cloth, [0, -0.16, 0]));
 
     const ankle = new THREE.Group();
     ankle.position.y = -0.32;
     knee.add(ankle);
-    ankle.add(buildMesh(GEO.boot, SOLDIER_MATS.boot, [0, -0.09, 0.04]));
+    ankle.add(buildMesh(GEO.boot, this.look.boots, [0, -0.09, 0.04]));
 
     return { hip, knee, ankle, side };
   }
@@ -178,19 +221,20 @@ export class Soldier {
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.3, 0.52, 0);
     parent.add(shoulder);
-    shoulder.add(buildMesh(GEO.upperArm, SOLDIER_MATS.uniform, [0, -0.15, 0]));
+    shoulder.add(buildMesh(GEO.upperArm, this.look.cloth, [0, -0.15, 0]));
 
     const elbow = new THREE.Group();
     elbow.position.y = -0.3;
     shoulder.add(elbow);
-    elbow.add(buildMesh(GEO.forearm, SOLDIER_MATS.uniform, [0, -0.13, 0]));
+    elbow.add(buildMesh(GEO.forearm, this.look.cloth, [0, -0.13, 0]));
 
     const wrist = new THREE.Group();
     wrist.position.y = -0.26;
     elbow.add(wrist);
-    wrist.add(buildMesh(GEO.hand, SOLDIER_MATS.skin, [0, -0.02, 0]));
+    const hand = buildMesh(GEO.hand, SOLDIER_MATS.skin, [0, -0.02, 0]);
+    wrist.add(hand);
 
-    return { shoulder, elbow, wrist, side };
+    return { shoulder, elbow, wrist, hand, side };
   }
 
   jointLabel(key) {

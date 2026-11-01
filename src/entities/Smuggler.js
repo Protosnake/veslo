@@ -1,16 +1,18 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
 import { sx, sz } from '../world/Bounds.js';
+import { Soldier, randomSmugglerOutfit } from './Soldier.js';
 
 // Shared geometry cache to avoid runtime allocations / memory leaks
 const SHARED_GEO = {
-  head: new THREE.SphereGeometry(0.32, 8, 8),
-  cap: new THREE.SphereGeometry(0.34, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-  snorkelTube: new THREE.CylinderGeometry(0.04, 0.04, 0.5, 5),
-  snorkelTip: new THREE.BoxGeometry(0.08, 0.1, 0.12),
-  bag: new THREE.BoxGeometry(0.7, 0.38, 0.9),
-  tape: new THREE.BoxGeometry(0.72, 0.08, 0.2),
-  arm: new THREE.CylinderGeometry(0.08, 0.08, 0.6, 5)
+  packBody: new THREE.BoxGeometry(0.34, 0.42, 0.2),
+  packLid: new THREE.BoxGeometry(0.36, 0.12, 0.22),
+  packBase: new THREE.BoxGeometry(0.3, 0.08, 0.16),
+  packPocket: new THREE.BoxGeometry(0.07, 0.2, 0.14),
+  packBand: new THREE.BoxGeometry(0.35, 0.035, 0.21),
+  packTag: new THREE.BoxGeometry(0.09, 0.06, 0.012),
+  strap: new THREE.BoxGeometry(0.055, 0.4, 0.03),
+  chestStrap: new THREE.BoxGeometry(0.34, 0.05, 0.03)
 };
 
 function createBloodGeometry() {
@@ -43,14 +45,54 @@ const BLOOD_GEOMETRIES = [
   createBloodGeometry()
 ];
 
-const SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xdeb887 });
-const SNORKEL_MAT = new THREE.MeshLambertMaterial({ color: 0xffee00 });
-const TIP_MAT = new THREE.MeshBasicMaterial({ color: 0xff3300 });
-const TAPE_MAT = new THREE.MeshBasicMaterial({ color: 0xffea00 });
-const CAP_COLORS = [0x222222, 0xd82b2b, 0x1e3f66, 0x5a189a];
-const BAG_COLORS = [0x785633, 0x3d352e, 0x24422e];
+const PACK_MAT = new THREE.MeshLambertMaterial({ color: 0x6b5a3e, flatShading: true });
+const PACK_ACCENT_MAT = new THREE.MeshLambertMaterial({ color: 0xd8b23a, flatShading: true });
+const PACK_DARK_MAT = new THREE.MeshLambertMaterial({ color: 0x4c402d, flatShading: true });
+const STRAP_MAT = new THREE.MeshLambertMaterial({ color: 0x241f1a, flatShading: true });
 const WILDLIFE_SCARE_RADIUS = 5;
 const WILDLIFE_SCARE_DURATION = 1.5;
+
+// Swimmer body tilt: a little back from horizontal so the head clears the water.
+// cos(1.12) ≈ 0.43, sin(1.12) ≈ 0.90.
+const SWIM_TILT = Math.PI / 2 - 0.45;
+const SWIM_Y = -0.47;
+const SWIM_Z = -0.9;
+// ~30° below the body line, so the hands skim the water instead of reaching up.
+const SWIM_ARM_DROP = 0.525;
+
+// Breaststroke keyframes, one full cycle over phase 0..1. `reach` is an offset
+// from PI on the shoulder X axis (PI = arms extended forward along the body),
+// `spread` is the lateral shoulder/hip opening, the rest are joint bends.
+const BREASTSTROKE = [
+  { t: 0, spread: 0.06, reach: -0.02, elbow: 0.12, hip: 0.02, knee: 0.08, legSpread: 0.05 },
+  { t: 0.22, spread: 0.95, reach: -0.18, elbow: 0.35, hip: 0.06, knee: 0.3, legSpread: 0.12 },
+  { t: 0.44, spread: 0.5, reach: -0.42, elbow: 1.35, hip: 0.1, knee: 0.55, legSpread: 0.42 },
+  { t: 0.62, spread: 0.18, reach: -0.12, elbow: 0.45, hip: 0.06, knee: 0.25, legSpread: 0.18 },
+  { t: 0.8, spread: 0.06, reach: -0.02, elbow: 0.14, hip: 0.03, knee: 0.1, legSpread: 0.05 },
+  { t: 1, spread: 0.06, reach: -0.02, elbow: 0.12, hip: 0.02, knee: 0.08, legSpread: 0.05 }
+];
+
+function sampleBreaststroke(phase) {
+  const t = ((phase % 1) + 1) % 1;
+  for (let i = 0; i < BREASTSTROKE.length - 1; i += 1) {
+    const from = BREASTSTROKE[i];
+    const to = BREASTSTROKE[i + 1];
+    if (t > to.t) continue;
+    const k = (t - from.t) / (to.t - from.t || 1);
+    const e = k * k * (3 - 2 * k);
+    const mix = (a, b) => a + (b - a) * e;
+    return {
+      phase: t,
+      spread: mix(from.spread, to.spread),
+      reach: mix(from.reach, to.reach),
+      elbow: mix(from.elbow, to.elbow),
+      hip: mix(from.hip, to.hip),
+      knee: mix(from.knee, to.knee),
+      legSpread: mix(from.legSpread, to.legSpread)
+    };
+  }
+  return { ...BREASTSTROKE[BREASTSTROKE.length - 1], phase: t };
+}
 
 export const ESCAPE_RUN_SECONDS = 5;
 
@@ -129,6 +171,10 @@ export class Smuggler {
     this.bloodPuddle = null;
     this.reachedSouth = false;
 
+    // One outfit per smuggler so the swimmer wears what the walker wore.
+    this.outfit = randomSmugglerOutfit();
+    this.swimPhase = Math.random();
+
     this.createModel();
   }
 
@@ -137,52 +183,7 @@ export class Smuggler {
     this.swimmerGroup = new THREE.Group();
     this.group.add(this.swimmerGroup);
 
-    // 1. Swimmer Head
-    this.head = new THREE.Mesh(SHARED_GEO.head, SKIN_MAT);
-    this.head.position.set(0, 0.28, 0);
-    this.head.castShadow = true;
-    this.swimmerGroup.add(this.head);
-
-    // Swimming Cap / Mask
-    const capColor = CAP_COLORS[Math.floor(Math.random() * CAP_COLORS.length)];
-    const capMat = new THREE.MeshLambertMaterial({ color: capColor });
-    const cap = new THREE.Mesh(SHARED_GEO.cap, capMat);
-    cap.position.set(0, 0.3, 0);
-    this.swimmerGroup.add(cap);
-
-    // Snorkel Tube
-    const tube1 = new THREE.Mesh(SHARED_GEO.snorkelTube, SNORKEL_MAT);
-    tube1.position.set(0.3, 0.55, -0.05);
-    tube1.rotation.z = -0.2;
-    this.swimmerGroup.add(tube1);
-
-    const tubeTip = new THREE.Mesh(SHARED_GEO.snorkelTip, TIP_MAT);
-    tubeTip.position.set(0.35, 0.8, -0.05);
-    this.swimmerGroup.add(tubeTip);
-
-    // 2. Contraband Bundle
-    const bagColor = BAG_COLORS[Math.floor(Math.random() * BAG_COLORS.length)];
-    const bagMat = new THREE.MeshLambertMaterial({ color: bagColor, flatShading: true });
-    this.bag = new THREE.Mesh(SHARED_GEO.bag, bagMat);
-    this.bag.position.set(0.48, 0.14, -0.45);
-    this.bag.castShadow = true;
-    this.swimmerGroup.add(this.bag);
-
-    const tape1 = new THREE.Mesh(SHARED_GEO.tape, TAPE_MAT);
-    tape1.position.set(0.48, 0.15, -0.45);
-    this.swimmerGroup.add(tape1);
-
-    // 3. Swimming Arms
-    this.armL = new THREE.Mesh(SHARED_GEO.arm, SKIN_MAT);
-    this.armL.rotation.z = Math.PI / 3;
-    this.armL.position.set(-0.35, 0.12, 0.1);
-    this.swimmerGroup.add(this.armL);
-
-    this.armR = new THREE.Mesh(SHARED_GEO.arm, SKIN_MAT);
-    this.armR.rotation.z = -Math.PI / 3;
-    this.armR.position.set(0.35, 0.12, 0.1);
-    this.swimmerGroup.add(this.armR);
-
+    this.createSwimmerModel();
     this.createWalkerModel();
     this.swimmerGroup.visible = false;
 
@@ -190,67 +191,113 @@ export class Smuggler {
     this.scene.add(this.group);
   }
 
+  // Head-up breaststroke: the rig is tilted (not flat) so the head clears the
+  // water and the back-mounted rucksack rides above the surface.
+  createSwimmerModel() {
+    this.swimmerRig = new Soldier({ pose: 'idle', outfit: this.outfit });
+    this.swimmerRig.group.rotation.x = SWIM_TILT;
+    this.swimmerRig.group.position.set(0, SWIM_Y, SWIM_Z);
+    this.swimmerGroup.add(this.swimmerRig.group);
+    this.createContraband(this.swimmerRig);
+    this.applySwimPose(this.swimPhase);
+  }
+
+  animateSwim(dt, rate = 1.05) {
+    this.swimPhase = (this.swimPhase + dt * rate) % 1;
+    this.applySwimPose(this.swimPhase);
+  }
+
+  applySwimPose(phase) {
+    const pose = sampleBreaststroke(phase);
+    const { left, right } = this.swimmerRig.arms;
+    const legs = this.swimmerRig.legs;
+
+    for (const arm of [left, right]) {
+      arm.shoulder.rotation.x = Math.PI + pose.reach + SWIM_ARM_DROP;
+      arm.shoulder.rotation.y = 0;
+      arm.elbow.rotation.x = pose.elbow;
+    }
+    left.shoulder.rotation.z = -pose.spread;
+    right.shoulder.rotation.z = pose.spread;
+
+    for (const leg of [legs.left, legs.right]) {
+      leg.hip.rotation.x = pose.hip;
+      leg.knee.rotation.x = pose.knee;
+    }
+    legs.left.hip.rotation.z = -pose.legSpread;
+    legs.right.hip.rotation.z = pose.legSpread;
+
+    this.swimmerRig.joints.spine.rotation.x = Math.sin(pose.phase * Math.PI * 2) * 0.04;
+    this.swimmerRig.joints.head.rotation.x = -0.32;
+  }
+
   createWalkerModel() {
     this.walkerGroup = new THREE.Group();
 
-    const suitMat = new THREE.MeshLambertMaterial({ color: 0x1b2a24, flatShading: true });
-    const bagColor = BAG_COLORS[Math.floor(Math.random() * BAG_COLORS.length)];
-    const bagMat = new THREE.MeshLambertMaterial({ color: bagColor, flatShading: true });
-    const capMat = new THREE.MeshLambertMaterial({ color: 0x151515 });
+    // Same rig as the idle soldier in a muted civilian outfit: black/olive/navy
+    // cloth, no plate carrier, black cap instead of the helmet.
+    this.soldier = new Soldier({ pose: 'idle', outfit: this.outfit });
+    this.walkerGroup.add(this.soldier.group);
 
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.72, 0.32), suitMat);
-    torso.position.set(0, 1.12, 0);
-    torso.castShadow = true;
-    this.walkerGroup.add(torso);
+    this.createContraband();
 
-    const head = new THREE.Mesh(SHARED_GEO.head, SKIN_MAT);
-    head.position.set(0, 1.72, 0);
-    head.castShadow = true;
-    this.walkerGroup.add(head);
-
-    const cap = new THREE.Mesh(SHARED_GEO.cap, capMat);
-    cap.position.set(0, 1.74, 0);
-    this.walkerGroup.add(cap);
-
-    const bag = new THREE.Mesh(SHARED_GEO.bag, bagMat);
-    bag.position.set(0, 1.05, -0.3);
-    bag.scale.set(0.8, 0.8, 0.7);
-    bag.castShadow = true;
-    this.walkerGroup.add(bag);
-
-    this.walkLegL = new THREE.Group();
-    this.walkLegL.position.set(-0.14, 0.76, 0);
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.76, 0.2), suitMat);
-    legL.position.set(0, -0.38, 0);
-    legL.castShadow = true;
-    this.walkLegL.add(legL);
-    this.walkerGroup.add(this.walkLegL);
-
-    this.walkLegR = new THREE.Group();
-    this.walkLegR.position.set(0.14, 0.76, 0);
-    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.76, 0.2), suitMat);
-    legR.position.set(0, -0.38, 0);
-    legR.castShadow = true;
-    this.walkLegR.add(legR);
-    this.walkerGroup.add(this.walkLegR);
-
-    this.walkArmL = new THREE.Group();
-    this.walkArmL.position.set(-0.33, 1.4, 0);
-    const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.66, 5), suitMat);
-    armL.position.set(0, -0.33, 0);
-    armL.castShadow = true;
-    this.walkArmL.add(armL);
-    this.walkerGroup.add(this.walkArmL);
-
-    this.walkArmR = new THREE.Group();
-    this.walkArmR.position.set(0.33, 1.4, 0);
-    const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.66, 5), suitMat);
-    armR.position.set(0, -0.33, 0);
-    armR.castShadow = true;
-    this.walkArmR.add(armR);
-    this.walkerGroup.add(this.walkArmR);
+    // Drive the shared joints from the existing walk cycle.
+    this.walkLegL = this.soldier.legs.left.hip;
+    this.walkLegR = this.soldier.legs.right.hip;
+    this.walkArmL = this.soldier.arms.left.shoulder;
+    this.walkArmR = this.soldier.arms.right.shoulder;
 
     this.group.add(this.walkerGroup);
+  }
+
+  // Worn rucksack on the upper back: anchored to the spine so it moves with the
+  // torso instead of floating at hip height and clipping the swinging arm.
+  createContraband(soldier = this.soldier) {
+    const pack = new THREE.Group();
+
+    const body = new THREE.Mesh(SHARED_GEO.packBody, PACK_MAT);
+    body.castShadow = true;
+    pack.add(body);
+
+    const lid = new THREE.Mesh(SHARED_GEO.packLid, PACK_DARK_MAT);
+    lid.position.y = 0.24;
+    lid.castShadow = true;
+    pack.add(lid);
+
+    const base = new THREE.Mesh(SHARED_GEO.packBase, PACK_DARK_MAT);
+    base.position.y = -0.24;
+    base.castShadow = true;
+    pack.add(base);
+
+    for (const side of [-1, 1]) {
+      const pocket = new THREE.Mesh(SHARED_GEO.packPocket, PACK_DARK_MAT);
+      pocket.position.set(side * 0.2, -0.03, 0);
+      pocket.castShadow = true;
+      pack.add(pocket);
+    }
+
+    const band = new THREE.Mesh(SHARED_GEO.packBand, PACK_ACCENT_MAT);
+    band.position.y = 0.02;
+    pack.add(band);
+
+    const tag = new THREE.Mesh(SHARED_GEO.packTag, PACK_ACCENT_MAT);
+    tag.position.set(0, 0.24, -0.116);
+    pack.add(tag);
+
+    pack.position.set(0, 0.3, -0.27);
+    soldier.joints.spine.add(pack);
+
+    for (const side of [-1, 1]) {
+      const strap = new THREE.Mesh(SHARED_GEO.strap, STRAP_MAT);
+      strap.position.set(side * 0.14, 0.34, 0.165);
+      strap.castShadow = true;
+      soldier.joints.spine.add(strap);
+    }
+
+    const chestStrap = new THREE.Mesh(SHARED_GEO.chestStrap, STRAP_MAT);
+    chestStrap.position.set(0, 0.5, 0.165);
+    chestStrap.castShadow = true;
+    soldier.joints.spine.add(chestStrap);
   }
 
   resolveRockCollisions(radius = 0.4) {
@@ -675,13 +722,8 @@ export class Smuggler {
       moveZ = forwardDart * 0.8;
       // Gentle panic speedup (only 1.04x) so they never run away
       this.currentSpeed = this.baseSpeed * 1.04;
-
-      this.armL.rotation.x = Math.sin(this.world.time * 14) * 0.7;
-      this.armR.rotation.x = -Math.sin(this.world.time * 14) * 0.7;
     } else {
       this.isPanicking = false;
-      this.armL.rotation.x = Math.sin(this.world.time * 6) * 0.4;
-      this.armR.rotation.x = -Math.sin(this.world.time * 6) * 0.4;
     }
 
     const nearbyWildlife = this.findNearbyWildlife(wildlife);
@@ -706,9 +748,6 @@ export class Smuggler {
     if (this.wildlifeScareTimer > 0) {
       moveX = this.wildlifeScareX;
       moveZ = this.wildlifeScareZ;
-
-      this.armL.rotation.x = Math.sin(this.world.time * 14) * 0.7;
-      this.armR.rotation.x = -Math.sin(this.world.time * 14) * 0.7;
     }
 
     // Normalize
@@ -739,6 +778,9 @@ export class Smuggler {
 
     this.group.position.copy(this.position);
     this.group.rotation.y = -this.currentHeading + Math.PI / 2;
+
+    // Breaststroke: panicked swimmers churn faster.
+    this.animateSwim(dt, this.isPanicking || this.wildlifeScareTimer > 0 ? 1.6 : 1.05);
 
     // Small swimming ripple trail
     if (Math.random() < 0.2) {

@@ -31,7 +31,7 @@ Viewer shortcuts: drag orbit, wheel/pinch zoom, right-drag/shift-drag pan, `←/
 | 2 | `oar` | Oar | Boat | `src/entities/Oar.js` | Static | In review |
 | 3 | `boat-officer` | Boat — seated officer | Boat | `src/dev/sprites.js` (boat + soldier) | A/D steering | In review |
 | 4 | `smuggler-walking` | Smuggler — walking | Smugglers | `src/entities/Smuggler.js` | Static | Not reviewed |
-| 5 | `smuggler-swimming` | Smuggler — swimming | Smugglers | `src/entities/Smuggler.js` | Static | Not reviewed |
+| 5 | `smuggler-swimming` | Smuggler — swimming | Smugglers | `src/entities/Smuggler.js` | Breaststroke | Not reviewed |
 | 6 | `frog` | Frog | Wildlife | `src/entities/Wildlife.js` | Static | Not reviewed |
 | 7 | `snake` | Snake | Wildlife | `src/entities/Wildlife.js` | Static | Not reviewed |
 | 8 | `bird-crow` | Crow | Birds | `src/entities/Birds.js` | Flap/glide | Not reviewed |
@@ -144,17 +144,17 @@ Whack windup/aim/swing/return, idle sway, aim stretch via `oarPivot.scale.y`, ma
 
 ## Boat — seated officer — `boat-officer`
 
-- **Builder:** `buildBoatOfficer` in `src/dev/sprites.js` (composes `Boat` + `Soldier`).
-- **In-game role:** candidate composition for the officer sitting on the rear seat and holding the tiller.
+- **Builder:** `buildBoatOfficer` in `src/dev/sprites.js` (composes `Boat` + `BoatOfficer`).
+- **In-game role:** the actual game officer — `BoatCrew` instantiates the same `BoatOfficer`, so the viewer preset and the boat crew are one implementation.
 
 **Model composition**
 
 - Patrol boat with the rear seat pad.
-- One `Soldier` in `sitSteer`, scaled `0.72`, rotated to face the bow, placed against the transom at `x -1.11, y 0.1156, z +0.3`. Right hand IK-grips the short tiller knob; left hand hangs on the inboard lifeline.
+- `BoatOfficer` (`src/entities/BoatOfficer.js`) wraps one `Soldier` in `sitSteer`, scaled `0.72`, rotated to face the bow, placed against the transom at `x -1.11, y 0.1156, z +0.3` via `boat.officerGroup`. Right hand IK-grips the short tiller knob; left hand hangs on the inboard lifeline. Both hands are re-solved every frame.
 
 **Motion & states outside viewer**
 
-None in gameplay yet. The viewer preview steers with `A`/`D`: the boat heading, hull bank, motor pivot and officer arm all follow the same rates as `Boat.update`/`BoatCrew.update`.
+Wired into gameplay: `BoatCrew.update()` calls `BoatOfficer.update()`, so the hands track the motor pivot as it turns. The viewer preview steers with `A`/`D`: the boat heading, hull bank, motor pivot and officer arms follow the same rates.
 
 **Priority checks**
 
@@ -177,7 +177,7 @@ None in gameplay yet. The viewer preview steers with `A`/`D`: the boat heading, 
 
 **Decisions / next changes:**
 
-- Iterating on placement/scale; not yet wired into `BoatCrew`.
+- 2026-11-01: Extracted the seated officer into `BoatOfficer` and wired it into `BoatCrew`, so the officer sits in the game instead of standing; the viewer preset now uses the same class.
 
 ## Smuggler — walking — `smuggler-walking`
 
@@ -186,9 +186,9 @@ None in gameplay yet. The viewer preview steers with `A`/`D`: the boat heading, 
 
 **Model composition**
 
-- Torso box, sphere head, hemisphere cap, scaled contraband bundle.
-- Two leg groups with box legs; two arm groups with cylinder arms.
-- Random bag color per instance; dark suit with flat shading; skin material shared with other characters.
+- Body is the shared `Soldier` rig (`src/entities/Soldier.js`) with a smuggler outfit: muted charcoal, olive or navy cloth, no plate carrier, black cap instead of the helmet. Same 15 joints and poses as the idle soldier.
+- The walk cycle drives the rig directly: `hip`/`shoulder` rotations on the soldier joints, body bob on the walker group.
+- Contraband is a worn rucksack anchored to the `spine`: khaki body, darker lid/base/side pockets, one yellow compression band and a yellow tag, plus two shoulder straps and a chest strap. It moves with the torso and clears the swinging arms.
 
 **Motion & states outside viewer**
 
@@ -197,16 +197,25 @@ Road walking with swinging arms/legs and body bob, disembark transition, panicke
 **Priority checks**
 
 - [ ] Walking silhouette separates from reeds and gravel at distance.
-- [ ] Head/cap/bundle read as three distinct shapes.
+- [ ] Outfit variants stay muted and readable; no rainbow on the road.
+- [ ] Rucksack reads as a pack from behind and from the top-down drone angle.
+- [ ] Rucksack and straps stay attached through the walk bob and panic run.
+- [ ] Head and cap read as distinct shapes.
 - [ ] Limb pivots remain attached during the full walk cycle.
-- [ ] Bundle scale does not look detached or oversized next to the torso.
-- [ ] Pose reads as carrying/tension, not a neutral mannequin.
 
-**Measured size (viewer):**
+**Measured size (viewer):** about `0.74 × 1.93 × 0.58 m` including the rucksack (27 meshes).
 
 **Findings:**
 
+- Replaced the handmade torso/head/cap/leg/arm boxes with the shared soldier rig so the smuggler and soldier share one body and one walk cycle.
+- No vest: the soldier's plate carrier is skipped for this outfit, and the headwear uses the black cap material instead of the green helmet.
+- First bundle attempt floated at hip height and clipped the swinging arm; replaced with a spine-mounted pack with straps and tape.
+
 **Decisions / next changes:**
+
+- 2026-11-01: Smuggler outfit is a material/gear variant of `Soldier`, not a separate model. Outfit map lives in `Soldier.js` (`OUTFITS`, `SMUGGLER_OUTFITS`, `randomSmugglerOutfit()`).
+- 2026-11-01: Three muted variants (charcoal/olive/navy) for individual tracking; soldiers stay uniform so affiliation reads at a glance.
+- 2026-11-01: Contraband = khaki rucksack worn on the back with one yellow band and a yellow tag; yellow stays the shared loot cue with the swimming bundle.
 
 ## Smuggler — swimming — `smuggler-swimming`
 
@@ -215,28 +224,37 @@ Road walking with swinging arms/legs and body bob, disembark transition, panicke
 
 **Model composition**
 
-- Sphere head with hemisphere cap, snorkel tube and orange tip.
-- Contraband bundle with yellow tape.
-- Two angled cylinder arms for the swim stroke.
-- Random cap and bag colors per instance.
+- Same shared `Soldier` rig as the walker, wearing the same muted outfit (one outfit is picked per smuggler so the swimmer matches what he wore on the road).
+- Tilted head-up at the waterline: rig rotation `+90° - 0.45` about X (`SWIM_TILT`), positioned at `y -0.47`, `z -0.9`, so the head and the back-mounted rucksack ride above the surface while the legs trail below.
+- Wears the same rucksack as the walker (`createContraband(soldier)` attaches the same pack/straps to either rig's spine).
+- `animateSwim(dt, rate)` drives a hand-keyed breaststroke cycle (`BREASTSTROKE` keyframes in `Smuggler.js`): arms glide forward, sweep out laterally, fold under the chest, then shoot forward again; legs recover with knees bent and spread, then snap together for the kick. `SWIM_ARM_DROP` (0.525 rad ≈ 30°) lowers the whole arm line so the hands skim the surface instead of reaching above it.
+- No snorkel and no cap prop. Contraband is the same rucksack as on the road.
+- The viewer animates the stroke via the `smuggler-swimming` record's `update`, so the cycle can be reviewed live.
 
 **Motion & states outside viewer**
 
-Swim stroke, panic direction changes, dive/escape run, death types and blood puddle.
+Breaststroke loop; panicking/wildlife-scare swimmers stroke ~1.6× faster. Death keeps the horizontal body and sinks it.
 
 **Priority checks**
 
-- [ ] Head, cap and snorkel read clearly when only the upper body is above water.
-- [ ] Snorkel tube and tip do not disappear against the river highlights.
-- [ ] Bundle sits low enough to look towed, not floating separately.
-- [ ] Arm angles suggest swimming rather than a static cross pose.
-- [ ] Silhouette works from the top-down drone angle, not only side-on.
+- [ ] Stroke reads as breaststroke from the top-down drone angle, not a generic flail.
+- [ ] Arms sweep out and recover without detaching or clipping the torso.
+- [ ] Kick spreads and snaps; heels stay near the surface instead of kicking high out of the water.
+- [ ] Body sits half-submerged at the waterline (roughly `y -0.07…0.29` for the torso).
+- [ ] Outfit matches the same smuggler's walking model.
+- [ ] Heading stays correct while darting away from the boat.
 
-**Measured size (viewer):**
+**Measured size (viewer):** envelope `1.67 × 1.19 × 2.06 m` over a full stroke (27 meshes including the rucksack); head and rucksack reach `y ≈ 0.60`, legs trail to `y ≈ -0.59`.
 
 **Findings:**
 
+- Replaced the separate head/snorkel/bundle/cylinder-arm swimmer with the shared soldier rig, so walking and swimming are one character.
+- Flat prone looked too professional; the body is now tilted up (`SWIM_TILT`) so the head clearly clears the water and the rucksack rides above the surface.
+- The rig cannot bend knees sideways, so the frog kick is approximated with hip spread (`z`), a small hip lift (`x`) and a knee bend (`x`); the heels stay mostly under the surface during recovery.
+
 **Decisions / next changes:**
+
+- 2026-11-01: Breaststroke is a keyed phase cycle sampled with smoothstep; stroke rate is the tunable (`1.05` idle, `1.6` panicked).
 
 ## Frog — `frog`
 
@@ -558,3 +576,10 @@ These are real visual assets in the project but are currently built as part of `
 | 2026-11-01 | all | One canonical soldier: `BoatCrew`, `boat-officer`, `WatchtowerSoldier` and `soldier-idle` all instantiate the same `Soldier` model | In review |
 | 2026-11-01 | `soldier-idle` | Fixed `boat-officer` build crash (missing `LIFELINE` import) that left the hull orphaned on the viewer stage and visible under every other sprite | Fixed |
 | 2026-11-01 | — | Viewer builds into a throwaway holder group, so a failed build can no longer leave stray meshes on the stage | Fixed |
+| 2026-11-01 | `smuggler-walking` | Rebuilt on the shared `Soldier` rig with `outfit: 'smuggler'`: black clothes, no plate carrier, black cap | In review |
+| 2026-11-01 | `smuggler-walking` | Removed the contraband bundle box for now (floated at hip height and clipped the walk arm) | In review |
+| 2026-11-01 | `smuggler-walking` | Contraband rebuilt as a spine-mounted khaki duffel with yellow tape and shoulder/chest straps | In review |
+| 2026-11-01 | `smuggler-walking` | Added three muted outfit variants (charcoal/olive/navy) picked per instance; soldiers stay uniform | In review |
+| 2026-11-01 | `smuggler-walking` | Reshaped contraband into a rucksack: khaki body, darker lid/base/side pockets, one yellow band + tag (replaces the boxy duffel) | In review |
+| 2026-11-01 | `smuggler-swimming` | Rebuilt on the shared soldier rig with a breaststroke cycle; body tilted head-up, head and rucksack above the water | Not reviewed |
+| 2026-11-01 | `boat-officer` | Extracted `BoatOfficer` (seated `sitSteer` + 2-bone hand IK) and wired it into `BoatCrew`; the in-game officer now sits at the tiller instead of standing | In review |
