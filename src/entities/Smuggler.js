@@ -96,7 +96,7 @@ function sampleBreaststroke(phase) {
   return { ...BREASTSTROKE[BREASTSTROKE.length - 1], phase: t };
 }
 
-export const ESCAPE_RUN_SECONDS = 5;
+export const ESCAPE_RUN_SECONDS = 9;
 
 export class Smuggler {
   constructor(scene, riverWorld, startX, baseSpeed, spawnDistanceOffset = 0, options = {}) {
@@ -152,6 +152,8 @@ export class Smuggler {
     this.diveCount = 0;
     this.diveRecoverTimer = 0;
     this.currentHeading = Math.PI / 2; // facing south
+    this.steerX = 0;
+    this.steerZ = 1;
     this.wildlifeScareTimer = 0;
     this.wildlifeScareX = 0;
     this.wildlifeScareZ = 0;
@@ -877,11 +879,19 @@ export class Smuggler {
       this.currentSpeed *= sprint.multiplier;
     }
 
-    // Normalize
+    // Normalize and smooth the steering: with threats pulling both ways the
+    // raw vector flips frame to frame, which read as glitching in place. The
+    // heading lags the desired direction, so indecision becomes a slow drift.
     const len = Math.hypot(moveX, moveZ);
     if (len > 0.001) {
-      this.position.x += (moveX / len) * this.currentSpeed * dt;
-      this.position.z += (moveZ / len) * this.currentSpeed * dt;
+      const blend = 1 - Math.exp(-dt * 3.2);
+      this.steerX += (moveX / len - this.steerX) * blend;
+      this.steerZ += (moveZ / len - this.steerZ) * blend;
+      const steerLen = Math.hypot(this.steerX, this.steerZ) || 1;
+      this.steerX /= steerLen;
+      this.steerZ /= steerLen;
+      this.position.x += this.steerX * this.currentSpeed * dt;
+      this.position.z += this.steerZ * this.currentSpeed * dt;
     }
 
     // River current advection (shared config so weather can change it later)
@@ -899,7 +909,7 @@ export class Smuggler {
     this.resolveRockCollisions();
 
     // Smooth heading rotation interpolation
-    const targetHeading = Math.atan2(moveZ, moveX);
+    const targetHeading = Math.atan2(this.steerZ, this.steerX);
     let diff = targetHeading - this.currentHeading;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
