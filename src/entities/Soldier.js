@@ -117,6 +117,11 @@ export const SOLDIER_POSES = {
     legs: { hip: -Math.PI / 2, knee: Math.PI / 2 },
     left: { shoulder: [-0.65, 0.8, 0.45], elbow: 0.05 },
     right: { shoulder: [0.25, 0.3, 0.1], elbow: -1.25 }
+  },
+  sitRow: {
+    legs: { hip: -Math.PI / 2, knee: Math.PI / 2 },
+    left: { shoulder: [-0.7, 0, 0.12], elbow: -0.55 },
+    right: { shoulder: [-0.7, 0, -0.12], elbow: -0.55 }
   }
 };
 
@@ -139,7 +144,7 @@ export class Soldier {
     this.mode = pose;
     this.outfit = outfit;
     this.look = OUTFITS[outfit] || OUTFITS.soldier;
-    this.targets = SOLDIER_POSES[pose] || SOLDIER_POSES.idle;
+    this.targets = typeof pose === 'string' ? SOLDIER_POSES[pose] || SOLDIER_POSES.idle : pose;
     this.jointLabels = SOLDIER_JOINT_LABELS;
 
     this.build();

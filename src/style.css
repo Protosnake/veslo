@@ -349,10 +349,10 @@ textarea {
 }
 
 @keyframes floatUpAndFade {
-  0% { opacity: 0; transform: translate(-50%, -20%) scale(0.5); }
-  20% { opacity: 1; transform: translate(-50%, -60%) scale(1.3); }
-  80% { opacity: 1; transform: translate(-50%, -100%) scale(1.0); }
-  100% { opacity: 0; transform: translate(-50%, -140%) scale(0.8); }
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.85); }
+  15% { opacity: 1; transform: translate(-50%, -80%) scale(1.25); }
+  80% { opacity: 1; transform: translate(-50%, -120%) scale(1.0); }
+  100% { opacity: 0; transform: translate(-50%, -150%) scale(0.85); }
 }
 
 /* Oar kill-streak feedback — timer ring beside the multiplier, above the boat */

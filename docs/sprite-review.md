@@ -70,15 +70,16 @@ Apply these to every sprite unless its section says otherwise.
 **Model composition**
 
 - Hull: two side pontoon tubes, two rear cone caps, two inward-angled bow tubes, two joint spheres and a nose cap, two black rubber strakes, two rope lifelines.
-- Deck: sealed bottom under-plate, wooden deck floor, transom board, black rear bench with seat pad, front bench.
+- Deck: sealed bottom under-plate, wooden deck floor, transom board, black rear bench with seat pad, front bench with a raised seat box.
 - Outboard: mount block, cowl with red stripe, shaft, skeg, short tiller with grip knob, hidden engine-failure flame and flame core.
-- Officer: empty `officerGroup` mount; `BoatCrew` attaches a shared `Soldier` posed `steer`.
-- Oarsman: empty `oarsmanMount`; `BoatCrew` attaches a shared `Soldier` posed `row`, plus the separate `Oar` model on `oarPivot`.
+- Officer: `officerGroup` mount driven by `BoatOfficer` (seated `sitSteer`, hands IK onto the tiller and lifeline).
+- Oarsman: `oarsmanMount` on the raised front bench; `BoatOarsman` attaches a shared `Soldier` posed `sitRow` (`0.72` scale, group offset `y -0.45`) **facing the motor** (`-PI/2`).
+- Two oars: port (+Z) and starboard (-Z) pivots at `z +/-0.26`, `y 0.44`, mirrored `OAR_REST_L/R` / `OAR_WINDUP_L/R` Eulers. Each hand is IK-solved onto its own oar shaft (right arm to the port oar, left arm to starboard).
 - Excluded from viewer: crew, oar and world-space overboard marker ring. Those are separate models/composition.
 
 **Motion & states outside viewer**
 
-Oar whack animation, oar auto-aim, man-overboard fall/recover, engine-failure flame and smoke, river wake, hull bobbing, steering tilt.
+Oar whack animation, per-side oar auto-aim, man-overboard fall/recover, engine-failure flame and smoke, river wake, hull bobbing, steering tilt. Each swing picks the nearest swimming smuggler on the port and starboard sides independently; both oars swing when both sides have one, and an empty side stays at rest (or one oar takes a fallback swing into the water when there is no enemy at all).
 
 **Priority checks**
 
@@ -117,12 +118,12 @@ Hull footprint is about `4.65 × 2.84 m` (stern cone tip to nose cap × strake t
 
 **Model composition**
 
-- Wooden shaft cylinder, flat box blade, red box tip, and an empty aim anchor at the blade centre.
-- No hands; the oarsman model supplies the visible hands (tracking is pending).
+- Near-black shaft cylinder (`#1f2225`), dark graphite blade (`#2a2e33`), red box tip, and an empty aim anchor at the blade centre (about `2.3 m` overall).
+- No hands in the model; `BoatOarsman` solves both hands onto grips along the shaft every frame, so they follow the swing.
 
 **Motion & states outside viewer**
 
-Whack windup/aim/swing/return, idle sway, aim stretch via `oarPivot.scale.y`, man-overboard detachment.
+Heavy whack cycle (`0.55 s`): slow eased windup (0–30%), short accelerating strike (30–42%), long decelerating recovery (42–100%). The windup is only a slight lift (`OAR_WINDUP_*`) so the oar smashes downward onto the target instead of flicking up from a low backswing. The strike lands at ~`0.23 s` so the score popup stays close to the input even with the heavier recovery. Idle sway is a slow roll (1.6/1.2 rad/s, ±0.03/0.02). Mild aim stretch via `oarPivot.scale.y` (0.9–1.3). Man-overboard detachment.
 
 **Priority checks**
 
@@ -583,3 +584,12 @@ These are real visual assets in the project but are currently built as part of `
 | 2026-11-01 | `smuggler-walking` | Reshaped contraband into a rucksack: khaki body, darker lid/base/side pockets, one yellow band + tag (replaces the boxy duffel) | In review |
 | 2026-11-01 | `smuggler-swimming` | Rebuilt on the shared soldier rig with a breaststroke cycle; body tilted head-up, head and rucksack above the water | Not reviewed |
 | 2026-11-01 | `boat-officer` | Extracted `BoatOfficer` (seated `sitSteer` + 2-bone hand IK) and wired it into `BoatCrew`; the in-game officer now sits at the tiller instead of standing | In review |
+| 2026-11-01 | `boat` | Front bench got a 0.15 m seat box; oarsman now sits (`sitRow`, 0.72 scale) with feet on the deck and the oar pivot lowered to seated hand height (`y 0.44`) | In review |
+
+| 2026-11-01 | `oar` | Shaft/blade recoloured near-black (red tip kept), length cut to ~2.3 m, swing retimed to a heavy 0.66 s cycle, idle sway slowed | In review |
+
+| 2026-11-01 | `oar` | Front-loaded the swing (0.55 s, strike at 26–40%) so whack scores appear ~0.22 s after input while the long recovery keeps the heavy feel | In review |
+
+| 2026-11-01 | `oar` | Windup changed from a low backswing to a slight lift, so the strike is a downward smash onto the target instead of an upward flick; phases 30/42% | In review |
+
+| 2026-11-01 | `boat` / `oar` | Oarsman now faces the motor with two oars (port + starboard); target picked per side, both oars swing when both sides have enemies; two independent hitboxes | In review |

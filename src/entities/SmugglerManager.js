@@ -171,7 +171,7 @@ export class SmugglerManager {
     }
 
     // Hitboxes
-    const whackHitbox = boat.getWhackHitbox();
+    const whackHitboxes = boat.getWhackHitboxes();
     const motorHitbox = boat.getMotorHitbox();
     const hullHitbox = boat.getHullHitbox();
 
@@ -190,7 +190,8 @@ export class SmugglerManager {
 
       if (!s.isDead && s.state === 'swimming') {
         // Priority 1: Oar Whack (+100 pts)
-        if (whackHitbox) {
+        let whacked = false;
+        for (const whackHitbox of whackHitboxes) {
           const distWhack = Math.hypot(s.position.x - whackHitbox.center.x, s.position.z - whackHitbox.center.z);
           if (distWhack <= whackHitbox.radius) {
             s.smack();
@@ -198,9 +199,11 @@ export class SmugglerManager {
             this.score += 100;
             sound.playSmack();
             this.addWhackBatch(s.position, 100, boat);
-            continue;
+            whacked = true;
+            break;
           }
         }
+        if (whacked) continue;
 
         // Priority 2: Outboard Engine / Propeller Chop (+500 pts!)
         const distMotor = Math.hypot(s.position.x - motorHitbox.center.x, s.position.z - motorHitbox.center.z);

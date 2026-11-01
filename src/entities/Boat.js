@@ -15,6 +15,18 @@ const MAN_OVERBOARD_ROCK_IMPACT_RATIO = 0.55;
 const MAN_OVERBOARD_STERN_TURN_RATIO = 0.3;
 const MAN_OVERBOARD_STERN_SPEED_RATIO = 0.3;
 
+// Two side oars. X is mirrored to point each blade outboard and slightly down;
+// Z sweeps both shafts aft toward the engine, like a rower's trailing oars.
+// The windup eases X back up for a short lifted smash.
+const OAR_REST_L = new THREE.Euler(1.5, 0, 0.6);
+const OAR_REST_R = new THREE.Euler(-1.5, 0, 0.6);
+const OAR_WINDUP_L = new THREE.Euler(1.1, 0, 0.5);
+const OAR_WINDUP_R = new THREE.Euler(-1.1, 0, 0.5);
+
+const OAR_SIDE_SIGN = { left: 1, right: -1 };
+
+const smooth = (t) => t * t * (3 - 2 * t);
+
 const PROP_REED_TOLERANCE = 1.0;
 const PROP_REED_ESCAPE_SPEED = 0.3;
 
@@ -62,18 +74,13 @@ export class Boat {
     // Whack (Весло) state
     this.isSlapping = false;
     this.slapTime = 0;
-    this.slapDuration = 0.35;
+    this.slapDuration = 0.55;
     this.slapCooldown = 0;
     this.slapId = 0;
-    this.slapArcAngle = 0;
-    this.whackTarget = null;
     this.whackTargetAcquired = false;
-    this.oarAimScale = 1;
-    this.oarAimQuat = new THREE.Quaternion();
-    this.oarRestQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, 0, -0.4));
-    this.oarWindupQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.1, -0.8, -0.8));
-    this.oarAimDir = new THREE.Vector3();
     this.oarUp = new THREE.Vector3(0, 1, 0);
+    this.oars = { left: null, right: null };
+    this.oarFallback = new THREE.Vector3();
     this.isCrashed = false;
     this.rockBumpCooldown = 0;
     this.isBankRam = false;
@@ -94,7 +101,6 @@ export class Boat {
     this.propOffset = new THREE.Vector3();
     this.propWorldPos = new THREE.Vector3();
     this.wakeForward = new THREE.Vector3();
-    this.whackHitbox = { center: new THREE.Vector3(), radius: 2.8 };
     this.motorHitbox = { center: new THREE.Vector3(), radius: 2.2 };
     this.hullHitbox = { center: new THREE.Vector3(), radius: 2.6 };
     this.engineSoundTimer = 0;
@@ -295,6 +301,13 @@ export class Boat {
     frontBench.castShadow = true;
     this.hull.add(frontBench);
 
+    // Riser under the oarsman so a seated figure's feet still reach the deck.
+    const frontSeatBox = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.15, 1.0), benchMat);
+    frontSeatBox.position.set(0.5, 0.635, 0);
+    frontSeatBox.castShadow = true;
+    frontSeatBox.receiveShadow = true;
+    this.hull.add(frontSeatBox);
+
     this.group.add(this.hull);
 
     // 2. Outboard Motor mounted on Transom (-X)
@@ -396,18 +409,56 @@ export class Boat {
     this.oarsmanMount = new THREE.Group();
     this.playerGroup.add(this.oarsmanMount);
 
-    this.oarPivot = new THREE.Group();
-    this.oarPivot.position.set(0.15, 1.05, 0);
-    this.oarPivot.rotation.set(0.5, 0, -0.4);
-    this.playerGroup.add(this.oarPivot);
+    this.oars.left = this.createOarMount('left');
+    this.oars.right = this.createOarMount('right');
 
     this.group.add(this.playerGroup);
   }
 
-  attachOar(oar) {
-    this.oar = oar;
-    this.oarPivot.add(oar.group);
-    this.oarTip = oar.tip;
+  createOarMount(side) {
+    const sign = OAR_SIDE_SIGN[side];
+    const rest = (side === 'left' ? OAR_REST_L : OAR_REST_R).clone();
+    const windup = (side === 'left' ? OAR_WINDUP_L : OAR_WINDUP_R).clone();
+    const pivot = new THREE.Group();
+    pivot.position.set(0.18, 0.56, sign * 0.26);
+    pivot.rotation.copy(rest);
+    this.playerGroup.add(pivot);
+
+    return {
+      side,
+      sign,
+      pivot,
+      rest,
+      restQuat: new THREE.Quaternion().setFromEuler(rest),
+      windupQuat: new THREE.Quaternion().setFromEuler(windup),
+      aimQuat: new THREE.Quaternion(),
+      aimDir: new THREE.Vector3(),
+      aimScale: 1,
+      target: null,
+      active: false,
+      oar: null,
+      tip: null,
+      hitbox: { center: new THREE.Vector3(), radius: 2.4 }
+    };
+  }
+
+  attachOar(oar, side) {
+    const mount = this.oars[side];
+    if (!mount) return;
+    mount.oar = oar;
+    mount.tip = oar.tip;
+    mount.pivot.add(oar.group);
+  }
+
+  resetOars() {
+    this.whackTargetAcquired = false;
+    for (const mount of Object.values(this.oars)) {
+      if (!mount) continue;
+      mount.active = false;
+      mount.target = null;
+      mount.pivot.quaternion.copy(mount.restQuat);
+      mount.pivot.scale.set(1, 1, 1);
+    }
   }
 
   reset() {
@@ -427,8 +478,7 @@ export class Boat {
     this.engineFailure = false;
     this.engineSmokeTimer = 0;
     if (this.engineFlame) this.engineFlame.visible = false;
-    this.whackTarget = null;
-    this.whackTargetAcquired = false;
+    this.resetOars();
 
     this.isManOverboard = false;
     this.manOverboardRisk = 0;
@@ -442,9 +492,6 @@ export class Boat {
     this.playerGroup.position.set(PLAYER_BOARD_POS.x, PLAYER_BOARD_POS.y, PLAYER_BOARD_POS.z);
     this.playerGroup.rotation.set(0, 0, 0);
 
-    this.oarPivot.rotation.set(0.5, 0, -0.4);
-    this.oarPivot.scale.set(1, 1, 1);
-
     this.group.position.copy(this.position);
     this.group.rotation.set(0, 0, 0);
     sound.startEngineSound();
@@ -455,81 +502,100 @@ export class Boat {
 
     this.isSlapping = true;
     this.slapTime = 0;
-    this.slapCooldown = 0.5;
+    this.slapCooldown = 0.75;
     this.slapId += 1;
-    this.whackTarget = null;
-    this.whackTargetAcquired = false;
-    this.oarPivot.scale.set(1, 1, 1);
+    this.resetOars();
     sound.playWhoosh();
     return true;
   }
 
-  findWhackTarget(smugglers) {
-    if (!smugglers || !smugglers.length) return null;
+  findWhackTargets(smugglers) {
+    const targets = { left: null, right: null };
+    const nearest = { left: 36, right: 36 };
+    if (!smugglers || !smugglers.length) return targets;
 
-    let nearest = null;
-    let nearestDistanceSq = 6 * 6;
+    const cos = Math.cos(this.angle);
+    const sin = Math.sin(this.angle);
 
-    for (let i = 0; i < smugglers.length; i++) {
-      const s = smugglers[i];
+    for (const s of smugglers) {
       if (!s || s.isDead || s.state !== 'swimming' || !s.group || !s.group.visible) continue;
 
       const dx = s.position.x - this.position.x;
       const dz = s.position.z - this.position.z;
       const distanceSq = dx * dx + dz * dz;
+      if (distanceSq >= 36) continue;
 
-      if (distanceSq < nearestDistanceSq) {
-        nearest = s;
-        nearestDistanceSq = distanceSq;
+      const localZ = dx * sin + dz * cos;
+      const side = localZ >= 0 ? 'left' : 'right';
+      if (distanceSq < nearest[side]) {
+        nearest[side] = distanceSq;
+        targets[side] = s;
       }
     }
 
-    return nearest;
+    return targets;
   }
 
-  updateOarAim(target) {
+  // Aim one oar's shaft at a world point (usually a smuggler's head).
+  aimOarAt(mount, worldX, worldY, worldZ) {
     const cos = Math.cos(this.angle);
     const sin = Math.sin(this.angle);
-    const dx = target.position.x - this.position.x;
-    const dz = target.position.z - this.position.z;
+    const dx = worldX - this.position.x;
+    const dz = worldZ - this.position.z;
 
-    // Smuggler head in boat-local space (the oar pivot sits at 0.65, 1.5).
     const localX = dx * cos - dz * sin;
     const localZ = dx * sin + dz * cos;
-    const headY = (target.group ? target.group.position.y : target.position.y) + 0.3;
-    const pivotY = this.group.position.y + 1.5;
 
-    const dirX = localX - 0.65;
-    const dirY = headY - pivotY;
-    const dirZ = localZ;
+    const pivotX = PLAYER_BOARD_POS.x + mount.pivot.position.x;
+    const pivotY = PLAYER_BOARD_POS.y + mount.pivot.position.y;
+    const pivotZ = mount.pivot.position.z;
+
+    const dirX = localX - pivotX;
+    const dirY = worldY - (this.group.position.y + pivotY);
+    const dirZ = localZ - pivotZ;
     const distance = Math.hypot(dirX, dirY, dirZ);
     if (distance < 0.001) return false;
 
-    this.oarAimDir.set(dirX / distance, dirY / distance, dirZ / distance);
-    this.oarAimQuat.setFromUnitVectors(this.oarUp, this.oarAimDir);
-    this.oarAimScale = THREE.MathUtils.clamp(distance / 2.15, 0.5, 1.5);
+    mount.aimDir.set(dirX / distance, dirY / distance, dirZ / distance);
+    mount.aimQuat.setFromUnitVectors(this.oarUp, mount.aimDir);
+    mount.aimScale = THREE.MathUtils.clamp(distance / 1.8, 0.9, 1.3);
     return true;
   }
 
-  getWhackHitbox() {
-    if (this.isManOverboard) return null;
-    if (!this.isSlapping || this.slapTime < 0.02 || this.slapTime > 0.32) {
-      return null;
+  updateOarAim(mount, target) {
+    const headY = (target.group ? target.group.position.y : target.position.y) + 0.3;
+    return this.aimOarAt(mount, target.position.x, headY, target.position.z);
+  }
+
+  // No enemy on this side: swing at the water beside the boat.
+  aimOarAtFallback(mount) {
+    this.oarFallback.set(0.2, 0.45, mount.sign * 2.3);
+    this.group.localToWorld(this.oarFallback);
+    return this.aimOarAt(mount, this.oarFallback.x, this.oarFallback.y, this.oarFallback.z);
+  }
+
+  getWhackHitboxes() {
+    const boxes = [];
+    if (this.isManOverboard) return boxes;
+    if (!this.isSlapping || this.slapTime < 0.02 || this.slapTime > 0.5) return boxes;
+
+    for (const side of ['left', 'right']) {
+      const mount = this.oars[side];
+      if (!mount || !mount.active || !mount.tip) continue;
+      mount.tip.getWorldPosition(mount.hitbox.center);
+      boxes.push(mount.hitbox);
     }
 
-    if (this.whackTarget && this.oarTip) {
-      this.oarTip.getWorldPosition(this.whackHitbox.center);
-      return this.whackHitbox;
-    }
-
-    this.propOffset.set(2.6, 0, 0).applyAxisAngle(this.yAxis, this.angle + this.slapArcAngle);
-    this.whackHitbox.center.copy(this.position).add(this.propOffset);
-    return this.whackHitbox;
+    return boxes;
   }
 
   getStreakAnchorWorldPosition(target) {
-    if (this.oarTip && !this.isManOverboard) {
-      this.oarTip.getWorldPosition(target);
+    const active =
+      this.oars.right && this.oars.right.active
+        ? this.oars.right
+        : this.oars.left;
+    if (active && active.tip && !this.isManOverboard) {
+      active.tip.getWorldPosition(target);
       target.y += 0.9;
     } else {
       target.copy(this.position);
@@ -684,10 +750,7 @@ export class Boat {
     // Drop the active oar swing so the detached oarsman cannot keep hitting.
     this.isSlapping = false;
     this.slapTime = 0;
-    this.whackTarget = null;
-    this.whackTargetAcquired = false;
-    this.oarPivot.scale.set(1, 1, 1);
-    this.oarPivot.rotation.set(0.5, 0, -0.4);
+    this.resetOars();
 
     this.playerGroup.getWorldPosition(this.overboardPosition);
 
@@ -763,9 +826,8 @@ export class Boat {
     this.playerGroup.rotation.x = Math.sin(this.overboardElapsed * 1.4) * 0.06;
     this.playerGroup.rotation.z = Math.cos(this.overboardElapsed * 1.1) * 0.05;
 
-    // The oar rests across the water while he waits to be picked up.
-    this.oarPivot.rotation.set(0.25, 0.2, -0.95);
-    this.oarPivot.scale.set(1, 1, 1);
+    // The oars rest while he waits to be picked up.
+    this.resetOars();
 
     this.overboardMarker.position.set(
       this.overboardPosition.x,
@@ -793,8 +855,7 @@ export class Boat {
     this.group.attach(this.playerGroup);
     this.playerGroup.position.set(PLAYER_BOARD_POS.x, PLAYER_BOARD_POS.y, PLAYER_BOARD_POS.z);
     this.playerGroup.rotation.set(0, 0, 0);
-    this.oarPivot.rotation.set(0.5, 0, -0.4);
-    this.oarPivot.scale.set(1, 1, 1);
+    this.resetOars();
 
     this.isManOverboard = false;
     this.overboardElapsed = 0;
@@ -1245,61 +1306,59 @@ export class Boat {
       this.slapTime += dt;
       const progress = this.slapTime / this.slapDuration;
 
-      // Lock the first target of the swing so the oar does not chase a new
-      // smuggler after the intended one has already been hit.
+      // Pick one target per side: nearest enemy on the port and starboard.
+      // Both oars swing when both sides have a target.
       if (!this.whackTargetAcquired) {
-        this.whackTarget = this.findWhackTarget(smugglers);
+        const targets = this.findWhackTargets(smugglers);
+        const anyTarget = targets.left || targets.right;
+        for (const side of ['left', 'right']) {
+          const mount = this.oars[side];
+          if (!mount) continue;
+          mount.target = targets[side];
+          mount.active = Boolean(targets[side]) || (!anyTarget && side === 'right');
+        }
         this.whackTargetAcquired = true;
       }
-      const hasAim = this.whackTarget && this.updateOarAim(this.whackTarget);
 
       if (progress < 1.0) {
-        if (hasAim) {
-          if (progress < 0.2) {
-            const t = progress / 0.2;
-            this.oarPivot.quaternion.copy(this.oarRestQuat).slerp(this.oarWindupQuat, t);
-            this.oarPivot.scale.y = 1;
-            this.slapArcAngle = -0.8;
-          } else if (progress < 0.55) {
-            const t = (progress - 0.2) / 0.35;
-            const eased = t * t * (3 - 2 * t);
-            this.oarPivot.quaternion.copy(this.oarWindupQuat).slerp(this.oarAimQuat, eased);
-            this.oarPivot.scale.y = THREE.MathUtils.lerp(1, this.oarAimScale, eased);
-          } else {
-            const t = (progress - 0.55) / 0.45;
-            this.oarPivot.quaternion.copy(this.oarAimQuat).slerp(this.oarRestQuat, t);
-            this.oarPivot.scale.y = THREE.MathUtils.lerp(this.oarAimScale, 1, t);
+        for (const side of ['left', 'right']) {
+          const mount = this.oars[side];
+          if (!mount) continue;
+
+          if (!mount.active) {
+            mount.pivot.quaternion.copy(mount.restQuat);
+            mount.pivot.scale.y = 1;
+            continue;
           }
-        } else if (progress < 0.2) {
-          const t = progress / 0.2;
-          this.oarPivot.rotation.y = -t * 0.8;
-          this.oarPivot.rotation.x = 0.5 + t * 0.6;
-          this.oarPivot.rotation.z = -0.4 - t * 0.4;
-          this.slapArcAngle = -0.8;
-        } else if (progress < 0.65) {
-          const t = (progress - 0.2) / 0.45;
-          const arc = THREE.MathUtils.lerp(-0.8, 1.4, t);
-          this.oarPivot.rotation.y = arc;
-          this.oarPivot.rotation.x = 1.1 - t * 1.5;
-          this.oarPivot.rotation.z = -0.8 + t * 1.6;
-          this.slapArcAngle = arc;
-        } else {
-          const t = (progress - 0.65) / 0.35;
-          this.oarPivot.rotation.y = THREE.MathUtils.lerp(1.4, 0, t);
-          this.oarPivot.rotation.x = THREE.MathUtils.lerp(-0.4, 0.5, t);
-          this.oarPivot.rotation.z = THREE.MathUtils.lerp(0.8, -0.4, t);
+
+          const hasAim = mount.target
+            ? this.updateOarAim(mount, mount.target)
+            : this.aimOarAtFallback(mount);
+          if (!hasAim) continue;
+
+          // Heavy oar: slow windup, short accelerating strike, long recovery.
+          if (progress < 0.3) {
+            const t = smooth(progress / 0.3);
+            mount.pivot.quaternion.copy(mount.restQuat).slerp(mount.windupQuat, t);
+            mount.pivot.scale.y = 1;
+          } else if (progress < 0.42) {
+            const t = (progress - 0.3) / 0.12;
+            const eased = t * t;
+            mount.pivot.quaternion.copy(mount.windupQuat).slerp(mount.aimQuat, eased);
+            mount.pivot.scale.y = THREE.MathUtils.lerp(1, mount.aimScale, eased);
+          } else {
+            const t = (progress - 0.42) / 0.58;
+            const eased = 1 - (1 - t) * (1 - t);
+            mount.pivot.quaternion.copy(mount.aimQuat).slerp(mount.restQuat, eased);
+            mount.pivot.scale.y = THREE.MathUtils.lerp(mount.aimScale, 1, eased);
+          }
         }
       } else {
         this.isSlapping = false;
-        this.whackTarget = null;
-        this.whackTargetAcquired = false;
-        this.oarPivot.scale.set(1, 1, 1);
-        this.oarPivot.rotation.set(0.5, 0, -0.4);
+        this.resetOars();
       }
     } else {
-      this.oarPivot.rotation.y = 0;
-      this.oarPivot.rotation.z = -0.4 + Math.sin(this.world.time * 3) * 0.05;
-      this.oarPivot.rotation.x = 0.5 + Math.cos(this.world.time * 2) * 0.03;
+      this.resetOars();
     }
   }
 }

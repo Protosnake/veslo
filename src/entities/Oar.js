@@ -1,33 +1,39 @@
 import * as THREE from 'three';
 
-const SHAFT_GEO = new THREE.CylinderGeometry(0.06, 0.06, 3.4, 6);
-const BLADE_GEO = new THREE.BoxGeometry(0.36, 1.15, 0.06);
-const TIP_GEO = new THREE.BoxGeometry(0.37, 0.32, 0.07);
+const SHAFT_GEO = new THREE.CylinderGeometry(0.045, 0.055, 2.0, 8);
+const BLADE_GEO = new THREE.CapsuleGeometry(0.16, 0.55, 4, 8);
+const TIP_GEO = new THREE.SphereGeometry(0.13, 8, 6);
 
-const SHAFT_MAT = new THREE.MeshLambertMaterial({ color: 0xb58045 });
-const BLADE_MAT = new THREE.MeshLambertMaterial({ color: 0xca8c4c });
-const TIP_MAT = new THREE.MeshLambertMaterial({ color: 0xd92626 });
+const SHAFT_MAT = new THREE.MeshLambertMaterial({ color: 0x1f2225, flatShading: true });
+const BLADE_MAT = new THREE.MeshLambertMaterial({ color: 0x2a2e33, flatShading: true });
+// Worn, dusty orange rather than a clean signal red.
+const TIP_MAT = new THREE.MeshLambertMaterial({ color: 0xc46a2a, flatShading: true });
 
 export class Oar {
   constructor() {
     this.group = new THREE.Group();
 
     const shaft = new THREE.Mesh(SHAFT_GEO, SHAFT_MAT);
-    shaft.position.y = 0.9;
+    shaft.position.y = 0.8;
     shaft.castShadow = true;
     this.group.add(shaft);
 
+    // Rounded paddle blade: a capsule flattened on Z reads as a soft oar blade
+    // instead of a plank.
     const blade = new THREE.Mesh(BLADE_GEO, BLADE_MAT);
-    blade.position.y = 2.15;
+    blade.position.y = 1.75;
+    blade.scale.set(1, 1, 0.45);
     blade.castShadow = true;
     this.group.add(blade);
 
     const tip = new THREE.Mesh(TIP_GEO, TIP_MAT);
-    tip.position.y = 2.55;
+    tip.position.y = 2.14;
+    tip.scale.set(1, 0.8, 0.5);
+    tip.castShadow = true;
     this.group.add(tip);
 
     this.tip = new THREE.Object3D();
-    this.tip.position.set(0, 2.15, 0);
+    this.tip.position.set(0, 1.8, 0);
     this.group.add(this.tip);
   }
 }

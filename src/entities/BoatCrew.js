@@ -1,27 +1,19 @@
-import { Soldier } from './Soldier.js';
 import { BoatOfficer } from './BoatOfficer.js';
-import { Oar } from './Oar.js';
-
-const CREW_SCALE = 0.85;
-const CREW_FACING = Math.PI / 2;
+import { BoatOarsman } from './BoatOarsman.js';
 
 export class BoatCrew {
   constructor(boat) {
     this.boat = boat;
 
-    // Seated at the transom with both hands solved onto the tiller and lifeline.
+    // Officer seated at the transom, hands solved onto the tiller and lifeline.
     this.officer = new BoatOfficer(boat);
 
-    this.oarsman = new Soldier({ pose: 'row' });
-    this.oarsman.group.rotation.y = CREW_FACING;
-    this.oarsman.group.scale.setScalar(CREW_SCALE);
-    boat.oarsmanMount.add(this.oarsman.group);
-
-    this.oar = new Oar();
-    boat.attachOar(this.oar);
+    // Oarsman seated on the raised front bench, both hands solved onto the oar.
+    this.oarsman = new BoatOarsman(boat);
   }
 
   update() {
     this.officer.update();
+    this.oarsman.update();
   }
 }

@@ -109,7 +109,7 @@ export class WildlifeManager {
       this.spawnTimer = this.getSpawnInterval();
     }
 
-    const whackHitbox = boat.getWhackHitbox();
+    const whackHitboxes = boat.getWhackHitboxes();
     const motorHitbox = boat.getMotorHitbox();
     const hullHitbox = boat.getHullHitbox();
 
@@ -119,16 +119,19 @@ export class WildlifeManager {
       this.scareFromSmugglers(creature, smugglers);
 
       if (!creature.isDead && !creature.isFinished && !creature.isDiving) {
-        if (whackHitbox) {
+        let whacked = false;
+        for (const whackHitbox of whackHitboxes) {
           const distWhack = Math.hypot(
             creature.position.x - whackHitbox.center.x,
             creature.position.z - whackHitbox.center.z
           );
           if (distWhack <= whackHitbox.radius + creature.radius) {
             if (creature.kill('oar')) this.registerKill(creature);
-            continue;
+            whacked = true;
+            break;
           }
         }
+        if (whacked) continue;
 
         const distHull = Math.hypot(
           creature.position.x - hullHitbox.center.x,
