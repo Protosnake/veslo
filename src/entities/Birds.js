@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sx, sz } from '../world/Bounds.js';
+import { TUNING } from '../config/tuning.js';
 
 const BODY_GEO = new THREE.SphereGeometry(0.2, 6, 5);
 const HEAD_GEO = new THREE.SphereGeometry(0.11, 6, 5);
@@ -106,7 +107,8 @@ function readNumber(value) {
 // swoop even when no prey is found so the behaviour is easy to verify.
 export const STORK_DIVE_DEBUG =
   readDebugFlag(SEARCH_PARAMS.get('storkDive')) ||
-  readDebugFlag(import.meta.env.VITE_STORK_ALWAYS_DIVE);
+  readDebugFlag(import.meta.env.VITE_STORK_ALWAYS_DIVE) ||
+  TUNING.stork.alwaysDive;
 
 // Stork frequency controls:
 //   VITE_STORK_SPAWN_INTERVAL / ?storkSpawn=  seconds between dedicated stork
@@ -115,7 +117,8 @@ export const STORK_DIVE_DEBUG =
 //                                              is a stork (default 0.14)
 const STORK_SPAWN_INTERVAL_RAW =
   readNumber(SEARCH_PARAMS.get('storkSpawn')) ??
-  readNumber(import.meta.env.VITE_STORK_SPAWN_INTERVAL);
+  readNumber(import.meta.env.VITE_STORK_SPAWN_INTERVAL) ??
+  TUNING.stork.spawnInterval;
 
 export const STORK_SPAWN_INTERVAL =
   STORK_SPAWN_INTERVAL_RAW !== null && STORK_SPAWN_INTERVAL_RAW > 0
@@ -124,11 +127,12 @@ export const STORK_SPAWN_INTERVAL =
 
 const STORK_SPAWN_WEIGHT_RAW =
   readNumber(SEARCH_PARAMS.get('storkWeight')) ??
-  readNumber(import.meta.env.VITE_STORK_SPAWN_WEIGHT);
+  readNumber(import.meta.env.VITE_STORK_SPAWN_WEIGHT) ??
+  TUNING.stork.spawnWeight;
 
 const STORK_SPAWN_WEIGHT =
   STORK_SPAWN_WEIGHT_RAW === null
-    ? 0.14
+    ? TUNING.stork.spawnWeight
     : Math.min(1, Math.max(0, STORK_SPAWN_WEIGHT_RAW));
 
 const OTHER_KIND_WEIGHTS = [
@@ -318,6 +322,14 @@ class Bird {
   destroy() {
     this.scene.remove(this.group);
   }
+}
+
+// Builds one standalone bird for the dev sprite viewer. The regular spawner
+// always creates birds through BirdGroup, which randomises position and speed;
+// the viewer needs just the model so it can frame the bird in isolation.
+export function createPreviewBird(scene, variant = 'crow') {
+  const palette = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+  return new Bird(scene, palette, 1, variant);
 }
 
 class BirdGroup {

@@ -19,6 +19,7 @@ flowchart TD
     L --> M["show banners one at a time<br/>visibleMs, then gapMs"]
     M --> N["lastRankIndex = index"]
     O["startGame()"] --> P["rankSystem.reset()<br/>clear rank-up queue + banner"]
+    O --> W["acquireWakeLock()<br/>(feature #20)"]
 ```
 
 ```mermaid
@@ -37,3 +38,4 @@ flowchart LR
 - `checkRankUp` returns every crossed rank in order. `main.js` queues them and chains banners (`visibleMs`, then `gapMs`), clearing the queue when a run starts. This preserves intermediate promotions that the old single-return version silently dropped.
 - Difficulty uses asymptotic curves instead of hard caps: `1 + gain * score / (score + midpoint)` for speed and a pressure ratio for spawn timing, so high scores keep ramping. Waves within `warmupWaves` use the calmer `warmupMin..warmupMax` range.
 - Ranks remain per-run; `startGame()` resets `rankSystem`, clears the pending promotion queue, hides the active banner, and resets the run score.
+- `startGame()` also acquires the screen wake lock (released on pause and game over), and `main.js` registers the offline service worker at boot; both are orthogonal to ranking ([20-wake-lock.md](20-wake-lock.md), [22-offline-pwa.md](22-offline-pwa.md)).

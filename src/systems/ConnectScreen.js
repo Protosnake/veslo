@@ -8,14 +8,14 @@ export class ConnectScreen {
   show() {
     if (!this.root) return;
     this.root.classList.add('is-active');
-    this.root.classList.remove('is-black');
+    this.root.classList.remove('is-dim');
     this.active = true;
     this.time = 0;
   }
 
   hide() {
     if (!this.root) return;
-    this.root.classList.remove('is-active', 'is-black');
+    this.root.classList.remove('is-active', 'is-dim');
     this.active = false;
   }
 
@@ -23,9 +23,9 @@ export class ConnectScreen {
     if (!this.active) return;
     this.time += dt;
 
-    if (this.time > 1.8) {
-      const blink = Math.floor((this.time - 1.8) / 0.09) % 2 === 1;
-      this.root.classList.toggle('is-black', blink);
-    }
+    const flick =
+      (this.time >= 0.55 && this.time < 0.66) ||
+      (this.time >= 1.05 && this.time < 1.16);
+    this.root.classList.toggle('is-dim', flick);
   }
 }

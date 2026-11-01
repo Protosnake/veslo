@@ -43,3 +43,4 @@ flowchart TD
 - **Drift:** the detached oarsman keeps his outward velocity, is damped, carried by 35% of the river current, pushed out of rocks, clamped to the play bounds, and bobs on the wave height.
 - **Recovery:** after a 0.7 s minimum air time, driving the hull within 2.4 m picks him up. The boat then has a 10 s cooldown before another fall can start.
 - Losing him also costs 8% of boat velocity and cancels any active oar strike. `main.js` receives the `onManOverboard` / `onManRecovered` callbacks from the `Boat` constructor and shows the danger/men-recovered alerts, partner line, screen shake, splash, and alert sound.
+- Cross-cutting lifecycle wiring in `main.js` (screen wake lock #20, offline service worker #22) is orthogonal to the fall/drift/recovery flow above and leaves it unchanged.

@@ -46,11 +46,11 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'osd.wind': 'WIND',
     'osd.sat': 'SAT',
     'osd.threats': 'ПОРУШНИКИ',
-    'osd.connecting': 'CONNECTING',
+    'osd.connecting': 'ПІДКЛЮЧЕННЯ',
 
     // ── OSD Alerts ──
     'osd.alert.uplinkEstablished': 'ЗВ`ЯЗОК ВСТАНОВЛЕНО',
-    'osd.alert.uplinkActive': 'ЗВ`ЯЗОК ВСТАНОВЛЕНО - ВИХОДИШ НА ПОЗИЦIЮ',
+    'osd.alert.uplinkActive': 'ЗВ`ЯЗОК ВСТАНОВЛЕНО',
     'osd.alert.batteryCritical': 'НИЗЬКИЙ ЗАРЯД БАТАРЕЇ',
     'osd.alert.batteryLow': 'НИЗЬКИЙ ЗАРЯД',
     'osd.alert.batteryRecharged': 'БАТАРЕЮ ЗАРЯДЖЕНО',
@@ -96,7 +96,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
     // ── Game Over Modal ──
     'modal.over.eyebrow': 'ЗАВДАННЯ ПРОВАЛЕНО',
     'modal.over.titleBreach': 'КОРДОН ПРОРВАНО!',
-    'modal.over.subtitleBreach': 'Порушник переплив річку. Завдання провалено.',
+    'modal.over.subtitleBreach': 'Порушник переплив річку.',
     'modal.over.titleCrash': 'ТВОЮ ДІВІЗІЮ! ЧОВЕН СІВ НА МІЛЬ!',
     'modal.over.rankLabel': 'ДОСЯГНУТЕ ВІЙСЬКОВЕ ЗВАННЯ ДПСУ',
     'modal.over.rankScore': 'Фінальний рахунок: {score} очок',
@@ -106,7 +106,6 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'modal.over.statSnakes': 'Вбито гадюк',
     'modal.over.btn': 'ПЕРЕДИСЛОКУВАТИ ДРОН',
     'gameover.lock': 'ЗАХОПЛЕННЯ ЦІЛІ',
-    'gameover.linkLost': 'ЗВ`ЯЗОК ВТРАЧЕНО',
     'gameover.report': 'ЗВІТ ПІСЛЯ МІСІЇ',
     'gameover.score': 'РАХУНОК',
     'gameover.statSmacked': 'ЗНЕШКОДЖЕНО',
@@ -150,7 +149,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'streak.x3': 'ГЕП',
 
     // ── Crash Reasons ──
-    'crash.riverbank': 'ВРІЗАВСЯ В БЕРЕГ РІЧКИ!',
+    'crash.riverbank': 'МИ ВРІЗАЛИСЯ В БЕРЕГ',
     'crash.north': 'СУКА, КУДА ТИ ХУЯРИШ, БЛЯТЬ!',
     'crash.south': 'ТРЯСЦЯ ТВОЇЙ МАТЕРІ, МИ НА ІНШОМУ БОЦІ!',
     'crash.west': 'ТВОЮ НАЛЄВО, КУДИ ТИ ЇДЕШ?',
@@ -227,7 +226,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
 
     // ── OSD Alerts ──
     'osd.alert.uplinkEstablished': 'UPLINK ESTABLISHED',
-    'osd.alert.uplinkActive': 'UPLINK ESTABLISHED · PATROL ACTIVE',
+    'osd.alert.uplinkActive': 'UPLINK ESTABLISHED',
     'osd.alert.batteryCritical': 'BATTERY CRITICAL',
     'osd.alert.batteryLow': 'LOW BATTERY',
     'osd.alert.batteryRecharged': 'BATTERY RECHARGED',
@@ -273,7 +272,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
     // ── Game Over Modal ──
     'modal.over.eyebrow': 'MISSION FAILED',
     'modal.over.titleBreach': 'BORDER BREACHED!',
-    'modal.over.subtitleBreach': 'A smuggler reached the southern shore. Mission failed.',
+    'modal.over.subtitleBreach': 'A smuggler crossed the river.',
     'modal.over.titleCrash': 'BOAT CRASHED INTO SHORE!',
     'modal.over.rankLabel': 'ACHIEVED SBGS MILITARY RANK',
     'modal.over.rankScore': 'Final score: {score} points',
@@ -283,7 +282,6 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'modal.over.statSnakes': 'Vipers Killed',
     'modal.over.btn': 'REDEPLOY DRONE',
     'gameover.lock': 'TARGET LOCK',
-    'gameover.linkLost': 'LINK LOST',
     'gameover.report': 'AFTER ACTION REPORT',
     'gameover.score': 'SCORE',
     'gameover.statSmacked': 'NEUTRALIZED',

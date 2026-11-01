@@ -42,3 +42,4 @@ flowchart TD
 - Hit priority is oar whack (+100), then motor shred (+500), then hull ram (+50).
 - Successful whacks are accumulated per swing and flushed together by `SmugglerManager`; `main.js` registers the cosmetic streak with the batch count (see [16-kill-streak.md](16-kill-streak.md)). Points per kill are unchanged.
 - While the oarsman is overboard, `getWhackHitbox()` returns `null`, so the detached oar cannot hit anything.
+- Cross-cutting lifecycle wiring in `main.js` (screen wake lock #20, offline service worker #22) is orthogonal to the strike/aim flow above and does not change it.

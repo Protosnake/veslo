@@ -52,3 +52,4 @@ flowchart TD
 - A group is removed once its lead bird crosses `BOUND_X = sx(118)`.
 - Birds are ambient only; there is no collision yet (see feature #1).
 - `main.animate()` advances `BirdManager` only when the game is not paused, so groups and spawn timers freeze with the patrol.
+- Cross-cutting lifecycle wiring in `main.js` (screen wake lock #20, offline service worker #22) does not change bird spawning or the pause behaviour above.

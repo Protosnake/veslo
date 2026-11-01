@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GameRenderer } from './core/Renderer.js';
 import { RiverWorld } from './world/River.js';
 import { Boat } from './entities/Boat.js';
+import { BoatCrew } from './entities/BoatCrew.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { WildlifeManager } from './entities/WildlifeManager.js';
 import { BirdManager } from './entities/Birds.js';
@@ -10,11 +11,14 @@ import { WatchtowerSoldier } from './entities/WatchtowerSoldier.js';
 import { Drone } from './entities/Drone.js';
 import { ConnectScreen } from './systems/ConnectScreen.js';
 import { sound } from './systems/Audio.js';
+import { acquireWakeLock, releaseWakeLock } from './systems/WakeLock.js';
+import { registerOfflineServiceWorker } from './systems/ServiceWorker.js';
 import { rankSystem } from './systems/RankSystem.js';
 import { mountRankSprites, rankIconMarkup } from './systems/RankSprites.js';
 import { logger } from './systems/Logger.js';
 import { t, getRankTitle, onLocaleChange } from './systems/I18n.js';
 import { PROMOTION_TUNING } from './config/ranking.js';
+import { TUNING } from './config/tuning.js';
 
 function isTouchDevice() {
   return (
@@ -76,20 +80,44 @@ function readSeconds(value) {
   return Math.min(120, Math.max(0.1, parsed));
 }
 
+function readFlag(value) {
+  if (value === null || value === undefined || value === '') return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
+function isSpriteViewerEnabled() {
+  const params = new URLSearchParams(window.location.search);
+  const queryEnabled =
+    readFlag(params.get('sprites')) ||
+    params.get('dev') === 'sprites' ||
+    params.get('view') === 'sprites' ||
+    params.has('sprite');
+
+  // The query flag is a dev-only convenience; a production build must opt in
+  // with VITE_SPRITE_VIEWER=1 (or TUNING.dev.spriteViewer) so the viewer is
+  // never exposed to players by accident.
+  return (
+    readFlag(import.meta.env.VITE_SPRITE_VIEWER) ||
+    TUNING.dev.spriteViewer ||
+    (import.meta.env.DEV && queryEnabled)
+  );
+}
+
 const INITIAL_BATTERY =
   readBatteryPercent(new URLSearchParams(window.location.search).get('battery'))
   ?? readBatteryPercent(import.meta.env.VITE_START_BATTERY)
-  ?? 100;
+  ?? TUNING.initialBattery;
 
 const INITIAL_SPAWN_COUNT =
   readSpawnCount(new URLSearchParams(window.location.search).get('spawn'))
   ?? readSpawnCount(import.meta.env.VITE_INITIAL_SPAWN)
-  ?? 0;
+  ?? TUNING.initialSpawnCount;
 
 const KILL_STREAK_WINDOW =
   readSeconds(new URLSearchParams(window.location.search).get('streak'))
   ?? readSeconds(import.meta.env.VITE_KILL_STREAK_SECONDS)
-  ?? 5;
+  ?? TUNING.killStreakSeconds;
 
 function installPromptDismissed() {
   try {
@@ -171,8 +199,8 @@ function showUnsupportedResolution() {
   overlay.id = 'resolution-modal';
   overlay.innerHTML = `
     <div class="modal-card resolution-card">
-      <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> ${t('error.resolution.eyebrow')}</div>
-      <h1 class="modal-title">${t('error.resolution.title')}</h1>
+      <div class="modal-eyebrow danger">${t('error.resolution.eyebrow')}</div>
+      <h1 class="modal-title danger">${t('error.resolution.title')}</h1>
       <div class="modal-subtitle">${t('error.resolution.subtitle')}</div>
       <div class="resolution-value">${width} × ${height} · ${ratio}:1</div>
       <div class="rule-highlight" style="margin-top:18px;margin-bottom:0;">${t('error.resolution.hint')}</div>
@@ -288,6 +316,7 @@ class Game {
       (worldPos) => this.onManOverboard(worldPos),
       () => this.onManRecovered()
     );
+    this.boatCrew = new BoatCrew(this.boat);
 
     // Smuggler Manager
     this.smugglerManager = new SmugglerManager(
@@ -320,7 +349,7 @@ class Game {
       binocularEnd: 6.8,
       droneRevealEnd: 9.4,
       droneScale: 1.6,
-      duration: 12.0,
+      duration: 10.7,
       vanStart: 0,
       vanDrop: 0,
       vanSpeed: 0,
@@ -658,6 +687,7 @@ class Game {
     }
     if (this.container) this.container.classList.remove('feed-degraded');
 
+    acquireWakeLock();
     this.startIntro();
   }
 
@@ -1005,6 +1035,7 @@ class Game {
     this.state = 'PAUSED';
     this.clearInput();
     sound.pause();
+    releaseWakeLock();
     this.pauseModal.classList.remove('hidden');
   }
 
@@ -1013,6 +1044,7 @@ class Game {
     this.state = 'PLAYING';
     this.clearInput();
     sound.resume();
+    acquireWakeLock();
     this.pauseModal.classList.add('hidden');
   }
 
@@ -1256,6 +1288,7 @@ class Game {
     this.hidePartnerBubble();
     this.hideKillStreak();
     this.clearInput();
+    releaseWakeLock();
     this.renderer.triggerScreenShake(1.3);
     this.world.triggerCrowdReaction();
     sound.playRam();
@@ -1351,6 +1384,7 @@ class Game {
     this.hidePartnerBubble();
     this.hideKillStreak();
     this.clearInput();
+    releaseWakeLock();
     this.renderer.triggerScreenShake(0.8);
     this.world.triggerCrowdReaction();
     this.glitchOsd(1400);
@@ -1692,6 +1726,8 @@ class Game {
       this.updateVanVisibility(dt);
     }
 
+    if (this.state !== 'PAUSED') this.boatCrew.update(dt);
+
     this.world.update(dt);
     if (this.state !== 'PAUSED') this.birdManager.update(dt);
 
@@ -1728,8 +1764,8 @@ function showWebGLUnavailable() {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal-card">
-      <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> ${t('error.webgl.eyebrow')}</div>
-      <h1 class="modal-title">${t('error.webgl.title')}</h1>
+      <div class="modal-eyebrow danger">${t('error.webgl.eyebrow')}</div>
+      <h1 class="modal-title danger">${t('error.webgl.title')}</h1>
       <div class="modal-subtitle">${t('error.webgl.subtitle')}</div>
       <div class="rule-highlight">
         <strong>${t('error.webgl.howTo')}</strong><br>
@@ -1740,6 +1776,14 @@ function showWebGLUnavailable() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  if (isSpriteViewerEnabled()) {
+    document.getElementById('start-modal')?.classList.add('hidden');
+    import('./dev/SpriteViewer.js')
+      .then(({ mountSpriteViewer }) => mountSpriteViewer())
+      .catch((error) => console.error('[Sprite Lab] Failed to mount', error));
+    return;
+  }
+
   const touch = isTouchDevice();
   const updateViewportClasses = () => {
     document.body.classList.toggle('touch-device', touch);
@@ -1782,6 +1826,7 @@ window.addEventListener('DOMContentLoaded', () => {
   showIOSInstallPrompt();
 
   mountRankSprites();
+  registerOfflineServiceWorker();
   try {
     const game = new Game();
     window.__game = game;

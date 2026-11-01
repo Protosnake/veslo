@@ -4,3 +4,5 @@ dist/
 debug.log
 .debug_enabled
 *.local
+# Local dev probes / tools, never shipped
+src/dev/*.local.js

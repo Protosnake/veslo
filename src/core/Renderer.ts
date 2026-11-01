@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { QUALITY } from '../config/quality.js';
 
 export class WebGLUnavailableError extends Error {
   constructor(cause?: unknown) {
@@ -78,8 +79,8 @@ export class GameRenderer {
     }
 
     const attempts: THREE.WebGLRendererParameters[] = [
-      { antialias: true, powerPreference: 'high-performance' },
-      { antialias: true },
+      { antialias: QUALITY.antialias, powerPreference: 'high-performance' },
+      { antialias: QUALITY.antialias },
       { antialias: false }
     ];
 
@@ -97,9 +98,11 @@ export class GameRenderer {
       throw new WebGLUnavailableError(lastError);
     }
 
-    // Rendering is fill-rate bound on high-DPI displays; 1.5x keeps the image
-    // crisp while avoiding the 4x pixel cost of an uncapped 2x buffer.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    // Rendering is fill-rate bound on high-DPI displays; cap the buffer at the
+    // adaptive-quality tier instead of always paying for a 2x buffer.
+    this.renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio || 1, QUALITY.pixelRatioCap)
+    );
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -211,8 +214,8 @@ export class GameRenderer {
     this.sun = new THREE.DirectionalLight(0xfffaf0, 1.4);
     this.sun.position.set(30, 50, 20);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.width = 1024;
-    this.sun.shadow.mapSize.height = 1024;
+    this.sun.shadow.mapSize.width = QUALITY.shadowMapSize;
+    this.sun.shadow.mapSize.height = QUALITY.shadowMapSize;
     this.sun.shadow.camera.near = 10;
     this.sun.shadow.camera.far = 120;
 

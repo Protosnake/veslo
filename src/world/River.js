@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { sx, sz, RIVER_HALF_WIDTH } from './Bounds.js';
+import { IDLE_DECOR_ENABLED, runWhenIdle } from '../systems/IdleScheduler.js';
+import { QUALITY } from '../config/quality.js';
 
 // Height of the northern border bank. Lowered from 4.5 so the reeds and
 // incline stop swallowing the gravel patrol path from the drone camera.
@@ -95,9 +97,33 @@ export class RiverWorld {
     this.createReedsAndVegetation();
     this.createBankVegetation();
     this.createEnvironmentDetails();
-    this.createForests();
-    this.createAppalledCrowd();
+    this.buildDeferredDecor();
     this.createParticleSystem();
+  }
+
+  // Forests and the crowd are pure decoration: nothing gameplay-related reads
+  // them, so they are built after the first frame on idle instead of blocking
+  // boot. The intro still has 10+ seconds to show them before the player moves.
+  buildDeferredDecor() {
+    const buildForests = () => this.createForests();
+    const buildCrowd = () => this.createAppalledCrowd();
+
+    if (!IDLE_DECOR_ENABLED) {
+      buildForests();
+      buildCrowd();
+      return;
+    }
+
+    const schedule = () => {
+      runWhenIdle(buildForests);
+      runWhenIdle(buildCrowd);
+    };
+
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(schedule);
+    } else {
+      schedule();
+    }
   }
 
   // The playable stretch stays perfectly straight so the banks line up with the
@@ -2025,7 +2051,7 @@ gl_Position = projectionMatrix * mvPosition;`
   }
 
   createParticleSystem() {
-    this.maxParticles = 220;
+    this.maxParticles = QUALITY.particleBudget;
     this.particleIndex = 0;
 
     const pGeo = new THREE.SphereGeometry(0.2, 5, 4);

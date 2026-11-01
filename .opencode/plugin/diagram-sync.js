@@ -9,8 +9,12 @@ const DIAGRAMS_BY_SOURCE = {
   ],
   "src/entities/Birds.js": [
     "docs/features/10-flying-birds.md",
-    "docs/features/11-storks.md"
+    "docs/features/11-storks.md",
+    "docs/features/34-sprite-viewer.md"
   ],
+  "src/dev/SpriteViewer.js": ["docs/features/34-sprite-viewer.md"],
+  "src/dev/sprites.js": ["docs/features/34-sprite-viewer.md"],
+  "src/config/tuning.ts": ["docs/features/34-sprite-viewer.md"],
   "src/entities/WildlifeManager.js": ["docs/features/11-storks.md"],
   "src/config/ranking.ts": ["docs/features/12-ranking.md"],
   "src/config/difficulty.ts": ["docs/features/12-ranking.md"],
@@ -21,7 +25,8 @@ const DIAGRAMS_BY_SOURCE = {
     "docs/features/09-man-overboard.md",
     "docs/features/10-flying-birds.md",
     "docs/features/11-storks.md",
-    "docs/features/12-ranking.md"
+    "docs/features/12-ranking.md",
+    "docs/features/34-sprite-viewer.md"
   ]
 }
 

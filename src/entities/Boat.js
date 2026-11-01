@@ -18,6 +18,17 @@ const MAN_OVERBOARD_STERN_SPEED_RATIO = 0.3;
 const PROP_REED_TOLERANCE = 1.0;
 const PROP_REED_ESCAPE_SPEED = 0.3;
 
+export const TILLER_GRIP_LOCAL = Object.freeze({ x: 0.4, y: 0.35, z: 0 });
+export const LIFELINE = Object.freeze({
+  xMin: -1.5,
+  xMax: 0.7,
+  y: 0.82,
+  z: 0.68,
+  sag: 0.02
+});
+
+const PLAYER_BOARD_POS = Object.freeze({ x: 0.5, y: 0.56, z: 0 });
+
 const rollManOverboardThreshold = () =>
   MAN_OVERBOARD_MIN_DELAY +
   Math.random() * (MAN_OVERBOARD_MAX_DELAY - MAN_OVERBOARD_MIN_DELAY);
@@ -128,13 +139,14 @@ export class Boat {
     const transomWoodMat = new THREE.MeshLambertMaterial({ color: 0x5c4028 });
     const deckMat = new THREE.MeshLambertMaterial({ color: 0x6e5236, flatShading: true });
     const benchMat = new THREE.MeshLambertMaterial({ color: 0x7d5a37 });
-    const ropeMat = new THREE.MeshLambertMaterial({ color: 0xe6ebe0 });
+    const ropeMat = new THREE.MeshLambertMaterial({ color: 0x9c7a4d });
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.3 });
 
     this.hull = new THREE.Group();
 
     const tubeRadius = 0.40;
     const tubeY = 0.45; // elevated so water waves never clip into floor
+    const tubeZ = 1.02;
 
     // Side pontoon tubes: running from x = -1.5 to x = +0.7 (length 2.2, centered at x = -0.4)
     const sideTubeLength = 2.2;
@@ -143,13 +155,13 @@ export class Boat {
 
     // Left Tube (+Z in local space)
     const tubeL = new THREE.Mesh(sideTubeGeo, rubberMat);
-    tubeL.position.set(-0.4, tubeY, 0.82);
+    tubeL.position.set(-0.4, tubeY, tubeZ);
     tubeL.castShadow = true;
     this.hull.add(tubeL);
 
     // Right Tube (-Z in local space)
     const tubeR = new THREE.Mesh(sideTubeGeo, rubberMat);
-    tubeR.position.set(-0.4, tubeY, -0.82);
+    tubeR.position.set(-0.4, tubeY, -tubeZ);
     tubeR.castShadow = true;
     this.hull.add(tubeR);
 
@@ -158,89 +170,127 @@ export class Boat {
     coneGeo.rotateZ(Math.PI / 2); // points -X
 
     const coneL = new THREE.Mesh(coneGeo, rubberMat);
-    coneL.position.set(-1.87, tubeY, 0.82);
+    coneL.position.set(-1.87, tubeY, tubeZ);
     coneL.castShadow = true;
     this.hull.add(coneL);
 
     const coneR = new THREE.Mesh(coneGeo, rubberMat);
-    coneR.position.set(-1.87, tubeY, -0.82);
+    coneR.position.set(-1.87, tubeY, -tubeZ);
     coneR.castShadow = true;
     this.hull.add(coneR);
 
     // Bow Inflatable Tubes (converging smoothly inward towards center z = 0 at +X)
-    // From (0.7, ±0.82) to (2.0, 0): dx = 1.3, dz = ±0.82, length = 1.54, angle = ±0.563 rad
-    const bowTubeLength = 1.54;
+    const bowStartX = 0.7;
+    const bowEndX = 2.0;
+    const bowTubeLength = Math.hypot(bowEndX - bowStartX, tubeZ);
+    const bowAngle = Math.atan2(tubeZ, bowEndX - bowStartX);
     const bowTubeGeo = new THREE.CylinderGeometry(tubeRadius, tubeRadius, bowTubeLength, 12);
     bowTubeGeo.rotateZ(Math.PI / 2);
 
     // Left Bow Tube (curves inward toward z = 0)
     const bowL = new THREE.Mesh(bowTubeGeo, rubberMat);
-    bowL.position.set(1.35, tubeY, 0.41);
-    bowL.rotation.y = 0.563; // angles inward!
+    bowL.position.set((bowStartX + bowEndX) / 2, tubeY, tubeZ / 2);
+    bowL.rotation.y = bowAngle;
     bowL.castShadow = true;
     this.hull.add(bowL);
 
     // Right Bow Tube (curves inward toward z = 0)
     const bowR = new THREE.Mesh(bowTubeGeo, rubberMat);
-    bowR.position.set(1.35, tubeY, -0.41);
-    bowR.rotation.y = -0.563; // angles inward!
+    bowR.position.set((bowStartX + bowEndX) / 2, tubeY, -tubeZ / 2);
+    bowR.rotation.y = -bowAngle;
     bowR.castShadow = true;
     this.hull.add(bowR);
 
+    // Rounded joints seal the miter where the straight side tubes and the
+    // angled bow tubes meet, so no wedge of daylight shows through the bend.
+    const jointGeo = new THREE.SphereGeometry(tubeRadius, 12, 10);
+
+    const jointL = new THREE.Mesh(jointGeo, rubberMat);
+    jointL.position.set(bowStartX, tubeY, tubeZ);
+    jointL.castShadow = true;
+    this.hull.add(jointL);
+
+    const jointR = new THREE.Mesh(jointGeo, rubberMat);
+    jointR.position.set(bowStartX, tubeY, -tubeZ);
+    jointR.castShadow = true;
+    this.hull.add(jointR);
+
     // Rounded Nose Cap (+X) seamlessly sealing the bow apex
     const noseCap = new THREE.Mesh(new THREE.SphereGeometry(tubeRadius, 12, 10), rubberMat);
-    noseCap.position.set(2.0, tubeY, 0);
+    noseCap.position.set(bowEndX, tubeY, 0);
     noseCap.castShadow = true;
     this.hull.add(noseCap);
 
     // Black Rubber Bumper Strake along side tubes
+    const strakeZ = tubeZ + tubeRadius - 0.02;
     const strakeL = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.12, 0.08), rubStrakeMat);
-    strakeL.position.set(-0.4, tubeY, 1.2);
+    strakeL.position.set(-0.4, tubeY, strakeZ);
     this.hull.add(strakeL);
 
     const strakeR = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.12, 0.08), rubStrakeMat);
-    strakeR.position.set(-0.4, tubeY, -1.2);
+    strakeR.position.set(-0.4, tubeY, -strakeZ);
     this.hull.add(strakeR);
 
-    // Safety Grab Lifeline (rope along tubes)
-    const ropeL = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.2, 6), ropeMat);
-    ropeL.rotation.z = Math.PI / 2;
-    ropeL.position.set(-0.4, tubeY + 0.24, 0.82);
+    // Safety grab lifeline: a slightly sagging rope running along the inner
+    // top of each pontoon, close enough for a seated hand to hold.
+    const ropePoints = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12;
+      const x = LIFELINE.xMin + (LIFELINE.xMax - LIFELINE.xMin) * t;
+      ropePoints.push(
+        new THREE.Vector3(x, LIFELINE.y - Math.sin(Math.PI * t) * LIFELINE.sag, LIFELINE.z)
+      );
+    }
+    const ropeCurve = new THREE.CatmullRomCurve3(ropePoints);
+    const ropeGeo = new THREE.TubeGeometry(ropeCurve, 16, 0.028, 4, false);
+
+    const ropeL = new THREE.Mesh(ropeGeo, ropeMat);
+    ropeL.castShadow = true;
     this.hull.add(ropeL);
 
-    const ropeR = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.2, 6), ropeMat);
-    ropeR.rotation.z = Math.PI / 2;
-    ropeR.position.set(-0.4, tubeY + 0.24, -0.82);
+    const ropeR = new THREE.Mesh(ropeGeo, ropeMat);
+    ropeR.position.z = -2 * LIFELINE.z;
+    ropeR.castShadow = true;
     this.hull.add(ropeR);
 
     // Solid Sealed Bottom Hull Under-plate (prevents any water rendering through bottom!)
-    const bottomHull = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.32, 1.35), bottomRubberMat);
+    const bottomHull = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.32, 1.8), bottomRubberMat);
     bottomHull.position.set(0.0, 0.22, 0);
     bottomHull.receiveShadow = true;
     this.hull.add(bottomHull);
 
-    // Elevated Wooden Slatted Deck Floor (safely above water wave crests)
-    const floorGeo = new THREE.BoxGeometry(2.7, 0.08, 1.25);
-    const floor = new THREE.Mesh(floorGeo, deckMat);
-    floor.position.set(0.0, 0.38, 0);
-    floor.receiveShadow = true;
-    this.hull.add(floor);
+    // Elevated wooden deck: five planks with narrow dark seams between them.
+    // Sitting above the sealed under-plate keeps the floor clear of wave crests.
+    const plankGeo = new THREE.BoxGeometry(0.5, 0.08, 1.7);
+    for (let i = 0; i < 5; i++) {
+      const plank = new THREE.Mesh(plankGeo, deckMat);
+      plank.position.set(-1.1 + i * 0.55, 0.38, 0);
+      plank.receiveShadow = true;
+      this.hull.add(plank);
+    }
 
     // Solid Transom Board (-X)
-    const transomGeo = new THREE.BoxGeometry(0.12, 0.65, 1.35);
+    const transomGeo = new THREE.BoxGeometry(0.12, 0.65, 1.8);
     const transom = new THREE.Mesh(transomGeo, transomWoodMat);
     transom.position.set(-1.5, 0.48, 0);
     transom.castShadow = true;
     this.hull.add(transom);
 
-    // Rear Wooden Bench Seat (Officer sits here near motor)
-    const rearBench = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.08, 1.35), benchMat);
-    rearBench.position.set(-1.05, 0.52, 0);
+    // Rear bench seat (Officer sits here near motor)
+    const seatMat = new THREE.MeshLambertMaterial({ color: 0x2b2f28 });
+    const rearBench = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.08, 1.8), seatMat);
+    rearBench.position.set(-1.22, 0.56, 0);
     rearBench.castShadow = true;
     this.hull.add(rearBench);
 
+    const rearSeat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 1.1), seatMat);
+    rearSeat.position.set(-1.21, 0.635, 0.15);
+    rearSeat.castShadow = true;
+    rearSeat.receiveShadow = true;
+    this.hull.add(rearSeat);
+
     // Front Wooden Bench Seat
-    const frontBench = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 1.3), benchMat);
+    const frontBench = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 1.7), benchMat);
     frontBench.position.set(0.5, 0.52, 0);
     frontBench.castShadow = true;
     this.hull.add(frontBench);
@@ -253,6 +303,7 @@ export class Boat {
 
     const engineMount = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.3), metalMat);
     engineMount.position.set(0.1, 0.1, 0);
+    engineMount.castShadow = true;
     this.motorPivot.add(engineMount);
 
     const cowlMat = new THREE.MeshStandardMaterial({ color: 0x1f1f1f, roughness: 0.3 });
@@ -270,19 +321,28 @@ export class Boat {
 
     const engineShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.85, 6), metalMat);
     engineShaft.position.set(-0.25, -0.3, 0);
+    engineShaft.castShadow = true;
     this.motorPivot.add(engineShaft);
 
     const skeg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 0.04), metalMat);
     skeg.position.set(-0.25, -0.65, 0);
+    skeg.castShadow = true;
     this.motorPivot.add(skeg);
 
+    const tillerMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
     const tiller = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04, 0.04, 0.85, 6),
-      new THREE.MeshLambertMaterial({ color: 0x111111 })
+      new THREE.CylinderGeometry(0.04, 0.04, 0.4, 6),
+      tillerMat
     );
     tiller.rotation.z = Math.PI / 2;
-    tiller.position.set(0.35, 0.35, 0);
+    tiller.position.set(0.2, TILLER_GRIP_LOCAL.y, 0);
+    tiller.castShadow = true;
     this.motorPivot.add(tiller);
+
+    const tillerGrip = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), tillerMat);
+    tillerGrip.position.set(TILLER_GRIP_LOCAL.x, TILLER_GRIP_LOCAL.y, TILLER_GRIP_LOCAL.z);
+    tillerGrip.castShadow = true;
+    this.motorPivot.add(tillerGrip);
 
     // Engine-failure flame: a small additive cone on top of the cowl, hidden
     // until the run ends with a broken motor.
@@ -326,109 +386,28 @@ export class Boat {
   createOfficer() {
     this.officerGroup = new THREE.Group();
     this.officerGroup.position.set(-1.05, 0.55, 0.2);
-
-    const uniformMat = new THREE.MeshLambertMaterial({ color: 0x334d38 });
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xf2bb9b });
-    const capMat = new THREE.MeshLambertMaterial({ color: 0x1d2e20 });
-
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.65, 0.55), uniformMat);
-    body.position.set(0, 0.45, 0);
-    body.castShadow = true;
-    this.officerGroup.add(body);
-
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.3, 0.45), uniformMat);
-    legs.position.set(0.28, 0.15, 0);
-    this.officerGroup.add(legs);
-
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), skinMat);
-    head.position.set(0, 0.95, 0);
-    head.castShadow = true;
-    this.officerGroup.add(head);
-
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.14, 8), capMat);
-    cap.position.set(0, 1.12, 0);
-    this.officerGroup.add(cap);
-
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.26), capMat);
-    visor.position.set(0.18, 1.09, 0);
-    this.officerGroup.add(visor);
-
-    this.officerArm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.65, 6), uniformMat);
-    this.officerArm.rotation.z = -Math.PI / 3;
-    this.officerArm.position.set(-0.25, 0.55, -0.15);
-    this.officerArm.castShadow = true;
-    this.officerGroup.add(this.officerArm);
-
     this.group.add(this.officerGroup);
   }
 
   createPlayerAndOar() {
     this.playerGroup = new THREE.Group();
-    this.playerGroup.position.set(0.5, 0.45, 0);
+    this.playerGroup.position.set(PLAYER_BOARD_POS.x, PLAYER_BOARD_POS.y, PLAYER_BOARD_POS.z);
 
-    const vestMat = new THREE.MeshLambertMaterial({ color: 0x223826 });
-    const pantsMat = new THREE.MeshLambertMaterial({ color: 0x1b281f });
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xf5c29b });
-    const hatMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
-
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.55, 0.48), pantsMat);
-    legs.position.set(0, 0.28, 0);
-    this.playerGroup.add(legs);
-
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.75, 0.62), vestMat);
-    body.position.set(0, 0.85, 0);
-    body.castShadow = true;
-    this.playerGroup.add(body);
-
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), skinMat);
-    head.position.set(0, 1.4, 0);
-    head.castShadow = true;
-    this.playerGroup.add(head);
-
-    const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), hatMat);
-    beanie.position.set(0, 1.5, 0);
-    this.playerGroup.add(beanie);
+    this.oarsmanMount = new THREE.Group();
+    this.playerGroup.add(this.oarsmanMount);
 
     this.oarPivot = new THREE.Group();
     this.oarPivot.position.set(0.15, 1.05, 0);
-
-    const shaftMat = new THREE.MeshLambertMaterial({ color: 0xb58045 });
-    const oarShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.4, 6), shaftMat);
-    oarShaft.position.set(0, 0.9, 0);
-    oarShaft.castShadow = true;
-    this.oarPivot.add(oarShaft);
-
-    const bladeMat = new THREE.MeshLambertMaterial({ color: 0xca8c4c });
-    const oarBlade = new THREE.Mesh(new THREE.BoxGeometry(0.36, 1.15, 0.06), bladeMat);
-    oarBlade.position.set(0, 2.15, 0);
-    oarBlade.castShadow = true;
-    this.oarPivot.add(oarBlade);
-
-    const bladeTip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.37, 0.32, 0.07),
-      new THREE.MeshLambertMaterial({ color: 0xd92626 })
-    );
-    bladeTip.position.set(0, 2.55, 0);
-    this.oarPivot.add(bladeTip);
-
-    // Empty anchor at the blade centre so the hitbox can follow the visible oar.
-    this.oarTip = new THREE.Object3D();
-    this.oarTip.position.set(0, 2.15, 0);
-    this.oarPivot.add(this.oarTip);
-
-    const handL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), skinMat);
-    handL.position.set(0, 0.2, 0.15);
-    this.oarPivot.add(handL);
-    const handR = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), skinMat);
-    handR.position.set(0, 0.5, -0.15);
-    this.oarPivot.add(handR);
-
-    this.oarPivot.rotation.x = 0.5;
-    this.oarPivot.rotation.z = -0.4;
-    this.oarPivot.rotation.y = 0;
-
+    this.oarPivot.rotation.set(0.5, 0, -0.4);
     this.playerGroup.add(this.oarPivot);
+
     this.group.add(this.playerGroup);
+  }
+
+  attachOar(oar) {
+    this.oar = oar;
+    this.oarPivot.add(oar.group);
+    this.oarTip = oar.tip;
   }
 
   reset() {
@@ -460,7 +439,7 @@ export class Boat {
     if (this.overboardMarker) this.overboardMarker.visible = false;
 
     this.group.attach(this.playerGroup);
-    this.playerGroup.position.set(0.5, 0.45, 0);
+    this.playerGroup.position.set(PLAYER_BOARD_POS.x, PLAYER_BOARD_POS.y, PLAYER_BOARD_POS.z);
     this.playerGroup.rotation.set(0, 0, 0);
 
     this.oarPivot.rotation.set(0.5, 0, -0.4);
@@ -812,7 +791,7 @@ export class Boat {
     if (!this.isManOverboard) return;
 
     this.group.attach(this.playerGroup);
-    this.playerGroup.position.set(0.5, 0.45, 0);
+    this.playerGroup.position.set(PLAYER_BOARD_POS.x, PLAYER_BOARD_POS.y, PLAYER_BOARD_POS.z);
     this.playerGroup.rotation.set(0, 0, 0);
     this.oarPivot.rotation.set(0.5, 0, -0.4);
     this.oarPivot.scale.set(1, 1, 1);
@@ -1250,9 +1229,6 @@ export class Boat {
     // Motor tiller steering animation
     const targetMotorAngle = steer * 0.45;
     this.motorPivot.rotation.y = THREE.MathUtils.lerp(this.motorPivot.rotation.y, targetMotorAngle, 0.25);
-    if (this.officerArm) {
-      this.officerArm.rotation.y = -this.motorPivot.rotation.y * 0.7;
-    }
 
     // Man overboard: either build up the fall risk or drift the detached
     // oarsman and let the hull pick him back up.

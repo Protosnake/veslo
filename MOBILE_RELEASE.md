@@ -43,4 +43,4 @@ Tauri v2 can target both, but Android WebView maturity favors Capacitor.
 
 - [ ] Crash/analytics opt-in, versioning, CI build pipelines
 - [ ] Real-device test matrix (Android low/mid/high, Intel + Apple Silicon Macs)
-- [ ] Store review assets and update flow (no service worker, so updates ship through store builds)
+- [ ] Store review assets and update flow (web builds now use a generated service worker; native store builds still ship updates through the store)

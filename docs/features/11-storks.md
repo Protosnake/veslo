@@ -49,3 +49,4 @@ flowchart TD
 - Storks are advanced by the shared `BirdManager.update(dt)` loop that `main.animate()` runs unless the game is paused, so their dive state freezes with the patrol like the other birds.
 - Stork pitch follows its vertical speed: the nose angles down toward the water during a dive, up away from it during the climb, and eases back to level in cruise. Pitch is clamped to 0.75 rad (~43°) and smoothed so the transitions do not snap.
 - Debug/tuning: `?storkDive=1` / `VITE_STORK_ALWAYS_DIVE=1` forces dives, `?storkSpawn=` / `VITE_STORK_SPAWN_INTERVAL` adds dedicated spawns, `?storkWeight=` / `VITE_STORK_SPAWN_WEIGHT` changes the random bird mix.
+- Cross-cutting lifecycle wiring in `main.js` (screen wake lock #20, offline service worker #22) is orthogonal to the stork state machine above and leaves it unchanged.

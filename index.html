@@ -166,7 +166,6 @@
               aria-label="Strike with oar"
             >
               <span class="touch-hit-label" data-i18n="controls.hitShort"></span>
-              <span class="touch-hit-sub" data-i18n="controls.oar"></span>
             </button>
           </div>
 
@@ -258,12 +257,10 @@
         <span class="go-reticle-line h"></span>
         <span class="go-reticle-line v"></span>
         <span class="go-reticle-tag top" data-i18n="gameover.lock"></span>
-        <span class="go-reticle-tag bottom" data-i18n="gameover.linkLost"></span>
       </div>
 
       <div class="gameover-header">
         <div class="gameover-eyebrow">
-          <span class="osd-rec-dot"></span>
           <span id="game-over-eyebrow-text" data-i18n="modal.over.eyebrow"></span>
         </div>
         <h1 class="gameover-title" id="game-over-title">BORDER BREACHED!</h1>
@@ -327,6 +324,13 @@
       <div class="orientation-subtitle" data-i18n="orientation.subtitle"></div>
     </div>
 
+    <script type="module">
+      // Optional local dev probe (git-ignored). Enabled with ?stats=1.
+      if (import.meta.env.DEV && new URLSearchParams(location.search).has('stats')) {
+        const probePath = './src/dev/StatsProbe.local.js';
+        import(/* @vite-ignore */ probePath).catch(() => {});
+      }
+    </script>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>
