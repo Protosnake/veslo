@@ -15,6 +15,6 @@ export function mountRankSprites() {
 }
 
 /** Returns an <svg> that references a rank symbol from the sprite sheet. */
-export function rankIconMarkup(rank, className = 'rank-insignia') {
+export function rankIconMarkup(rank: { sprite: string }, className = 'rank-insignia'): string {
   return `<svg class="${className}" viewBox="0 0 44 62" aria-hidden="true" focusable="false"><use href="#${rank.sprite}"/></svg>`;
 }

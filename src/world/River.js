@@ -1653,8 +1653,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       this.scene.add(signBoard);
     }
 
-    this.createWatchtower(sx(-20), sz(-21));
-    this.createWatchtower(sx(20), sz(-21));
+    this.createWatchtower(sx(-20), sz(24));
+    this.createWatchtower(sx(20), sz(24));
   }
 
   // Dense mixed forest belts along both banks plus a canopy wall that closes off
@@ -1837,7 +1837,8 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     lightHead.position.set(0, 10.2, 1.8);
     tower.add(lightHead);
 
-    tower.position.set(x, NORTH_BANK_Y - 3.0, z);
+    tower.position.set(x, -3.0, z);
+    tower.rotation.y = Math.PI;
     this.scene.add(tower);
   }
 

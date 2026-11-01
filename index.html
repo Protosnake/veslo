@@ -123,6 +123,12 @@
         </div>
       </div>
 
+      <!-- Oar kill-streak feedback -->
+      <div class="kill-streak" id="kill-streak" data-tier="1" style="--streak-progress: 1" aria-live="polite">
+        <span class="kill-streak-ring" aria-hidden="true"></span>
+        <span class="kill-streak-count" id="kill-streak-count">×1</span>
+      </div>
+
       <!-- Footer Control Hints -->
       <div class="hud-footer">
         <div class="control-pill">
@@ -233,45 +239,70 @@
       </div>
     </div>
 
-    <!-- Game Over Modal -->
-    <div class="modal-overlay hidden" id="game-over-modal">
-      <div class="modal-card">
-        <div class="modal-eyebrow danger"><span class="osd-rec-dot"></span> <span data-i18n="modal.over.eyebrow"></span></div>
-        <h1 class="modal-title game-over-banner" id="game-over-title">BORDER BREACHED!</h1>
-        <div class="modal-subtitle" id="game-over-subtitle">A smuggler reached the southern shore. Mission Failed.</div>
+    <!-- Game Over Screen: drone target lock, no modal -->
+    <div class="gameover-screen hidden" id="gameover-screen">
+      <div class="gameover-reticle" aria-hidden="true">
+        <span class="go-bracket tl"></span>
+        <span class="go-bracket tr"></span>
+        <span class="go-bracket bl"></span>
+        <span class="go-bracket br"></span>
+        <span class="go-reticle-line h"></span>
+        <span class="go-reticle-line v"></span>
+        <span class="go-reticle-tag top" data-i18n="gameover.lock"></span>
+        <span class="go-reticle-tag bottom" data-i18n="gameover.linkLost"></span>
+      </div>
 
-        <!-- Final Military Rank Achieved Card -->
-        <div class="modal-block game-over-rank-box">
-          <span class="game-over-rank-sub" data-i18n="modal.over.rankLabel"></span>
-          <div class="game-over-rank-main">
-            <span id="final-rank-badge"></span>
-            <div>
-              <div class="game-over-rank-title" id="final-rank-title"></div>
-              <div class="game-over-rank-score" id="final-rank-score"></div>
+      <div class="gameover-header">
+        <div class="gameover-eyebrow">
+          <span class="osd-rec-dot"></span>
+          <span id="game-over-eyebrow-text" data-i18n="modal.over.eyebrow"></span>
+        </div>
+        <h1 class="gameover-title" id="game-over-title">BORDER BREACHED!</h1>
+        <div class="gameover-subtitle" id="game-over-subtitle">A smuggler reached the southern shore. Mission Failed.</div>
+      </div>
+
+      <div class="gameover-panel">
+        <div class="gameover-report">
+          <div class="gameover-report-label" data-i18n="gameover.report"></div>
+          <div class="gameover-report-grid">
+            <div class="gameover-score">
+              <span class="gameover-score-label" data-i18n="gameover.score"></span>
+              <span class="gameover-score-value" id="final-score">0</span>
+            </div>
+
+            <div class="gameover-stats">
+              <div class="go-stat">
+                <span class="go-stat-val" id="final-smacked">0</span>
+                <span class="go-stat-label" data-i18n="gameover.statSmacked"></span>
+              </div>
+              <div class="go-stat">
+                <span class="go-stat-val" id="final-frogs">0</span>
+                <span class="go-stat-label" data-i18n="gameover.statFrogs"></span>
+              </div>
+              <div class="go-stat">
+                <span class="go-stat-val" id="final-snakes">0</span>
+                <span class="go-stat-label" data-i18n="gameover.statSnakes"></span>
+              </div>
+              <div class="go-stat">
+                <span class="go-stat-val" id="final-streak">×0</span>
+                <span class="go-stat-label" data-i18n="gameover.statStreak"></span>
+              </div>
+            </div>
+
+            <div class="gameover-rank">
+              <span id="final-rank-badge"></span>
+              <div class="gameover-rank-copy">
+                <span class="gameover-rank-label" data-i18n="gameover.rank"></span>
+                <span class="gameover-rank-title" id="final-rank-title"></span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="stats-grid">
-          <div class="stat-item">
-            <span class="stat-label" data-i18n="modal.over.statScore"></span>
-            <span class="stat-val is-gold" id="final-score">0</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label" data-i18n="modal.over.statSmacked"></span>
-            <span class="stat-val" id="final-smacked">0</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label" data-i18n="modal.over.statFrogs"></span>
-            <span class="stat-val" id="final-frogs">0</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label" data-i18n="modal.over.statSnakes"></span>
-            <span class="stat-val" id="final-snakes">0</span>
-          </div>
-        </div>
-
-        <button class="action-btn" id="restart-btn" data-i18n="modal.over.btn"></button>
+        <button class="gameover-restart" id="restart-btn" type="button">
+          <span class="go-restart-glyph" aria-hidden="true"></span>
+          <span data-i18n="modal.over.btn"></span>
+        </button>
       </div>
     </div>
 

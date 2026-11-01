@@ -1,21 +1,21 @@
 import * as THREE from 'three';
 
 export class WebGLUnavailableError extends Error {
-  constructor(cause) {
+  constructor(cause?: unknown) {
     super('WebGL is not available in this browser.');
     this.name = 'WebGLUnavailableError';
     this.cause = cause;
   }
 }
 
-function detectWebGL() {
+function detectWebGL(): boolean {
   try {
+    if (!window.WebGLRenderingContext) return false;
     const canvas = document.createElement('canvas');
     const gl =
-      window.WebGLRenderingContext &&
-      (canvas.getContext('webgl2') ||
-        canvas.getContext('webgl') ||
-        canvas.getContext('experimental-webgl'));
+      canvas.getContext('webgl2') ||
+      canvas.getContext('webgl') ||
+      canvas.getContext('experimental-webgl' as unknown as 'webgl');
     if (!gl) return false;
     gl.getExtension('WEBGL_lose_context')?.loseContext();
     return true;
@@ -26,7 +26,38 @@ function detectWebGL() {
 
 // Wide-angle patrol drone tracking the boat over the breach line.
 export class GameRenderer {
-  constructor(container) {
+  container: HTMLElement;
+  scene: THREE.Scene;
+  renderer!: THREE.WebGLRenderer;
+  camera!: THREE.PerspectiveCamera;
+  elapsed = 0;
+
+  horizontalFov!: number;
+  rigY?: number;
+  aimStiffness!: number;
+  droneStiffness!: number;
+  lookHeight!: number;
+
+  baseAnchor!: THREE.Vector3;
+  anchor!: THREE.Vector3;
+  rigOffset!: THREE.Vector3;
+  followTarget!: THREE.Vector3;
+  followLook!: THREE.Vector3;
+  followLookTarget!: THREE.Vector3;
+  fovHOverride: number | null = null;
+  lookTarget!: THREE.Vector3;
+
+  sun!: THREE.DirectionalLight;
+
+  shakeIntensity = 0;
+  shakeDecay = 0.9;
+  shakeOffset = new THREE.Vector3();
+
+  manualCamera = false;
+  manualPosition = new THREE.Vector3();
+  manualLook = new THREE.Vector3();
+
+  constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x7dc0ea);
@@ -41,18 +72,18 @@ export class GameRenderer {
     window.addEventListener('resize', () => this.onResize());
   }
 
-  initRenderer() {
+  initRenderer(): void {
     if (!detectWebGL()) {
       throw new WebGLUnavailableError();
     }
 
-    const attempts = [
+    const attempts: THREE.WebGLRendererParameters[] = [
       { antialias: true, powerPreference: 'high-performance' },
       { antialias: true },
       { antialias: false }
     ];
 
-    let lastError;
+    let lastError: unknown;
     for (const options of attempts) {
       try {
         this.renderer = new THREE.WebGLRenderer(options);
@@ -78,7 +109,7 @@ export class GameRenderer {
     this.container.appendChild(this.renderer.domElement);
   }
 
-  initCamera() {
+  initCamera(): void {
     const aspect = window.innerWidth / window.innerHeight;
 
     // One rig for every platform. Centered behind the boat, sized for the
@@ -89,11 +120,11 @@ export class GameRenderer {
     // ?fov=80 zooms out further, ?aim=1.4 changes how hard the gimbal trails
     // (lower = more lag), ?drone=8 changes how tightly the body follows.
     const params = new URLSearchParams(window.location.search);
-    const rigY = parseFloat(params.get('y'));
-    const lookY = parseFloat(params.get('look'));
-    const fovOverride = parseFloat(params.get('fov'));
-    const aimParam = parseFloat(params.get('aim'));
-    const droneParam = parseFloat(params.get('drone'));
+    const rigY = parseFloat(params.get('y') ?? '');
+    const lookY = parseFloat(params.get('look') ?? '');
+    const fovOverride = parseFloat(params.get('fov') ?? '');
+    const aimParam = parseFloat(params.get('aim') ?? '');
+    const droneParam = parseFloat(params.get('drone') ?? '');
     if (Number.isFinite(rigY)) {
       this.rigY = THREE.MathUtils.clamp(rigY, 14, 44);
     }
@@ -139,18 +170,18 @@ export class GameRenderer {
     this.manualLook = new THREE.Vector3();
   }
 
-  setFollowTarget(x, z) {
+  setFollowTarget(x: number, z: number): void {
     this.followTarget.set(x, 0, z);
   }
 
-  settleFollow(x, z) {
+  settleFollow(x: number, z: number): void {
     this.followTarget.set(x, 0, z);
     this.followLook.set(x, 0, z);
     this.followLookTarget.set(x, 0, z);
     this.anchor.set(x, 0, z);
   }
 
-  getGameplayPose() {
+  getGameplayPose(): { position: THREE.Vector3; look: THREE.Vector3 } {
     const position = this.anchor.clone().add(this.rigOffset);
     const look = new THREE.Vector3(
       this.followLook.x,
@@ -160,17 +191,17 @@ export class GameRenderer {
     return { position, look };
   }
 
-  setManualCamera(position, look) {
+  setManualCamera(position: THREE.Vector3, look: THREE.Vector3): void {
     this.manualCamera = true;
     this.manualPosition.copy(position);
     this.manualLook.copy(look);
   }
 
-  clearManualCamera() {
+  clearManualCamera(): void {
     this.manualCamera = false;
   }
 
-  initLights() {
+  initLights(): void {
     const ambientLight = new THREE.AmbientLight(0xdff1ff, 0.7);
     this.scene.add(ambientLight);
 
@@ -200,21 +231,21 @@ export class GameRenderer {
    * so phones and desktop see the same slice of river. Vertical FOV is derived
    * from the current aspect.
    */
-  getGameplayHorizontalFov() {
+  getGameplayHorizontalFov(): number {
     return this.horizontalFov;
   }
 
-  setHorizontalFovOverride(hFov) {
+  setHorizontalFovOverride(hFov: number): void {
     this.fovHOverride = hFov;
     this.applyResponsiveFov();
   }
 
-  clearHorizontalFovOverride() {
+  clearHorizontalFovOverride(): void {
     this.fovHOverride = null;
     this.applyResponsiveFov();
   }
 
-  applyResponsiveFov() {
+  applyResponsiveFov(): void {
     const aspect = window.innerWidth / window.innerHeight;
     const hFov = THREE.MathUtils.degToRad(
       this.fovHOverride != null ? this.fovHOverride : this.horizontalFov
@@ -232,7 +263,7 @@ export class GameRenderer {
    * velocity feed-forward and no overshoot, so the trail reads as deliberate
    * lag rather than rubberbanding.
    */
-  updateCamera(dt) {
+  updateCamera(dt: number): void {
     this.elapsed += dt;
     const t = this.elapsed;
 
@@ -291,18 +322,18 @@ export class GameRenderer {
     this.camera.rotateZ(Math.sin(t * 0.13) * 0.006 + (Math.random() - 0.5) * this.shakeIntensity * 0.02);
   }
 
-  triggerScreenShake(intensity = 0.5) {
+  triggerScreenShake(intensity = 0.5): void {
     this.shakeIntensity = Math.min(this.shakeIntensity + intensity, 1.2);
   }
 
-  onResize() {
+  onResize(): void {
     const aspect = window.innerWidth / window.innerHeight;
     this.camera.aspect = aspect;
     this.applyResponsiveFov();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
-  render() {
+  render(): void {
     this.renderer.render(this.scene, this.camera);
   }
 }

@@ -52,6 +52,8 @@ const BAG_COLORS = [0x785633, 0x3d352e, 0x24422e];
 const WILDLIFE_SCARE_RADIUS = 5;
 const WILDLIFE_SCARE_DURATION = 1.5;
 
+export const ESCAPE_RUN_SECONDS = 5;
+
 export class Smuggler {
   constructor(scene, riverWorld, startX, baseSpeed, spawnDistanceOffset = 0, options = {}) {
     this.scene = scene;
@@ -110,6 +112,10 @@ export class Smuggler {
     this.walkSpeed = this.path
       ? (4.2 + Math.random() * 0.9) * 1.75
       : 1.4 + Math.random() * 0.5;
+    this.escapeSpeed = 5.5 + Math.random() * 2;
+    this.escapeRunSeconds = ESCAPE_RUN_SECONDS;
+    this.escapeElapsed = 0;
+    this.escapedAway = false;
     this.reedLineZ = this.path ? this.path.reedLineZ : sz(-16.4);
     this.emergeZ = this.path ? this.path.emergeZ : sz(-14.7);
     this.emergeX = this.position.x;
@@ -643,6 +649,11 @@ export class Smuggler {
       return;
     }
 
+    if (this.state === 'escaping') {
+      this.updateEscaping(dt);
+      return;
+    }
+
     // Detection radius and evasion
     const distToBoat = this.position.distanceTo(boat.position);
     const detectionRadius = 6.5;
@@ -744,12 +755,59 @@ export class Smuggler {
       );
     }
 
-    // Check if reached South Bank beach (fully visible on the flat shoreline!)
-    if (this.position.z >= sz(15.3)) {
+    // Crossed the line: get out of the water and keep running up the beach.
+    if (this.position.z >= sz(15.3) && !this.reachedSouth) {
       this.reachedSouth = true;
-      this.group.position.y = 0.35; // stands up on the beach
-      this.armL.rotation.z = Math.PI / 1.5;
-      this.armR.rotation.z = -Math.PI / 1.5;
+      this.state = 'escaping';
+      this.swimmerGroup.visible = false;
+      this.walkerGroup.visible = true;
+      this.group.rotation.y = 0;
+      this.currentHeading = Math.PI / 2;
+      this.walkPhase = 0;
+      this.escapeElapsed = 0;
+      this.escapedAway = false;
+      this.position.y = 0;
+      this.group.position.copy(this.position);
+    }
+  }
+
+  updateEscaping(dt) {
+    if (this.escapedAway) return;
+
+    this.escapeElapsed += dt;
+    if (this.escapeElapsed >= this.escapeRunSeconds) {
+      this.escapedAway = true;
+      this.group.visible = false;
+      return;
+    }
+
+    this.walkPhase += dt * (8 + this.escapeSpeed * 1.6);
+
+    const stride = Math.sin(this.walkPhase);
+    this.walkLegL.rotation.x = stride * 0.8;
+    this.walkLegR.rotation.x = -stride * 0.8;
+    this.walkArmL.rotation.x = -stride * 0.65;
+    this.walkArmR.rotation.x = stride * 0.65;
+    this.walkerGroup.position.y = Math.abs(Math.sin(this.walkPhase * 2)) * 0.06;
+
+    this.position.z += this.escapeSpeed * dt;
+    this.position.x += Math.sin(this.walkPhase * 0.5 + this.wobbleSeed) * 0.25 * dt;
+    this.position.y = 0;
+    this.group.position.copy(this.position);
+    this.group.rotation.y = 0;
+
+    if (Math.random() < 0.18) {
+      this.world.emitParticle(
+        this.position.x + (Math.random() - 0.5) * 0.4,
+        0.12,
+        this.position.z - 0.3,
+        (Math.random() - 0.5) * 0.3,
+        0.3 + Math.random() * 0.3,
+        -0.4,
+        0x8d8271,
+        0.5 + Math.random() * 0.4,
+        0.5
+      );
     }
   }
 

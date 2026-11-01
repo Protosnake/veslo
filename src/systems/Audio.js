@@ -8,6 +8,7 @@ class SoundSystem {
   constructor() {
     this.ctx = null;
     this.isMuted = false;
+    this.isPaused = false;
     this.engineOsc = null;
     this.engineGain = null;
     this.engineRunning = false;
@@ -29,7 +30,7 @@ class SoundSystem {
         this.ctx = new AudioContext();
       }
     }
-    if (this.ctx && this.ctx.state === 'suspended') {
+    if (this.ctx && this.ctx.state === 'suspended' && !this.isPaused) {
       this.ctx.resume();
     }
     this.loadWildlife();
@@ -108,10 +109,24 @@ class SoundSystem {
       } catch (e) {}
     };
 
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state === 'suspended' && !this.isPaused) {
       this.ctx.resume().then(start).catch(() => {});
     } else {
       start();
+    }
+  }
+
+  pause() {
+    this.isPaused = true;
+    if (this.ctx && this.ctx.state === 'running') {
+      this.ctx.suspend().catch(() => {});
+    }
+  }
+
+  resume() {
+    this.isPaused = false;
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
     }
   }
 

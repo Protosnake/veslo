@@ -1,17 +1,30 @@
 // Backend-Connected Debug Logger and HUD Overlay for Observability
-class DebugLogger {
-  constructor() {
-    this.enabled = false;
-    this.fps = 60;
-    this.frames = 0;
-    this.lastTime = performance.now();
-    this.overlayElement = null;
 
+interface DebugBoat {
+  position: { x: number; z: number };
+  speed: number;
+  maxSpeed: number;
+  angle: number;
+  isSlapping: boolean;
+}
+
+interface DebugSmugglerManager {
+  smugglers: unknown[];
+}
+
+class DebugLogger {
+  enabled = false;
+  fps = 60;
+  frames = 0;
+  lastTime = performance.now();
+  overlayElement: HTMLElement | null = null;
+
+  constructor() {
     this.createOverlay();
     this.initBackendPolling();
   }
 
-  createOverlay() {
+  createOverlay(): void {
     this.overlayElement = document.createElement('div');
     this.overlayElement.id = 'debug-overlay';
     this.overlayElement.style.cssText = `
@@ -21,7 +34,7 @@ class DebugLogger {
       background: rgba(10, 15, 20, 0.92);
       border: 1px solid #4ade80;
       color: #4ade80;
-      font-family: 'Courier New', monospace;
+      font-family: var(--font-military);
       font-size: 11px;
       line-height: 1.45;
       padding: 10px 14px;
@@ -42,7 +55,7 @@ class DebugLogger {
     });
   }
 
-  async initBackendPolling() {
+  async initBackendPolling(): Promise<void> {
     // The debug backend only exists in the Vite dev server; on static hosting
     // there is nothing to poll, so skip it (F2 still shows the overlay locally).
     if (import.meta.env.PROD) return;
@@ -66,13 +79,13 @@ class DebugLogger {
     setInterval(check, 3000);
   }
 
-  updateOverlayVisibility() {
+  updateOverlayVisibility(): void {
     if (this.overlayElement) {
       this.overlayElement.style.display = this.enabled ? 'block' : 'none';
     }
   }
 
-  async toggle() {
+  async toggle(): Promise<boolean> {
     this.enabled = !this.enabled;
     this.updateOverlayVisibility();
 
@@ -85,7 +98,7 @@ class DebugLogger {
     return this.enabled;
   }
 
-  sendBackend(type, message, data = null) {
+  sendBackend(type: string, message: string, data: unknown = null): void {
     if (!this.enabled) return;
     try {
       fetch('/api/debug/log', {
@@ -96,19 +109,19 @@ class DebugLogger {
     } catch (e) {}
   }
 
-  log(category, message, ...args) {
+  log(category: string, message: string, ...args: unknown[]): void {
     if (!this.enabled) return;
     const time = new Date().toISOString().substring(11, 19);
     console.log(`%c[${time}] [${category}]`, 'color: #4ade80; font-weight: bold;', message, ...args);
     this.sendBackend(category, message, args.length ? args : null);
   }
 
-  error(category, message, ...args) {
+  error(category: string, message: string, ...args: unknown[]): void {
     console.error(`[${category}]`, message, ...args);
     this.sendBackend('ERROR', `${category}: ${message}`, args.length ? args : null);
   }
 
-  update(boat, smugglerManager, score, rankTitle = '') {
+  update(boat: DebugBoat, smugglerManager: DebugSmugglerManager | null | undefined, score: number, rankTitle = ''): void {
     if (!this.enabled || !this.overlayElement) return;
 
     this.frames++;

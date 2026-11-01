@@ -4,7 +4,22 @@
 //   2. Add its entry to `locales`.
 // All user-facing strings live in this file.
 
-const translations = {
+type LocaleCode = 'ua' | 'en';
+type TranslationTable = Record<string, string>;
+type LocaleChangeListener = (code: LocaleCode) => void;
+
+interface Locale {
+  code: LocaleCode;
+  label: string;
+}
+
+interface RankLike {
+  key?: string;
+  title?: string;
+  titleEn?: string;
+}
+
+const translations: Record<LocaleCode, TranslationTable> = {
   ua: {
     // ── Page ──
     'page.title': 'Річковий Прикордонний Патруль',
@@ -39,6 +54,9 @@ const translations = {
     'osd.alert.batteryLow': 'НИЗЬКИЙ ЗАРЯД',
     'osd.alert.batteryRecharged': 'БАТАРЕЮ ЗАРЯДЖЕНО',
     'osd.alert.signalLost': 'ЗВ`ЯЗОК ВТРАЧЕНО',
+    'osd.alert.manOverboard': 'ЛЮДИНА ЗА БОРТОМ!',
+    'osd.alert.manRecovered': 'ВЕСЛУНАРА ПІДІБРАНО',
+    'osd.alert.targetLost': 'ЦІЛЬ ВТРАЧЕНО',
 
     // ── HUD ──
     'hud.scorePill': '{score} ОЧОК',
@@ -86,6 +104,15 @@ const translations = {
     'modal.over.statFrogs': 'Вбито жаб',
     'modal.over.statSnakes': 'Вбито гадюк',
     'modal.over.btn': 'ПЕРЕДИСЛОКУВАТИ ДРОН',
+    'gameover.lock': 'ЗАХОПЛЕННЯ ЦІЛІ',
+    'gameover.linkLost': 'ЗВ`ЯЗОК ВТРАЧЕНО',
+    'gameover.report': 'ЗВІТ ПІСЛЯ МІСІЇ',
+    'gameover.score': 'РАХУНОК',
+    'gameover.statSmacked': 'ЗНЕШКОДЖЕНО',
+    'gameover.statFrogs': 'ЖАБИ',
+    'gameover.statSnakes': 'ГАДЮКИ',
+    'gameover.statStreak': 'МАКС. СЕРІЯ',
+    'gameover.rank': 'ЗВАННЯ',
 
     // ── Military Ranks ──
     'rank.title.recruit': 'Рекрут',
@@ -112,10 +139,14 @@ const translations = {
     'rank.promotion': 'ПІДВИЩЕННЯ У ЗВАННІ ДПСУ!',
 
     // ── Floating Score Popups ──
-    'score.whack': 'БУМ! +100',
     'score.shred': 'РІЗНЯ! +500',
     'score.ram': 'ТАРАН! +50',
     'score.breach': 'ПРОРИВ КОРДОНУ! ⚠️',
+
+    // ── Oar Kill Streak ──
+    'streak.x1': 'БУМ',
+    'streak.x2': 'ЛЯП',
+    'streak.x3': 'ГЕП',
 
     // ── Crash Reasons ──
     'crash.riverbank': 'ВРІЗАВСЯ В БЕРЕГ РІЧКИ!',
@@ -148,6 +179,8 @@ const translations = {
     'partner.swear.16': 'Прітормозі!',
     'partner.swear.17': 'Прівикні к аппарату!',
     'partner.swear.18': 'Остановітє я сойду!',
+    'partner.manOverboard': 'Ярік за бортом, сука! Тримайся!',
+    'partner.manRecovered': 'Ось ти, бідолага. Весло в руки!',
 
     // ── WebGL Fallback ──
     'error.webgl.eyebrow': 'ТРАНСЛЯЦІЯ НЕДОСТУПНА',
@@ -197,6 +230,9 @@ const translations = {
     'osd.alert.batteryLow': 'LOW BATTERY',
     'osd.alert.batteryRecharged': 'BATTERY RECHARGED',
     'osd.alert.signalLost': 'SIGNAL LOST',
+    'osd.alert.manOverboard': 'MAN OVERBOARD!',
+    'osd.alert.manRecovered': 'OARSMAN RECOVERED',
+    'osd.alert.targetLost': 'TARGET LOST',
 
     // ── HUD ──
     'hud.scorePill': '{score} POINTS',
@@ -244,6 +280,15 @@ const translations = {
     'modal.over.statFrogs': 'Frogs Killed',
     'modal.over.statSnakes': 'Vipers Killed',
     'modal.over.btn': 'REDEPLOY DRONE',
+    'gameover.lock': 'TARGET LOCK',
+    'gameover.linkLost': 'LINK LOST',
+    'gameover.report': 'AFTER ACTION REPORT',
+    'gameover.score': 'SCORE',
+    'gameover.statSmacked': 'NEUTRALIZED',
+    'gameover.statFrogs': 'FROGS',
+    'gameover.statSnakes': 'VIPERS',
+    'gameover.statStreak': 'BEST STREAK',
+    'gameover.rank': 'RANK',
 
     // ── Military Ranks ──
     'rank.title.recruit': 'Recruit',
@@ -270,10 +315,14 @@ const translations = {
     'rank.promotion': 'SBGS RANK PROMOTION!',
 
     // ── Floating Score Popups ──
-    'score.whack': 'BONK! +100',
     'score.shred': 'PROPELLER! +500',
     'score.ram': 'RAM! +50',
     'score.breach': 'BORDER BREACH! ⚠️',
+
+    // ── Oar Kill Streak ──
+    'streak.x1': 'BONK',
+    'streak.x2': 'WHACK',
+    'streak.x3': 'THWACK',
 
     // ── Crash Reasons ──
     'crash.riverbank': 'CRASHED INTO RIVERBANK!',
@@ -306,6 +355,8 @@ const translations = {
     'partner.swear.16': 'Slow the fuck down!',
     'partner.swear.17': 'Get used to the machine!',
     'partner.swear.18': "Stop, I'm getting out!",
+    'partner.manOverboard': "Yarik's overboard, fuck! Hold on!",
+    'partner.manRecovered': 'There you are, you poor bastard. Take the oar!',
 
     // ── WebGL Fallback ──
     'error.webgl.eyebrow': 'FEED UNAVAILABLE',
@@ -323,16 +374,16 @@ const translations = {
 };
 
 // ── Registered locales (add new languages here) ──
-const locales = [
+const locales: Locale[] = [
   { code: 'ua', label: 'UA' },
   { code: 'en', label: 'EN' }
 ];
 
 // ── Singleton state ──
-let currentLocale = localStorage.getItem('veslo_lang') || 'ua';
+let currentLocale = (localStorage.getItem('veslo_lang') as LocaleCode | null) || 'ua';
 if (!translations[currentLocale]) currentLocale = 'ua';
 
-const listeners = [];
+const listeners: LocaleChangeListener[] = [];
 
 /**
  * Translate a key, with optional {token} interpolation.
@@ -340,13 +391,13 @@ const listeners = [];
  * @param {Object} [params]  e.g. { score: 100 }
  * @returns {string}
  */
-function t(key, params) {
+function t(key: string, params?: Record<string, string | number>): string {
   let str = (translations[currentLocale] && translations[currentLocale][key])
          || (translations.ua[key])
          || key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      str = str.replaceAll(`{${k}}`, v);
+      str = str.replaceAll(`{${k}}`, String(v));
     }
   }
   return str;
@@ -356,30 +407,30 @@ function t(key, params) {
  * Translate all elements carrying data-i18n / data-i18n-html attributes.
  * Used for static markup; dynamic text is set via t() in JS.
  */
-function applyTranslations(root = document) {
-  root.querySelectorAll('[data-i18n]').forEach((el) => {
-    el.textContent = t(el.dataset.i18n);
+function applyTranslations(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.dataset.i18n ?? '');
   });
-  root.querySelectorAll('[data-i18n-html]').forEach((el) => {
-    el.innerHTML = t(el.dataset.i18nHtml);
+  root.querySelectorAll<HTMLElement>('[data-i18n-html]').forEach((el) => {
+    el.innerHTML = t(el.dataset.i18nHtml ?? '');
   });
   document.title = t('page.title');
 }
 
-function getLocale() {
+function getLocale(): LocaleCode {
   return currentLocale;
 }
 
-function setLocale(code) {
-  if (!translations[code] || code === currentLocale) return;
-  currentLocale = code;
+function setLocale(code: string): void {
+  if (!translations[code as LocaleCode] || code === currentLocale) return;
+  currentLocale = code as LocaleCode;
   localStorage.setItem('veslo_lang', code);
   document.documentElement.lang = code === 'ua' ? 'uk' : code;
   applyTranslations();
-  listeners.forEach(fn => fn(code));
+  listeners.forEach(fn => fn(currentLocale));
 }
 
-function onLocaleChange(fn) {
+function onLocaleChange(fn: LocaleChangeListener): void {
   listeners.push(fn);
 }
 
@@ -387,11 +438,11 @@ function onLocaleChange(fn) {
  * Return the locale-appropriate title for a rank object.
  * Ranks carry an i18n `key`; legacy `title`/`titleEn` fields still work.
  */
-function getRankTitle(rank) {
+function getRankTitle(rank: RankLike | null | undefined): string {
   if (!rank) return '';
   if (rank.key) return t(rank.key);
-  if (currentLocale === 'ua') return rank.title;
-  return rank.titleEn || rank.title;
+  if (currentLocale === 'ua') return rank.title ?? '';
+  return rank.titleEn || rank.title || '';
 }
 
 document.documentElement.lang = currentLocale === 'ua' ? 'uk' : currentLocale;

@@ -63,6 +63,20 @@ export class WildlifeManager {
     }
   }
 
+  catchPrey(creature, x, z, radius = 3) {
+    if (!creature || creature.isDead || creature.isFinished || creature.isDiving) return null;
+
+    const dx = creature.position.x - x;
+    const dz = creature.position.z - z;
+    if (Math.hypot(dx, dz) > radius) return null;
+
+    const index = this.creatures.indexOf(creature);
+    if (index === -1) return null;
+
+    this.creatures.splice(index, 1);
+    return creature;
+  }
+
   scareFromSmugglers(creature, smugglers) {
     if (!smugglers || !smugglers.length) return;
 

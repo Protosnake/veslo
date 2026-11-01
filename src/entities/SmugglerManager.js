@@ -1,6 +1,7 @@
 import { Smuggler } from './Smuggler.js';
 import { sound } from '../systems/Audio.js';
 import { t } from '../systems/I18n.js';
+import { DIFFICULTY_TUNING } from '../config/difficulty.js';
 
 export class SmugglerManager {
   constructor(scene, riverWorld, onScore, onGameOver) {
@@ -14,6 +15,7 @@ export class SmugglerManager {
     this.totalSmacked = 0;
     this.score = 0;
     this.isRunning = true;
+    this.whackBatch = null;
   }
 
   reset() {
@@ -25,19 +27,23 @@ export class SmugglerManager {
     this.totalSmacked = 0;
     this.score = 0;
     this.isRunning = true;
+    this.whackBatch = null;
   }
 
   getSpeedMultiplier() {
-    // Gentle progression: +2.5% speed per 100 points, capped at +60%
-    return 1 + Math.min(0.6, (this.score / 100) * 0.025);
+    const { gain, midpoint } = DIFFICULTY_TUNING.speed;
+    return 1 + gain * (this.score / (this.score + midpoint));
   }
 
   getSpawnInterval() {
-    if (this.waveCount <= 2) return 9 + Math.random() * 4;
+    const tuning = DIFFICULTY_TUNING.spawn;
+    if (this.waveCount <= tuning.warmupWaves) {
+      return tuning.warmupMin + Math.random() * (tuning.warmupMax - tuning.warmupMin);
+    }
 
-    const pressure = Math.min(1, this.score / 1400);
-    const baseInterval = 7.5 - pressure * 3.5;
-    return baseInterval * (0.7 + Math.random() * 0.6);
+    const pressure = tuning.pressureGain * (this.score / (this.score + tuning.pressureMidpoint));
+    const baseInterval = Math.max(tuning.minInterval, tuning.baseInterval - pressure * tuning.pressureDrop);
+    return baseInterval * (tuning.jitterMin + Math.random() * (tuning.jitterMax - tuning.jitterMin));
   }
 
   getGroupSize() {
@@ -146,6 +152,8 @@ export class SmugglerManager {
   update(dt, boat, wildlife = null) {
     if (!this.isRunning) return;
 
+    this.flushWhackBatchIfReady(boat);
+
     // Spawn timer
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
@@ -173,7 +181,7 @@ export class SmugglerManager {
       s.update(dt, boat, wildlife);
 
       // 1-life sudden death check
-      if (s.state === 'swimming' && s.reachedSouth && !s.isDead) {
+      if ((s.state === 'swimming' || s.state === 'escaping') && s.reachedSouth && !s.isDead) {
         this.isRunning = false;
         sound.playGameOver();
         this.onGameOver(s);
@@ -189,7 +197,7 @@ export class SmugglerManager {
             this.totalSmacked++;
             this.score += 100;
             sound.playSmack();
-            this.onScore(100, s.position, t('score.whack'), 'whack');
+            this.addWhackBatch(s.position, 100, boat);
             continue;
           }
         }
@@ -239,6 +247,45 @@ export class SmugglerManager {
         s.destroy();
         this.smugglers.splice(i, 1);
       }
+    }
+  }
+
+  addWhackBatch(position, points, boat) {
+    if (!this.whackBatch || this.whackBatch.slapId !== boat.slapId) {
+      this.whackBatch = {
+        slapId: boat.slapId,
+        count: 0,
+        points: 0,
+        position: position.clone()
+      };
+    }
+    const batch = this.whackBatch;
+    batch.count += 1;
+    batch.points += points;
+    batch.position.copy(position);
+  }
+
+  flushWhackBatchIfReady(boat) {
+    if (!this.whackBatch) return;
+    if (boat.isSlapping && boat.slapId === this.whackBatch.slapId) return;
+    this.flushWhackBatch();
+  }
+
+  flushWhackBatch() {
+    const batch = this.whackBatch;
+    if (!batch || batch.count === 0) {
+      this.whackBatch = null;
+      return;
+    }
+    this.whackBatch = null;
+    this.onScore(batch.points, batch.position, '', 'whack', batch.count);
+  }
+
+  // Keep the smuggler who crossed the line running up the beach while the
+  // failure camera closes in. Gameplay collisions/spawns stay frozen.
+  updateEscaped(dt, boat) {
+    for (const s of this.smugglers) {
+      if (s.reachedSouth && !s.isDead && !s.escapedAway) s.update(dt, boat);
     }
   }
 }

@@ -11,8 +11,8 @@ const params = typeof window !== 'undefined'
   ? new URLSearchParams(window.location.search)
   : null;
 
-const readScale = (name, fallback) => {
-  const value = parseFloat(params?.get(name));
+const readScale = (name: string, fallback: number): number => {
+  const value = parseFloat(params?.get(name) ?? '');
   if (!Number.isFinite(value)) return fallback;
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
 };
@@ -20,8 +20,8 @@ const readScale = (name, fallback) => {
 export const WORLD_X_SCALE = readScale('worldX', DEFAULT_WORLD_X_SCALE);
 export const WORLD_Z_SCALE = readScale('worldZ', DEFAULT_WORLD_Z_SCALE);
 
-export const sx = (value) => value * WORLD_X_SCALE;
-export const sz = (value) => value * WORLD_Z_SCALE;
+export const sx = (value: number): number => value * WORLD_X_SCALE;
+export const sz = (value: number): number => value * WORLD_Z_SCALE;
 
 export const RIVER_HALF_WIDTH = sz(16);
 

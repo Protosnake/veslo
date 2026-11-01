@@ -2,12 +2,34 @@ import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
 import { PLAY_MIN_X, PLAY_MAX_X, PLAY_MIN_Z, PLAY_MAX_Z } from '../world/Bounds.js';
 
+const MAN_OVERBOARD_SPEED_RATIO = 0.8;
+const MAN_OVERBOARD_TURN_RATIO = 0.35;
+const MAN_OVERBOARD_MIN_DELAY = 0.5;
+const MAN_OVERBOARD_MAX_DELAY = 1.5;
+const MAN_OVERBOARD_RECOVER_RADIUS = 2.4;
+const MAN_OVERBOARD_COOLDOWN = 10;
+const MAN_OVERBOARD_START_GRACE = 5;
+const MAN_OVERBOARD_FALL_OFFSET = 2.6;
+const MAN_OVERBOARD_MIN_AIR_TIME = 0.7;
+const MAN_OVERBOARD_ROCK_IMPACT_RATIO = 0.55;
+const MAN_OVERBOARD_STERN_TURN_RATIO = 0.3;
+const MAN_OVERBOARD_STERN_SPEED_RATIO = 0.3;
+
+const PROP_REED_TOLERANCE = 1.0;
+const PROP_REED_ESCAPE_SPEED = 0.3;
+
+const rollManOverboardThreshold = () =>
+  MAN_OVERBOARD_MIN_DELAY +
+  Math.random() * (MAN_OVERBOARD_MAX_DELAY - MAN_OVERBOARD_MIN_DELAY);
+
 export class Boat {
-  constructor(scene, riverWorld, onLandCrash, onRockBump) {
+  constructor(scene, riverWorld, onLandCrash, onRockBump, onManOverboard, onManRecovered) {
     this.scene = scene;
     this.world = riverWorld;
     this.onLandCrash = onLandCrash;
     this.onRockBump = onRockBump;
+    this.onManOverboard = onManOverboard;
+    this.onManRecovered = onManRecovered;
 
     // Kinematics & Physics
     this.position = new THREE.Vector3(0, 0, 0);
@@ -31,11 +53,30 @@ export class Boat {
     this.slapTime = 0;
     this.slapDuration = 0.35;
     this.slapCooldown = 0;
+    this.slapId = 0;
     this.slapArcAngle = 0;
+    this.whackTarget = null;
+    this.whackTargetAcquired = false;
+    this.oarAimScale = 1;
+    this.oarAimQuat = new THREE.Quaternion();
+    this.oarRestQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, 0, -0.4));
+    this.oarWindupQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.1, -0.8, -0.8));
+    this.oarAimDir = new THREE.Vector3();
+    this.oarUp = new THREE.Vector3(0, 1, 0);
     this.isCrashed = false;
     this.rockBumpCooldown = 0;
     this.isBankRam = false;
     this.motorStallTimer = 0;
+
+    // Man overboard: the oarsman can be thrown off during sharp high-speed turns.
+    this.isManOverboard = false;
+    this.manOverboardRisk = 0;
+    this.manOverboardThreshold = MAN_OVERBOARD_MIN_DELAY;
+    this.overboardCooldown = 0;
+    this.overboardElapsed = 0;
+    this.overboardPosition = new THREE.Vector3();
+    this.overboardVelocity = new THREE.Vector3();
+    this.overboardSafeSpot = new THREE.Vector3();
 
     // Scratch state reused every frame to keep the hot path allocation-free.
     this.yAxis = new THREE.Vector3(0, 1, 0);
@@ -46,9 +87,29 @@ export class Boat {
     this.motorHitbox = { center: new THREE.Vector3(), radius: 2.2 };
     this.hullHitbox = { center: new THREE.Vector3(), radius: 2.6 };
     this.engineSoundTimer = 0;
+    this.engineFailure = false;
+    this.engineSmokeTimer = 0;
+    this.engineFxPos = new THREE.Vector3();
 
     this.createBoatModel();
+    this.createOverboardMarker();
     this.reset();
+  }
+
+  createOverboardMarker() {
+    this.overboardMarker = new THREE.Mesh(
+      new THREE.RingGeometry(1.25, 1.55, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0xffd44d,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      })
+    );
+    this.overboardMarker.rotation.x = -Math.PI / 2;
+    this.overboardMarker.visible = false;
+    this.scene.add(this.overboardMarker);
   }
 
   createBoatModel() {
@@ -223,6 +284,34 @@ export class Boat {
     tiller.position.set(0.35, 0.35, 0);
     this.motorPivot.add(tiller);
 
+    // Engine-failure flame: a small additive cone on top of the cowl, hidden
+    // until the run ends with a broken motor.
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xff6418,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    this.engineFlame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.75, 6), flameMat);
+    this.engineFlame.position.set(-0.25, 0.96, 0);
+    this.engineFlame.visible = false;
+    this.motorPivot.add(this.engineFlame);
+
+    const flameCoreMat = new THREE.MeshBasicMaterial({
+      color: 0xffe36b,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    this.engineFlameCore = new THREE.Mesh(
+      new THREE.ConeGeometry(0.11, 0.48, 5),
+      flameCoreMat
+    );
+    this.engineFlameCore.position.set(0, 0.1, 0);
+    this.engineFlame.add(this.engineFlameCore);
+
     this.group.add(this.motorPivot);
 
     // 3. Officer (Steering at the stern from rear bench)
@@ -322,6 +411,11 @@ export class Boat {
     bladeTip.position.set(0, 2.55, 0);
     this.oarPivot.add(bladeTip);
 
+    // Empty anchor at the blade centre so the hitbox can follow the visible oar.
+    this.oarTip = new THREE.Object3D();
+    this.oarTip.position.set(0, 2.15, 0);
+    this.oarPivot.add(this.oarTip);
+
     const handL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), skinMat);
     handL.position.set(0, 0.2, 0.15);
     this.oarPivot.add(handL);
@@ -346,10 +440,31 @@ export class Boat {
     this.isSlapping = false;
     this.slapTime = 0;
     this.slapCooldown = 0;
+    this.slapId = 0;
     this.isCrashed = false;
     this.rockBumpCooldown = 0;
     this.isBankRam = false;
     this.motorStallTimer = 0;
+    this.engineFailure = false;
+    this.engineSmokeTimer = 0;
+    if (this.engineFlame) this.engineFlame.visible = false;
+    this.whackTarget = null;
+    this.whackTargetAcquired = false;
+
+    this.isManOverboard = false;
+    this.manOverboardRisk = 0;
+    this.manOverboardThreshold = rollManOverboardThreshold();
+    this.overboardCooldown = MAN_OVERBOARD_START_GRACE;
+    this.overboardElapsed = 0;
+    this.overboardVelocity.set(0, 0, 0);
+    if (this.overboardMarker) this.overboardMarker.visible = false;
+
+    this.group.attach(this.playerGroup);
+    this.playerGroup.position.set(0.5, 0.45, 0);
+    this.playerGroup.rotation.set(0, 0, 0);
+
+    this.oarPivot.rotation.set(0.5, 0, -0.4);
+    this.oarPivot.scale.set(1, 1, 1);
 
     this.group.position.copy(this.position);
     this.group.rotation.set(0, 0, 0);
@@ -357,23 +472,91 @@ export class Boat {
   }
 
   triggerSlap() {
-    if (this.isSlapping || this.slapCooldown > 0) return false;
+    if (this.isManOverboard || this.isSlapping || this.slapCooldown > 0) return false;
 
     this.isSlapping = true;
     this.slapTime = 0;
     this.slapCooldown = 0.5;
+    this.slapId += 1;
+    this.whackTarget = null;
+    this.whackTargetAcquired = false;
+    this.oarPivot.scale.set(1, 1, 1);
     sound.playWhoosh();
     return true;
   }
 
+  findWhackTarget(smugglers) {
+    if (!smugglers || !smugglers.length) return null;
+
+    let nearest = null;
+    let nearestDistanceSq = 6 * 6;
+
+    for (let i = 0; i < smugglers.length; i++) {
+      const s = smugglers[i];
+      if (!s || s.isDead || s.state !== 'swimming' || !s.group || !s.group.visible) continue;
+
+      const dx = s.position.x - this.position.x;
+      const dz = s.position.z - this.position.z;
+      const distanceSq = dx * dx + dz * dz;
+
+      if (distanceSq < nearestDistanceSq) {
+        nearest = s;
+        nearestDistanceSq = distanceSq;
+      }
+    }
+
+    return nearest;
+  }
+
+  updateOarAim(target) {
+    const cos = Math.cos(this.angle);
+    const sin = Math.sin(this.angle);
+    const dx = target.position.x - this.position.x;
+    const dz = target.position.z - this.position.z;
+
+    // Smuggler head in boat-local space (the oar pivot sits at 0.65, 1.5).
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    const headY = (target.group ? target.group.position.y : target.position.y) + 0.3;
+    const pivotY = this.group.position.y + 1.5;
+
+    const dirX = localX - 0.65;
+    const dirY = headY - pivotY;
+    const dirZ = localZ;
+    const distance = Math.hypot(dirX, dirY, dirZ);
+    if (distance < 0.001) return false;
+
+    this.oarAimDir.set(dirX / distance, dirY / distance, dirZ / distance);
+    this.oarAimQuat.setFromUnitVectors(this.oarUp, this.oarAimDir);
+    this.oarAimScale = THREE.MathUtils.clamp(distance / 2.15, 0.5, 1.5);
+    return true;
+  }
+
   getWhackHitbox() {
+    if (this.isManOverboard) return null;
     if (!this.isSlapping || this.slapTime < 0.02 || this.slapTime > 0.32) {
       return null;
+    }
+
+    if (this.whackTarget && this.oarTip) {
+      this.oarTip.getWorldPosition(this.whackHitbox.center);
+      return this.whackHitbox;
     }
 
     this.propOffset.set(2.6, 0, 0).applyAxisAngle(this.yAxis, this.angle + this.slapArcAngle);
     this.whackHitbox.center.copy(this.position).add(this.propOffset);
     return this.whackHitbox;
+  }
+
+  getStreakAnchorWorldPosition(target) {
+    if (this.oarTip && !this.isManOverboard) {
+      this.oarTip.getWorldPosition(target);
+      target.y += 0.9;
+    } else {
+      target.copy(this.position);
+      target.y += 4.2;
+    }
+    return target;
   }
 
   getMotorHitbox() {
@@ -386,6 +569,267 @@ export class Boat {
     this.propOffset.set(0.5, 0, 0).applyAxisAngle(this.yAxis, this.angle);
     this.hullHitbox.center.copy(this.position).add(this.propOffset);
     return this.hullHitbox;
+  }
+
+  updateManOverboardRisk(dt) {
+    if (this.overboardCooldown > 0) {
+      this.manOverboardRisk = Math.max(0, this.manOverboardRisk - dt * 2);
+      return;
+    }
+
+    const speedRatio = Math.abs(this.speed) / this.maxSpeed;
+    const turnRatio = Math.abs(this.angularVelocity) / this.turnSpeed;
+    const fastEnough =
+      this.speed > 0 && speedRatio >= MAN_OVERBOARD_SPEED_RATIO;
+    const turningHardEnough = turnRatio >= MAN_OVERBOARD_TURN_RATIO;
+
+    if (fastEnough && turningHardEnough) {
+      const speedWeight = THREE.MathUtils.clamp(
+        (speedRatio - MAN_OVERBOARD_SPEED_RATIO) /
+          (1 - MAN_OVERBOARD_SPEED_RATIO),
+        0,
+        1
+      );
+      const turnWeight = THREE.MathUtils.clamp(
+        (turnRatio - MAN_OVERBOARD_TURN_RATIO) /
+          (1 - MAN_OVERBOARD_TURN_RATIO),
+        0,
+        1
+      );
+      this.manOverboardRisk += dt * (0.5 + 0.5 * speedWeight) * (0.6 + 0.4 * turnWeight);
+      if (this.manOverboardRisk >= this.manOverboardThreshold) {
+        this.fallOverboard();
+      }
+    } else {
+      this.manOverboardRisk = Math.max(0, this.manOverboardRisk - dt * 1.5);
+    }
+  }
+
+  isOverboardSpotClear(x, z, margin = 1.3) {
+    const rocks = this.world.rockColliders;
+    if (!rocks || !rocks.length) return true;
+
+    for (let i = 0; i < rocks.length; i++) {
+      const rock = rocks[i];
+      const minDistance = (rock.visualRadius ?? rock.radius) + margin;
+      const dx = x - rock.x;
+      const dz = z - rock.z;
+      if (dx * dx + dz * dz < minDistance * minDistance) return false;
+    }
+
+    return true;
+  }
+
+  resolveOverboardRockCollisions(margin = 1) {
+    const rocks = this.world.rockColliders;
+    if (!rocks || !rocks.length) return;
+
+    const p = this.overboardPosition;
+    for (let pass = 0; pass < 6; pass++) {
+      let collided = false;
+
+      for (let i = 0; i < rocks.length; i++) {
+        const rock = rocks[i];
+        const minDistance = (rock.visualRadius ?? rock.radius) + margin;
+        let dx = p.x - rock.x;
+        let dz = p.z - rock.z;
+        let distance = Math.hypot(dx, dz);
+
+        if (distance >= minDistance) continue;
+
+        if (distance < 1e-4) {
+          dx = 0;
+          dz = 1;
+          distance = 1;
+        }
+
+        p.x = rock.x + (dx / distance) * minDistance;
+        p.z = rock.z + (dz / distance) * minDistance;
+        collided = true;
+      }
+
+      if (!collided) break;
+    }
+  }
+
+  findSafeOverboardSpot(baseX, baseZ, dirX, dirZ) {
+    const spot = this.overboardSafeSpot;
+
+    const clampIntoBounds = (x, z, out) => {
+      out.x = THREE.MathUtils.clamp(x, PLAY_MIN_X + 1, PLAY_MAX_X - 1);
+      out.z = THREE.MathUtils.clamp(z, PLAY_MIN_Z + 1.2, PLAY_MAX_Z - 1.2);
+      return out;
+    };
+
+    clampIntoBounds(baseX, baseZ, spot);
+    if (this.isOverboardSpotClear(spot.x, spot.z)) return spot;
+
+    // The fall direction may point straight into a rock cluster. Search rings
+    // around the boat, closest ring first and preferring the natural fall
+    // direction, until there is a spot in open water the hull can reach.
+    const preferredAngle = Math.atan2(dirZ, dirX);
+    const radii = [MAN_OVERBOARD_FALL_OFFSET, 3.6, 4.6, 5.8, 7.0];
+    const step = (Math.PI * 2) / 24;
+
+    for (let r = 0; r < radii.length; r++) {
+      const radius = radii[r];
+      for (let s = 0; s < 24; s++) {
+        const offset = Math.ceil(s / 2) * step * (s % 2 === 1 ? 1 : -1);
+        const angle = preferredAngle + offset;
+        const x = this.position.x + Math.cos(angle) * radius;
+        const z = this.position.z + Math.sin(angle) * radius;
+
+        if (x < PLAY_MIN_X + 1 || x > PLAY_MAX_X - 1) continue;
+        if (z < PLAY_MIN_Z + 1.2 || z > PLAY_MAX_Z - 1.2) continue;
+        if (!this.isOverboardSpotClear(x, z)) continue;
+
+        spot.set(x, 0, z);
+        return spot;
+      }
+    }
+
+    // Fallback: shove the landing point out of any overlapping rocks.
+    this.overboardPosition.set(baseX, 0, baseZ);
+    this.resolveOverboardRockCollisions();
+    return clampIntoBounds(this.overboardPosition.x, this.overboardPosition.z, spot);
+  }
+
+  fallOverboard() {
+    if (this.isManOverboard) return;
+
+    this.isManOverboard = true;
+    this.manOverboardRisk = 0;
+    this.manOverboardThreshold = rollManOverboardThreshold();
+    this.overboardElapsed = 0;
+
+    // Drop the active oar swing so the detached oarsman cannot keep hitting.
+    this.isSlapping = false;
+    this.slapTime = 0;
+    this.whackTarget = null;
+    this.whackTargetAcquired = false;
+    this.oarPivot.scale.set(1, 1, 1);
+    this.oarPivot.rotation.set(0.5, 0, -0.4);
+
+    this.playerGroup.getWorldPosition(this.overboardPosition);
+
+    // Throw him toward the outside of the turn, but never into a rock cluster.
+    const outwardSign = this.angularVelocity >= 0 ? 1 : -1;
+    const sideX = Math.sin(this.angle) * outwardSign;
+    const sideZ = Math.cos(this.angle) * outwardSign;
+    const baseX = this.overboardPosition.x + sideX * MAN_OVERBOARD_FALL_OFFSET;
+    const baseZ = this.overboardPosition.z + sideZ * MAN_OVERBOARD_FALL_OFFSET;
+    const safeSpot = this.findSafeOverboardSpot(baseX, baseZ, sideX, sideZ);
+    this.overboardPosition.copy(safeSpot);
+
+    this.overboardVelocity.set(
+      this.velocity.x * 0.55 + sideX * 5,
+      0,
+      this.velocity.z * 0.55 + sideZ * 5
+    );
+
+    this.scene.attach(this.playerGroup);
+    this.playerGroup.position.copy(this.overboardPosition);
+    this.playerGroup.rotation.set(0, this.angle, 0);
+
+    this.overboardMarker.visible = true;
+    this.overboardMarker.position.set(this.overboardPosition.x, 0.08, this.overboardPosition.z);
+    this.overboardMarker.scale.setScalar(1);
+    this.overboardMarker.material.opacity = 0.5;
+
+    if (this.world.emitSplash) {
+      this.world.emitSplash(this.overboardPosition.x, this.overboardPosition.z, 16, 0xdff2fc);
+    }
+
+    // Losing a man overboard also costs a little momentum.
+    this.velocity.multiplyScalar(0.92);
+    this.speed =
+      this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
+
+    if (this.onManOverboard) this.onManOverboard(this.overboardPosition);
+  }
+
+  updateOverboardPlayer(dt) {
+    this.overboardElapsed += dt;
+
+    const current = this.world.getCurrentVelocity ? this.world.getCurrentVelocity() : null;
+    this.overboardVelocity.multiplyScalar(Math.exp(-1.6 * dt));
+
+    this.overboardPosition.x +=
+      (this.overboardVelocity.x + (current ? current.x * 0.35 : 0)) * dt;
+    this.overboardPosition.z +=
+      (this.overboardVelocity.z + (current ? current.z * 0.35 : 0)) * dt;
+
+    // Drift must never leave him embedded in the rock line, otherwise the hull
+    // has no way to reach him for pickup.
+    this.resolveOverboardRockCollisions(1);
+
+    this.overboardPosition.x = THREE.MathUtils.clamp(
+      this.overboardPosition.x,
+      PLAY_MIN_X + 1,
+      PLAY_MAX_X - 1
+    );
+    this.overboardPosition.z = THREE.MathUtils.clamp(
+      this.overboardPosition.z,
+      PLAY_MIN_Z + 1.2,
+      PLAY_MAX_Z - 1.2
+    );
+
+    const wave =
+      Math.sin(this.overboardPosition.x * 0.35 + this.world.time * 2.2) * 0.22 +
+      Math.cos(this.overboardPosition.z * 0.4 + this.world.time * 1.8) * 0.16;
+    this.overboardPosition.y = Math.max(0, wave) * 0.5 - 0.05;
+
+    this.playerGroup.position.copy(this.overboardPosition);
+    this.playerGroup.rotation.y += dt * 0.3;
+    this.playerGroup.rotation.x = Math.sin(this.overboardElapsed * 1.4) * 0.06;
+    this.playerGroup.rotation.z = Math.cos(this.overboardElapsed * 1.1) * 0.05;
+
+    // The oar rests across the water while he waits to be picked up.
+    this.oarPivot.rotation.set(0.25, 0.2, -0.95);
+    this.oarPivot.scale.set(1, 1, 1);
+
+    this.overboardMarker.position.set(
+      this.overboardPosition.x,
+      0.08,
+      this.overboardPosition.z
+    );
+    this.overboardMarker.scale.setScalar(
+      1 + Math.sin(this.overboardElapsed * 3) * 0.08
+    );
+    this.overboardMarker.material.opacity =
+      0.35 + Math.sin(this.overboardElapsed * 5) * 0.2;
+
+    if (this.overboardElapsed < MAN_OVERBOARD_MIN_AIR_TIME) return;
+
+    const dx = this.overboardPosition.x - this.position.x;
+    const dz = this.overboardPosition.z - this.position.z;
+    if (dx * dx + dz * dz <= MAN_OVERBOARD_RECOVER_RADIUS * MAN_OVERBOARD_RECOVER_RADIUS) {
+      this.recoverPlayer();
+    }
+  }
+
+  recoverPlayer() {
+    if (!this.isManOverboard) return;
+
+    this.group.attach(this.playerGroup);
+    this.playerGroup.position.set(0.5, 0.45, 0);
+    this.playerGroup.rotation.set(0, 0, 0);
+    this.oarPivot.rotation.set(0.5, 0, -0.4);
+    this.oarPivot.scale.set(1, 1, 1);
+
+    this.isManOverboard = false;
+    this.overboardElapsed = 0;
+    this.overboardVelocity.set(0, 0, 0);
+    this.overboardCooldown = MAN_OVERBOARD_COOLDOWN;
+    this.manOverboardRisk = 0;
+    this.manOverboardThreshold = rollManOverboardThreshold();
+    this.overboardMarker.visible = false;
+
+    if (this.world.emitSplash) {
+      this.world.emitSplash(this.position.x, this.position.z, 12, 0xdff2fc);
+    }
+
+    if (this.onManRecovered) this.onManRecovered();
   }
 
   applyRamImpact() {
@@ -402,6 +846,98 @@ export class Boat {
     sound.playRotorThrottle();
   }
 
+  startEngineFailure() {
+    if (this.engineFailure) return;
+    this.engineFailure = true;
+    this.engineSmokeTimer = 0;
+    if (this.engineFlame) this.engineFlame.visible = true;
+    sound.stopEngineSound();
+  }
+
+  updateEngineFailureFx(dt) {
+    if (!this.engineFailure) return;
+
+    const t = this.world.time;
+    const flicker = 0.75 + Math.sin(t * 43) * 0.18 + Math.sin(t * 71) * 0.1;
+    if (this.engineFlame) {
+      this.engineFlame.scale.set(1, Math.max(0.45, flicker), 1);
+      this.engineFlame.material.opacity = 0.6 + Math.max(0, flicker - 0.55) * 0.7;
+    }
+    if (this.engineFlameCore) {
+      this.engineFlameCore.material.opacity = 0.45 + Math.random() * 0.4;
+    }
+
+    this.engineSmokeTimer -= dt;
+    if (this.engineSmokeTimer > 0 || !this.world.emitParticle || !this.engineFlame) return;
+    this.engineSmokeTimer = 0.06 + Math.random() * 0.08;
+
+    this.engineFlame.getWorldPosition(this.engineFxPos);
+    const x = this.engineFxPos.x;
+    const y = this.engineFxPos.y + 0.15;
+    const z = this.engineFxPos.z;
+
+    this.world.emitParticle(
+      x + (Math.random() - 0.5) * 0.16,
+      y,
+      z + (Math.random() - 0.5) * 0.16,
+      (Math.random() - 0.5) * 0.35,
+      1.1 + Math.random() * 1.1,
+      (Math.random() - 0.5) * 0.35,
+      Math.random() < 0.35 ? 0x3a3a3a : 0x1c1c1c,
+      0.9 + Math.random() * 0.6,
+      1.6 + Math.random() * 1.3
+    );
+
+    if (Math.random() < 0.22) {
+      this.world.emitParticle(
+        x + (Math.random() - 0.5) * 0.2,
+        y - 0.4,
+        z + (Math.random() - 0.5) * 0.2,
+        (Math.random() - 0.5) * 0.18,
+        0.05,
+        (Math.random() - 0.5) * 0.18,
+        0x101310,
+        1.2 + Math.random() * 0.6,
+        2.4 + Math.random() * 1.4
+      );
+    }
+  }
+
+  separateFromRock(rock, clearance = 2.6) {
+    if (!rock) return;
+    let dx = this.position.x - rock.x;
+    let dz = this.position.z - rock.z;
+    let distance = Math.hypot(dx, dz);
+    const minDistance = (rock.visualRadius ?? rock.radius) + clearance;
+    if (distance >= minDistance) return;
+
+    if (distance < 0.001) {
+      dx = 1;
+      dz = 0;
+      distance = 1;
+    }
+    this.position.x = rock.x + (dx / distance) * minDistance;
+    this.position.z = rock.z + (dz / distance) * minDistance;
+  }
+
+  holdCrashedPose() {
+    this.velocity.set(0, 0, 0);
+    this.speed = 0;
+    this.angularVelocity = 0;
+
+    this.group.position.copy(this.position);
+    const waveAtBoat =
+      Math.sin(this.position.x * 0.35 + this.world.time * 2.2) * 0.22 +
+      Math.cos(this.position.z * 0.4 + this.world.time * 1.8) * 0.16;
+    this.group.position.y = Math.max(0, waveAtBoat) * 0.5 + 0.16;
+    this.group.rotation.y = this.angle;
+    this.motorPivot.rotation.y = THREE.MathUtils.lerp(
+      this.motorPivot.rotation.y,
+      0,
+      0.25
+    );
+  }
+
   bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier) {
     let normalX = 0;
     let normalZ = 0;
@@ -412,7 +948,7 @@ export class Boat {
       const distance = Math.hypot(dx, dz) || 1;
       normalX = dx / distance;
       normalZ = dz / distance;
-      const minDistance = rockHit.radius + 2.5;
+      const minDistance = (rockHit.visualRadius ?? rockHit.radius) + 2.6;
       this.position.x = rockHit.x + normalX * minDistance;
       this.position.z = rockHit.z + normalZ * minDistance;
     } else if (hitWestBarrier) {
@@ -425,6 +961,25 @@ export class Boat {
 
     const normalSpeed = this.velocity.x * normalX + this.velocity.z * normalZ;
     const impact = normalSpeed < -0.4;
+
+    // Hard rock hits always throw the oarsman. So does catching the stern on a
+    // rock while carving a fast turn, even if the impact itself is not huge.
+    if (rockHit && !this.isManOverboard) {
+      const forwardX = Math.cos(this.angle);
+      const forwardZ = -Math.sin(this.angle);
+      const sternHit = normalX * forwardX + normalZ * forwardZ > 0.2;
+      const hardImpact =
+        normalSpeed <= -this.maxSpeed * MAN_OVERBOARD_ROCK_IMPACT_RATIO;
+      const hardTurn =
+        Math.abs(this.angularVelocity) >=
+        this.turnSpeed * MAN_OVERBOARD_STERN_TURN_RATIO;
+      const fastEnough =
+        Math.abs(this.speed) >= this.maxSpeed * MAN_OVERBOARD_STERN_SPEED_RATIO;
+
+      if (hardImpact || (sternHit && hardTurn && fastEnough)) {
+        this.fallOverboard();
+      }
+    }
 
     if (impact) {
       const restitution = 0.35;
@@ -445,12 +1000,24 @@ export class Boat {
     }
   }
 
-  update(dt, input) {
+  update(dt, input, smugglers = null) {
+    this.updateEngineFailureFx(dt);
+
+    // A dead run must not keep drifting on the river current. The hull stays
+    // exactly where it crashed, clear of the rock that killed it.
+    if (this.isCrashed) {
+      this.holdCrashedPose();
+      return;
+    }
+
     if (this.slapCooldown > 0) {
       this.slapCooldown -= dt;
     }
     if (this.rockBumpCooldown > 0) {
       this.rockBumpCooldown -= dt;
+    }
+    if (this.overboardCooldown > 0) {
+      this.overboardCooldown -= dt;
     }
     if (this.motorStallTimer > 0) {
       this.motorStallTimer = Math.max(0, this.motorStallTimer - dt);
@@ -458,6 +1025,7 @@ export class Boat {
       this.speed = 0;
       this.angularVelocity = 0;
       if (this.motorStallTimer <= 0) sound.startEngineSound();
+      if (this.isManOverboard) this.updateOverboardPlayer(dt);
       return;
     }
 
@@ -567,8 +1135,15 @@ export class Boat {
 
     const engineX = this.position.x - Math.cos(this.angle) * 1.9;
     const engineZ = this.position.z + Math.sin(this.angle) * 1.9;
-    const engineStuckNorth = engineZ <= PLAY_MIN_Z;
-    const engineStuckSouth = engineZ >= PLAY_MAX_Z;
+    const engineNorthPenetration = PLAY_MIN_Z - engineZ;
+    const engineSouthPenetration = engineZ - PLAY_MAX_Z;
+    const engineInNorthReeds = engineNorthPenetration > 0;
+    // Brushing the reeds is survivable. The prop only snags once it is properly
+    // buried and still pushing north; backing away always pulls it free.
+    const engineStuckNorth =
+      engineNorthPenetration > PROP_REED_TOLERANCE &&
+      this.velocity.z <= -PROP_REED_ESCAPE_SPEED;
+    const engineStuckSouth = engineSouthPenetration >= 0;
     const hitWestBarrier = this.position.x <= PLAY_MIN_X;
     const hitEastBarrier = this.position.x >= PLAY_MAX_X;
 
@@ -605,9 +1180,16 @@ export class Boat {
       this.velocity.set(0, 0, 0);
       this.angularVelocity = 0;
 
-      if (engineRock && this.world.emitRockImpact) {
-        this.world.emitRockImpact(engineX, engineZ, engineRock);
+      // Make sure the hull is visibly outside the rock, not just the prop.
+      if (engineRock) {
+        this.separateFromRock(engineRock, 3.1);
+        if (this.world.emitRockImpact) {
+          this.world.emitRockImpact(engineX, engineZ, engineRock);
+        }
       }
+
+      this.startEngineFailure();
+      this.holdCrashedPose();
 
       if (this.onLandCrash) {
         let reason;
@@ -625,6 +1207,13 @@ export class Boat {
 
     if (!this.isCrashed && (rockHit || hitWestBarrier || hitEastBarrier)) {
       this.bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier);
+    }
+
+    if (!this.isCrashed && engineInNorthReeds) {
+      const reedDamping = Math.exp(-3.5 * dt);
+      this.velocity.multiplyScalar(reedDamping);
+      this.speed =
+        this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
     }
 
     const speedRatio = Math.abs(this.speed) / this.maxSpeed;
@@ -665,13 +1254,47 @@ export class Boat {
       this.officerArm.rotation.y = -this.motorPivot.rotation.y * 0.7;
     }
 
-    // Slap (Весло) Animation
-    if (this.isSlapping) {
+    // Man overboard: either build up the fall risk or drift the detached
+    // oarsman and let the hull pick him back up.
+    if (this.isManOverboard) {
+      this.updateOverboardPlayer(dt);
+    } else {
+      this.updateManOverboardRisk(dt);
+    }
+
+    // Slap (Весло) Animation (the oar leaves with the oarsman when overboard)
+    if (this.isManOverboard) {
+      // Overboard oar pose is handled by updateOverboardPlayer.
+    } else if (this.isSlapping) {
       this.slapTime += dt;
       const progress = this.slapTime / this.slapDuration;
 
+      // Lock the first target of the swing so the oar does not chase a new
+      // smuggler after the intended one has already been hit.
+      if (!this.whackTargetAcquired) {
+        this.whackTarget = this.findWhackTarget(smugglers);
+        this.whackTargetAcquired = true;
+      }
+      const hasAim = this.whackTarget && this.updateOarAim(this.whackTarget);
+
       if (progress < 1.0) {
-        if (progress < 0.2) {
+        if (hasAim) {
+          if (progress < 0.2) {
+            const t = progress / 0.2;
+            this.oarPivot.quaternion.copy(this.oarRestQuat).slerp(this.oarWindupQuat, t);
+            this.oarPivot.scale.y = 1;
+            this.slapArcAngle = -0.8;
+          } else if (progress < 0.55) {
+            const t = (progress - 0.2) / 0.35;
+            const eased = t * t * (3 - 2 * t);
+            this.oarPivot.quaternion.copy(this.oarWindupQuat).slerp(this.oarAimQuat, eased);
+            this.oarPivot.scale.y = THREE.MathUtils.lerp(1, this.oarAimScale, eased);
+          } else {
+            const t = (progress - 0.55) / 0.45;
+            this.oarPivot.quaternion.copy(this.oarAimQuat).slerp(this.oarRestQuat, t);
+            this.oarPivot.scale.y = THREE.MathUtils.lerp(this.oarAimScale, 1, t);
+          }
+        } else if (progress < 0.2) {
           const t = progress / 0.2;
           this.oarPivot.rotation.y = -t * 0.8;
           this.oarPivot.rotation.x = 0.5 + t * 0.6;
@@ -692,6 +1315,9 @@ export class Boat {
         }
       } else {
         this.isSlapping = false;
+        this.whackTarget = null;
+        this.whackTargetAcquired = false;
+        this.oarPivot.scale.set(1, 1, 1);
         this.oarPivot.rotation.set(0.5, 0, -0.4);
       }
     } else {
