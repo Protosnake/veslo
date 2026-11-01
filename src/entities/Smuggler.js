@@ -50,6 +50,7 @@ const PACK_ACCENT_MAT = new THREE.MeshLambertMaterial({ color: 0xd8b23a, flatSha
 const PACK_DARK_MAT = new THREE.MeshLambertMaterial({ color: 0x4c402d, flatShading: true });
 const STRAP_MAT = new THREE.MeshLambertMaterial({ color: 0x241f1a, flatShading: true });
 const WILDLIFE_SCARE_RADIUS = 5;
+const SMUGGLER_SEPARATION_RADIUS = 3.2;
 const WILDLIFE_SCARE_DURATION = 1.5;
 
 // Swimmer body tilt: a little back from horizontal so the head clears the water.
@@ -647,7 +648,7 @@ export class Smuggler {
     this.scene.add(this.bloodPuddle);
   }
 
-  update(dt, boat, wildlife = null) {
+  update(dt, boat, wildlife = null, smugglers = []) {
     if (this.isDead) {
       this.deathTimer += dt;
       const sinkProgress = Math.min(1, this.deathTimer / this.deathDuration);
@@ -709,17 +710,21 @@ export class Smuggler {
     let moveZ = 1.0;
     this.currentSpeed = this.baseSpeed;
 
+    // Every threat contributes to one repulsion vector: the boat, nearby
+    // wildlife and other swimmers. Previously wildlife overrode the boat, so a
+    // snake made them ignore the hull; now they dodge everything together.
+    let avoidX = 0;
+    let avoidZ = 0;
+
     if (distToBoat < detectionRadius) {
       this.isPanicking = true;
       const awayX = this.position.x - boat.position.x;
       const awayZ = this.position.z - boat.position.z;
       const awayDist = Math.hypot(awayX, awayZ) || 1;
+      const weight = 1 + (1 - distToBoat / detectionRadius) * 0.8;
 
-      const sideDodge = (awayX / awayDist) * 1.0;
-      const forwardDart = Math.max(0.15, awayZ / awayDist);
-
-      moveX += sideDodge * 0.8;
-      moveZ = forwardDart * 0.8;
+      avoidX += (awayX / awayDist) * weight;
+      avoidZ += (awayZ / awayDist) * weight;
       // Gentle panic speedup (only 1.04x) so they never run away
       this.currentSpeed = this.baseSpeed * 1.04;
     } else {
@@ -733,11 +738,8 @@ export class Smuggler {
       const awayDist = Math.hypot(awayX, awayZ);
 
       if (awayDist > 0.001) {
-        this.wildlifeScareX = awayX / awayDist;
-        this.wildlifeScareZ = awayZ / awayDist;
-      } else {
-        this.wildlifeScareX = 0;
-        this.wildlifeScareZ = -1;
+        avoidX += (awayX / awayDist) * 1.25;
+        avoidZ += (awayZ / awayDist) * 1.25;
       }
 
       this.wildlifeScareTimer = WILDLIFE_SCARE_DURATION;
@@ -745,9 +747,25 @@ export class Smuggler {
       this.wildlifeScareTimer = Math.max(0, this.wildlifeScareTimer - dt);
     }
 
-    if (this.wildlifeScareTimer > 0) {
-      moveX = this.wildlifeScareX;
-      moveZ = this.wildlifeScareZ;
+    // Swimmers keep their distance from each other instead of stacking.
+    for (const other of smugglers) {
+      if (other === this || other.isDead || other.state !== 'swimming') continue;
+
+      const awayX = this.position.x - other.position.x;
+      const awayZ = this.position.z - other.position.z;
+      const distanceSq = awayX * awayX + awayZ * awayZ;
+      if (distanceSq <= 1e-6 || distanceSq >= SMUGGLER_SEPARATION_RADIUS ** 2) continue;
+
+      const distance = Math.sqrt(distanceSq);
+      const weight = 2.4 * (1 - distance / SMUGGLER_SEPARATION_RADIUS);
+      avoidX += (awayX / distance) * weight;
+      avoidZ += (awayZ / distance) * weight;
+    }
+
+    if (avoidX !== 0 || avoidZ !== 0) {
+      const avoidLen = Math.hypot(avoidX, avoidZ) || 1;
+      moveX = moveX * 0.25 + (avoidX / avoidLen) * 1.3;
+      moveZ = moveZ * 0.25 + (avoidZ / avoidLen) * 1.3;
     }
 
     // Normalize

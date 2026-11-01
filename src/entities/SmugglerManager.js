@@ -178,7 +178,7 @@ export class SmugglerManager {
     // Update active smugglers & check collisions
     for (let i = this.smugglers.length - 1; i >= 0; i--) {
       const s = this.smugglers[i];
-      s.update(dt, boat, wildlife);
+      s.update(dt, boat, wildlife, this.smugglers);
 
       // 1-life sudden death check
       if ((s.state === 'swimming' || s.state === 'escaping') && s.reachedSouth && !s.isDead) {

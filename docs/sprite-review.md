@@ -69,8 +69,8 @@ Apply these to every sprite unless its section says otherwise.
 
 **Model composition**
 
-- Hull: two side pontoon tubes, two rear cone caps, two inward-angled bow tubes, two joint spheres and a nose cap, two black rubber strakes, two rope lifelines.
-- Deck: sealed bottom under-plate, wooden deck floor, transom board, black rear bench with seat pad, front bench with a raised seat box.
+- Hull: two side pontoon tubes (thinned to `0.4 m` diameter), blunt tapered stern ends with rounded caps, two inward-angled bow tubes, two joint spheres and a nose cap, two black rubber strakes, two rope lifelines running along the pontoon tops (`z 1.02`).
+- Interior: one solid hull-green floor shaped to the bow taper (no planks, no under-plate box), two identical dark-green bench blocks (`0.44 x 0.07 x 1.9`, top `0.58`), dark-green transom (`0.4` tall, clipped into the tubes).
 - Outboard: mount block, cowl with red stripe, shaft, skeg, short tiller with grip knob, hidden engine-failure flame and flame core.
 - Officer: `officerGroup` mount driven by `BoatOfficer` (seated `sitSteer`, hands IK onto the tiller and lifeline).
 - Oarsman: `oarsmanMount` on the raised front bench; `BoatOarsman` attaches a shared `Soldier` posed `sitRow` (`0.72` scale, group offset `y -0.45`) **facing the motor** (`-PI/2`).
@@ -593,3 +593,7 @@ These are real visual assets in the project but are currently built as part of `
 | 2026-11-01 | `oar` | Windup changed from a low backswing to a slight lift, so the strike is a downward smash onto the target instead of an upward flick; phases 30/42% | In review |
 
 | 2026-11-01 | `boat` / `oar` | Oarsman now faces the motor with two oars (port + starboard); target picked per side, both oars swing when both sides have enemies; two independent hitboxes | In review |
+
+| 2026-11-01 | `boat` | Thinned pontoons 2x, removed the under-plate and wooden planks for a solid green floor, identical green benches, dark green transom, yellow engine stripe, ropes moved onto the pontoon tops | In review |
+| 2026-11-01 | `oar` | Oars moved to waist-height pivots with a steeper trailing angle; yellow engine stripe; per-side target selection (closest side always swings, far side joins within 4.5 m) | In review |
+| 2026-11-01 | `smuggler-swimming` | Boat, wildlife and other swimmers now share one avoidance vector; separation radius raised to 3.2 m so swimmers stop stacking | In review |

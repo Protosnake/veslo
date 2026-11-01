@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Soldier } from './Soldier.js';
-import { LIFELINE, TILLER_GRIP_LOCAL } from './Boat.js';
+import { TILLER_GRIP_LOCAL } from './Boat.js';
 import { createArmScratch, solveArm } from './armIK.js';
 
 // The officer sits on the rear seat against the transom, works the tiller with
@@ -9,7 +9,7 @@ import { createArmScratch, solveArm } from './armIK.js';
 // rolls and the motor turns.
 const SEATED_OFFICER = Object.freeze({
   x: -1.11,
-  y: 0.1156,
+  y: 0.0356,
   z: 0.3,
   scale: 0.72,
   facing: Math.PI / 2
@@ -20,6 +20,8 @@ const SHOULDER_LEFT = new THREE.Vector3(-0.3, 1.55, 0);
 const ARM_POLE_RIGHT = new THREE.Vector3(1, 0, 0);
 const ARM_POLE_LEFT = new THREE.Vector3(-1, 0, 0);
 const HAND_LIFT = 0.09;
+const HAND_REST_Y = 0.85;
+const HAND_REST_Z = 0.62;
 
 export class BoatOfficer {
   constructor(boat) {
@@ -35,14 +37,6 @@ export class BoatOfficer {
 
     this.rightArm = this.soldier.arms.right;
     this.leftArm = this.soldier.arms.left;
-
-    this.ropeY =
-      LIFELINE.y -
-      Math.sin(
-        Math.PI *
-          ((SEATED_OFFICER.x - LIFELINE.xMin) / (LIFELINE.xMax - LIFELINE.xMin))
-      ) *
-        LIFELINE.sag;
 
     this.scratch = createArmScratch();
     this.target = new THREE.Vector3();
@@ -64,7 +58,9 @@ export class BoatOfficer {
   }
 
   solveLeftHand() {
-    this.target.set(SEATED_OFFICER.x, this.ropeY, LIFELINE.z);
+    // The lifeline now sits on top of the thinner pontoon, out of arm's reach,
+    // so the left hand rests on the hull rim beside the seat instead.
+    this.target.set(SEATED_OFFICER.x, HAND_REST_Y, HAND_REST_Z);
     this.boat.group.localToWorld(this.target);
     solveArm(this.leftArm, this.group, SHOULDER_LEFT, ARM_POLE_LEFT, this.target, this.scratch);
   }

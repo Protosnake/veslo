@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Boat } from '../entities/Boat.js';
 import { BoatOfficer } from '../entities/BoatOfficer.js';
+import { BoatCrew } from '../entities/BoatCrew.js';
 import { Oar } from '../entities/Oar.js';
 import { Soldier } from '../entities/Soldier.js';
 import { Smuggler } from '../entities/Smuggler.js';
@@ -67,6 +68,17 @@ function buildBoatOfficer(stage) {
 
       officer.update();
     }
+  };
+}
+
+// Boat with the full two-soldier crew (seated officer + two-oared oarsman).
+function buildBoatCrewed(stage) {
+  const boat = new Boat(stage, STUB_WORLD, noop, noop, noop, noop);
+  stage.remove(boat.overboardMarker);
+  const crew = new BoatCrew(boat);
+  return {
+    roots: [boat.group],
+    update: (dt) => crew.update()
   };
 }
 
@@ -157,6 +169,26 @@ function buildSoldierIdle(stage) {
   };
 }
 
+// Two rigs side by side for comparison shots / showing something off.
+function buildSoldierDuo(stage) {
+  const left = new Soldier({ pose: 'idle' });
+  left.group.position.x = -0.55;
+  const right = new Soldier({ pose: 'idle' });
+  right.group.position.x = 0.55;
+  stage.add(left.group, right.group);
+  return {
+    roots: [left.group, right.group],
+    reset: () => {
+      left.setPose('idle', true);
+      right.setPose('idle', true);
+    },
+    update: (dt) => {
+      left.update(dt);
+      right.update(dt);
+    }
+  };
+}
+
 export const SPRITE_GROUPS = [
   {
     label: 'Boat',
@@ -181,6 +213,13 @@ export const SPRITE_GROUPS = [
         note: 'Boat with one soldier seated on the transom holding the tiller.',
         source: 'src/dev/sprites.js',
         build: buildBoatOfficer
+      },
+      {
+        id: 'boat-crewed',
+        label: 'Boat — full crew',
+        note: 'Boat with the seated officer at the tiller and the oarsman on the front bench with both oars.',
+        source: 'src/entities/Boat.js + BoatCrew.js',
+        build: buildBoatCrewed
       }
     ]
   },
@@ -264,6 +303,13 @@ export const SPRITE_GROUPS = [
         note: 'Shared soldier: helmet, plate carrier and 15 articulated joints. The same model the boat crew and watchtower use.',
         source: 'src/entities/Soldier.js',
         build: buildSoldierIdle
+      },
+      {
+        id: 'soldiers-duo',
+        label: 'Soldiers — duo',
+        note: 'Two shared soldier rigs side by side, for comparison shots.',
+        source: 'src/entities/Soldier.js',
+        build: buildSoldierDuo
       },
       {
         id: 'soldier-binoculars',

@@ -6,7 +6,7 @@ import { createArmScratch, solveArm } from './armIK.js';
 // The oarsman sits on the raised front bench facing the motor, with one oar per
 // side. Each hand is solved onto its own oar shaft, so the hands follow every
 // swing independently (one oar, or both when enemies are on both sides).
-const OARSMAN = Object.freeze({ y: -0.45, scale: 0.72, facing: -Math.PI / 2 });
+const OARSMAN = Object.freeze({ y: -0.53, scale: 0.72, facing: -Math.PI / 2 });
 
 const SHOULDER_RIGHT = new THREE.Vector3(0.3, 1.55, 0);
 const SHOULDER_LEFT = new THREE.Vector3(-0.3, 1.55, 0);

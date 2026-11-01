@@ -18,12 +18,17 @@ const MAN_OVERBOARD_STERN_SPEED_RATIO = 0.3;
 // Two side oars. X is mirrored to point each blade outboard and slightly down;
 // Z sweeps both shafts aft toward the engine, like a rower's trailing oars.
 // The windup eases X back up for a short lifted smash.
-const OAR_REST_L = new THREE.Euler(1.5, 0, 0.6);
-const OAR_REST_R = new THREE.Euler(-1.5, 0, 0.6);
-const OAR_WINDUP_L = new THREE.Euler(1.1, 0, 0.5);
-const OAR_WINDUP_R = new THREE.Euler(-1.1, 0, 0.5);
+const OAR_REST_L = new THREE.Euler(1.84, 0, 0.6);
+const OAR_REST_R = new THREE.Euler(-1.84, 0, 0.6);
+const OAR_WINDUP_L = new THREE.Euler(1.44, 0, 0.5);
+const OAR_WINDUP_R = new THREE.Euler(-1.44, 0, 0.5);
 
 const OAR_SIDE_SIGN = { left: 1, right: -1 };
+// The closest enemy always gets its side's oar. The other side joins in only
+// when its own enemy is genuinely close, so a distant swimmer on the far side
+// does not trigger a pointless second swing.
+const OAR_TARGET_RANGE = 6;
+const OAR_BOTH_RANGE = 4.5;
 
 const smooth = (t) => t * t * (3 - 2 * t);
 
@@ -34,8 +39,8 @@ export const TILLER_GRIP_LOCAL = Object.freeze({ x: 0.4, y: 0.35, z: 0 });
 export const LIFELINE = Object.freeze({
   xMin: -1.5,
   xMax: 0.7,
-  y: 0.82,
-  z: 0.68,
+  y: 0.68,
+  z: 1.02,
   sag: 0.02
 });
 
@@ -140,17 +145,14 @@ export class Boat {
       metalness: 0.05,
       flatShading: true
     });
-    const bottomRubberMat = new THREE.MeshLambertMaterial({ color: 0x1a241e });
     const rubStrakeMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
-    const transomWoodMat = new THREE.MeshLambertMaterial({ color: 0x5c4028 });
-    const deckMat = new THREE.MeshLambertMaterial({ color: 0x6e5236, flatShading: true });
-    const benchMat = new THREE.MeshLambertMaterial({ color: 0x7d5a37 });
+    const transomMat = new THREE.MeshLambertMaterial({ color: 0x1e2a23 });
     const ropeMat = new THREE.MeshLambertMaterial({ color: 0x9c7a4d });
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.3 });
 
     this.hull = new THREE.Group();
 
-    const tubeRadius = 0.40;
+    const tubeRadius = 0.20;
     const tubeY = 0.45; // elevated so water waves never clip into floor
     const tubeZ = 1.02;
 
@@ -171,19 +173,31 @@ export class Boat {
     tubeR.castShadow = true;
     this.hull.add(tubeR);
 
-    // Iconic Conical Pontoon Ends at Stern (pointing -X backwards past the motor)
-    const coneGeo = new THREE.ConeGeometry(tubeRadius, 0.75, 12);
-    coneGeo.rotateZ(Math.PI / 2); // points -X
+    // Stern pontoon ends: a short blunt taper finished with a rounded cap, so
+    // they read as inflatable ends instead of sharp spikes.
+    const coneGeo = new THREE.CylinderGeometry(tubeRadius * 0.45, tubeRadius, 0.5, 12);
+    coneGeo.rotateZ(Math.PI / 2); // taper points -X
+    const endCapGeo = new THREE.SphereGeometry(tubeRadius * 0.45, 12, 10);
 
     const coneL = new THREE.Mesh(coneGeo, rubberMat);
-    coneL.position.set(-1.87, tubeY, tubeZ);
+    coneL.position.set(-1.75, tubeY, tubeZ);
     coneL.castShadow = true;
     this.hull.add(coneL);
 
     const coneR = new THREE.Mesh(coneGeo, rubberMat);
-    coneR.position.set(-1.87, tubeY, -tubeZ);
+    coneR.position.set(-1.75, tubeY, -tubeZ);
     coneR.castShadow = true;
     this.hull.add(coneR);
+
+    const endCapL = new THREE.Mesh(endCapGeo, rubberMat);
+    endCapL.position.set(-2.0, tubeY, tubeZ);
+    endCapL.castShadow = true;
+    this.hull.add(endCapL);
+
+    const endCapR = new THREE.Mesh(endCapGeo, rubberMat);
+    endCapR.position.set(-2.0, tubeY, -tubeZ);
+    endCapR.castShadow = true;
+    this.hull.add(endCapR);
 
     // Bow Inflatable Tubes (converging smoothly inward towards center z = 0 at +X)
     const bowStartX = 0.7;
@@ -259,54 +273,47 @@ export class Boat {
     ropeR.castShadow = true;
     this.hull.add(ropeR);
 
-    // Solid Sealed Bottom Hull Under-plate (prevents any water rendering through bottom!)
-    const bottomHull = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.32, 1.8), bottomRubberMat);
-    bottomHull.position.set(0.0, 0.22, 0);
-    bottomHull.receiveShadow = true;
-    this.hull.add(bottomHull);
+    // Solid hull floor in the same rubber green as the tubes, shaped to the
+    // bow taper. No planks on top: the inside of the boat is one green shell.
+    const floorShape = new THREE.Shape();
+    floorShape.moveTo(-1.5, 0.82);
+    floorShape.lineTo(0.7, 0.82);
+    floorShape.lineTo(2.0, 0);
+    floorShape.lineTo(0.7, -0.82);
+    floorShape.lineTo(-1.5, -0.82);
+    floorShape.closePath();
 
-    // Elevated wooden deck: five planks with narrow dark seams between them.
-    // Sitting above the sealed under-plate keeps the floor clear of wave crests.
-    const plankGeo = new THREE.BoxGeometry(0.5, 0.08, 1.7);
-    for (let i = 0; i < 5; i++) {
-      const plank = new THREE.Mesh(plankGeo, deckMat);
-      plank.position.set(-1.1 + i * 0.55, 0.38, 0);
-      plank.receiveShadow = true;
-      this.hull.add(plank);
-    }
+    const floorMat = rubberMat.clone();
+    floorMat.side = THREE.DoubleSide;
+    const floor = new THREE.Mesh(new THREE.ShapeGeometry(floorShape), floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.42;
+    floor.receiveShadow = true;
+    this.hull.add(floor);
 
     // Solid Transom Board (-X)
-    const transomGeo = new THREE.BoxGeometry(0.12, 0.65, 1.8);
-    const transom = new THREE.Mesh(transomGeo, transomWoodMat);
-    transom.position.set(-1.5, 0.48, 0);
+    const transomGeo = new THREE.BoxGeometry(0.12, 0.4, 1.92);
+    const transom = new THREE.Mesh(transomGeo, transomMat);
+    transom.position.set(-1.5, 0.46, 0);
     transom.castShadow = true;
     this.hull.add(transom);
 
-    // Rear bench seat (Officer sits here near motor)
-    const seatMat = new THREE.MeshLambertMaterial({ color: 0x2b2f28 });
-    const rearBench = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.08, 1.8), seatMat);
-    rearBench.position.set(-1.22, 0.56, 0);
-    rearBench.castShadow = true;
-    this.hull.add(rearBench);
+    // Two identical bench seats (officer aft, oarsman forward): same box, same
+    // raised pad, same dark green. Only their X position differs.
+    const seatMat = new THREE.MeshLambertMaterial({ color: 0x24312a });
 
-    const rearSeat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 1.1), seatMat);
-    rearSeat.position.set(-1.21, 0.635, 0.15);
-    rearSeat.castShadow = true;
-    rearSeat.receiveShadow = true;
-    this.hull.add(rearSeat);
+    // One long rectangular block per bench, floor to seat height, so each seat
+    // reads as a plain prolonged rectangle instead of a stacked pyramid.
+    const createBench = (x) => {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.07, 1.9), seatMat);
+      bench.position.set(x, 0.545, 0);
+      bench.castShadow = true;
+      bench.receiveShadow = true;
+      this.hull.add(bench);
+    };
 
-    // Front Wooden Bench Seat
-    const frontBench = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 1.7), benchMat);
-    frontBench.position.set(0.5, 0.52, 0);
-    frontBench.castShadow = true;
-    this.hull.add(frontBench);
-
-    // Riser under the oarsman so a seated figure's feet still reach the deck.
-    const frontSeatBox = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.15, 1.0), benchMat);
-    frontSeatBox.position.set(0.5, 0.635, 0);
-    frontSeatBox.castShadow = true;
-    frontSeatBox.receiveShadow = true;
-    this.hull.add(frontSeatBox);
+    createBench(-1.22); // officer
+    createBench(0.5); // oarsman
 
     this.group.add(this.hull);
 
@@ -327,7 +334,7 @@ export class Boat {
 
     const cowlStripe = new THREE.Mesh(
       new THREE.BoxGeometry(0.56, 0.08, 0.39),
-      new THREE.MeshBasicMaterial({ color: 0xee2222 })
+      new THREE.MeshBasicMaterial({ color: 0xf2c230 })
     );
     cowlStripe.position.set(-0.25, 0.35, 0);
     this.motorPivot.add(cowlStripe);
@@ -420,7 +427,7 @@ export class Boat {
     const rest = (side === 'left' ? OAR_REST_L : OAR_REST_R).clone();
     const windup = (side === 'left' ? OAR_WINDUP_L : OAR_WINDUP_R).clone();
     const pivot = new THREE.Group();
-    pivot.position.set(0.18, 0.56, sign * 0.26);
+    pivot.position.set(-0.28, 0.36, sign * 0.34);
     pivot.rotation.copy(rest);
     this.playerGroup.add(pivot);
 
@@ -1311,11 +1318,25 @@ export class Boat {
       if (!this.whackTargetAcquired) {
         const targets = this.findWhackTargets(smugglers);
         const anyTarget = targets.left || targets.right;
+        const distanceTo = (target) =>
+          target
+            ? Math.hypot(target.position.x - this.position.x, target.position.z - this.position.z)
+            : Infinity;
+        const distances = {
+          left: distanceTo(targets.left),
+          right: distanceTo(targets.right)
+        };
+        const closestSide = distances.left <= distances.right ? 'left' : 'right';
+
         for (const side of ['left', 'right']) {
           const mount = this.oars[side];
           if (!mount) continue;
           mount.target = targets[side];
-          mount.active = Boolean(targets[side]) || (!anyTarget && side === 'right');
+          const distance = distances[side];
+          const inRange = distance <= OAR_TARGET_RANGE;
+          mount.active =
+            (inRange && (side === closestSide || distance <= OAR_BOTH_RANGE)) ||
+            (!anyTarget && side === 'right');
         }
         this.whackTargetAcquired = true;
       }
