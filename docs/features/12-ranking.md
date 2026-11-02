@@ -45,3 +45,4 @@ flowchart LR
 - **Spawn interval scale 2.5 → 1.7 (`VITE_SMUGGLER_SPAWN_INTERVAL_SCALE`).** Why: after slowing spawns, runs felt empty, especially during the battery-out view. Alternative: leave 2.5 and rely on `?spawn=` for testing. Revisit when: spawn pacing is playtested with AK back on.
 
 - **Decision:** Spawn pacing is linear in run time with deterministic group sizes, replacing score-based pressure, random group sizes (1-4), ±30% jitter and random warmup. **Why:** runs were unpredictable (a pile at once in one run, 2 smugglers in another) and score feedback made fast players swarmed. **Alternatives:** keep score pressure with smaller jitter (still reactive). Tune via `VITE_SPAWN_*`; set `VITE_SPAWN_JITTER=0` for a metronome.
+- **Spawn interval scale 1.7 → 2.1 (`VITE_SMUGGLER_SPAWN_INTERVAL_SCALE`).** Why: requested; spawns felt slightly too frequent now that swimmers appear 100-250 m out and arrows track them. Alternative: lower the group size instead.

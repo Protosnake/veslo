@@ -170,3 +170,4 @@ Ordering rule: **impact tier first, effort second**. Anything `S`/`S–M` that r
 - [x] **Done** — Fewer reeds + perf readout: shoreline reeds scaled by `VITE_REED_DENSITY` (default 0.4; 1 = original) and `?perf=1` or `VITE_PERF_HUD=1` replaces the FPS number with `fps | draw calls | k triangles | render() CPU ms | geometries` (`src/world/River.js`, `src/config/world.ts`, `src/main.js`).
 - [x] **Done** — Oar side follows the crew's gaze: the swimmer the oarsman watches (within 6 m preferred) takes its side's oar (`src/entities/BoatCrew.js`, `src/entities/Boat.js`, `src/main.js`).
 - [x] **Done** — Camera zoom: 25% closer on the boat at rest, eases out up to 50% wider at top speed (`VITE_ZOOM_IN` 0.25, `VITE_ZOOM_OUT_MAX_SPEED` 0.5, `VITE_ZOOM_SMOOTHING` 2) (`src/core/Renderer.ts`, `src/config/world.ts`, `src/main.js`).
+- [x] **Done** — Spawn rate reduced a bit: `VITE_SMUGGLER_SPAWN_INTERVAL_SCALE` 1.7 to 2.1 (`src/config/difficulty.ts`).

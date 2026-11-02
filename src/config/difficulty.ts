@@ -90,7 +90,7 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     recoverySeconds: 6
   },
   spawn: {
-    intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 1.7),
+    intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 2.1),
     startInterval: envNumber(import.meta.env.VITE_SPAWN_START_INTERVAL, 8),
     minInterval: envNumber(import.meta.env.VITE_SPAWN_MIN_INTERVAL, 3),
     rampSeconds: envNumber(import.meta.env.VITE_SPAWN_RAMP_SECONDS, 240),
