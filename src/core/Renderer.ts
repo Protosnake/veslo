@@ -32,6 +32,7 @@ export class GameRenderer {
   renderer!: THREE.WebGLRenderer;
   camera!: THREE.PerspectiveCamera;
   elapsed = 0;
+  readonly defaultNear = 0.5;
 
   horizontalFov!: number;
   rigY?: number;
@@ -152,7 +153,7 @@ export class GameRenderer {
     this.followLookTarget = new THREE.Vector3(0, 0, 4);
 
     this.fovHOverride = null;
-    this.camera = new THREE.PerspectiveCamera(52, aspect, 0.5, 600);
+    this.camera = new THREE.PerspectiveCamera(52, aspect, this.defaultNear, 600);
     this.applyResponsiveFov();
 
     this.camera.position.copy(this.anchor).add(this.rigOffset);
@@ -192,6 +193,12 @@ export class GameRenderer {
       this.followLook.z
     );
     return { position, look };
+  }
+
+  /** Override the near clip plane (null restores the default). */
+  setNearPlane(near: number | null): void {
+    this.camera.near = near ?? this.defaultNear;
+    this.camera.updateProjectionMatrix();
   }
 
   setManualCamera(position: THREE.Vector3, look: THREE.Vector3): void {

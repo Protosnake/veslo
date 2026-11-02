@@ -19,6 +19,8 @@ import { logger } from './systems/Logger.js';
 import { t, getRankTitle, onLocaleChange } from './systems/I18n.js';
 import { PROMOTION_TUNING } from './config/ranking.js';
 import { TUNING } from './config/tuning.js';
+import { ChaseCamera } from './core/ChaseCamera.js';
+import { MountCamera } from './core/MountCamera.js';
 
 function isTouchDevice() {
   return (
@@ -111,6 +113,47 @@ const INITIAL_BATTERY =
   readBatteryPercent(new URLSearchParams(window.location.search).get('battery'))
   ?? readBatteryPercent(import.meta.env.VITE_START_BATTERY)
   ?? TUNING.initialBattery;
+
+function readPositive(value, max = 600) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.min(max, parsed);
+}
+
+const BATTERY_RECHARGE_SECONDS =
+  readPositive(new URLSearchParams(window.location.search).get('recharge'))
+  ?? readPositive(import.meta.env.VITE_BATTERY_RECHARGE_SECONDS)
+  ?? TUNING.batteryRechargeSeconds;
+
+const CHASE_CAMERA_OPTIONS = {
+  distance: readPositive(import.meta.env.VITE_CHASE_CAMERA_DISTANCE, 100) ?? TUNING.chaseCamera.distance,
+  height: readPositive(import.meta.env.VITE_CHASE_CAMERA_HEIGHT, 100) ?? TUNING.chaseCamera.height,
+  blendSeconds: readPositive(import.meta.env.VITE_CHASE_CAMERA_BLEND_SECONDS, 10) ?? TUNING.chaseCamera.blendSeconds,
+  fov: readPositive(import.meta.env.VITE_CHASE_CAMERA_FOV, 120) ?? TUNING.chaseCamera.fov
+};
+
+const AK_ENABLED = (() => {
+  const raw =
+    new URLSearchParams(window.location.search).get('ak')
+    ?? import.meta.env.VITE_AK_ENABLED;
+  if (raw === null || raw === undefined || raw === '') return TUNING.akEnabled;
+  return readFlag(raw);
+})();
+
+const BATTERY_CAMERA = (() => {
+  const raw = (
+    new URLSearchParams(window.location.search).get('batteryCam')
+    ?? import.meta.env.VITE_BATTERY_CAMERA
+    ?? ''
+  ).toString().trim().toLowerCase();
+  return raw === 'pov' || raw === 'chase' ? raw : TUNING.batteryCamera;
+})();
+
+const POV_CAMERA_OPTIONS = {
+  fov: readPositive(import.meta.env.VITE_POV_CAMERA_FOV, 120) ?? TUNING.povCamera.fov,
+  blendSeconds: readPositive(import.meta.env.VITE_POV_CAMERA_BLEND_SECONDS, 10) ?? TUNING.povCamera.blendSeconds
+};
 
 const INITIAL_SPAWN_COUNT =
   readSpawnCount(new URLSearchParams(window.location.search).get('spawn'))
@@ -220,6 +263,8 @@ class Game {
     this.hudRankBadge = document.getElementById('hud-rank-badge');
     this.hudRankTitle = document.getElementById('hud-rank-title');
     this.hudScorePill = document.getElementById('hud-score-pill');
+    this.povScore = document.getElementById('pov-score');
+    this.povScoreValue = document.getElementById('pov-score-value');
     this.hudRankBar = document.getElementById('hud-rank-bar');
     this.hudRankNext = document.getElementById('hud-rank-next');
     this.hudHighScore = document.getElementById('hud-high-score');
@@ -278,6 +323,9 @@ class Game {
     this.battery = INITIAL_BATTERY;
     this.batteryDead = false;
     this.batteryDeadTimer = 0;
+    this.chaseCamera = new ChaseCamera(CHASE_CAMERA_OPTIONS);
+    this.povCamera = new MountCamera(POV_CAMERA_OPTIONS);
+    this.batteryCam = null; // whichever camera currently replaces the drone feed
     this.rechargedTimer = 0;
     this.akReloadPending = false;
     this.akShotCooldownUntil = 0;
@@ -681,6 +729,7 @@ class Game {
     this.battery = INITIAL_BATTERY;
     this.batteryDead = false;
     this.batteryDeadTimer = 0;
+    this.endBatteryChaseCamera();
     this.rechargedTimer = 0;
     this.akReloadPending = false;
     this.akShotCooldownUntil = 0;
@@ -1056,7 +1105,7 @@ class Game {
   }
 
   triggerStrike() {
-    if (this.batteryDead && this.smugglerManager.findAkTarget(this.boat)) {
+    if (AK_ENABLED && this.batteryDead && this.smugglerManager.findAkTarget(this.boat)) {
       this.fireAkShot();
       return;
     }
@@ -1064,7 +1113,7 @@ class Game {
   }
 
   fireAkShot() {
-    if (this.state !== 'PLAYING' || !this.batteryDead) return;
+    if (!AK_ENABLED || this.state !== 'PLAYING' || !this.batteryDead) return;
 
     const now = performance.now();
     if (now < this.akShotCooldownUntil) return;
@@ -1195,6 +1244,8 @@ class Game {
   }
 
   startGameOverFocus(target, follow = null) {
+    // Hand over from the battery camera (if active) without a pose snap.
+    this.stopBatteryCamera();
     const camera = this.renderer.camera;
     const focusPoint = target.clone();
     focusPoint.y += 0.9;
@@ -1241,7 +1292,7 @@ class Game {
       follow,
       followElapsed: 0,
       followDuration: follow ? GAME_OVER_FOLLOW_SECONDS : 5,
-      startFov: this.renderer.getGameplayHorizontalFov(),
+      startFov: this.renderer.fovHOverride ?? this.renderer.getGameplayHorizontalFov(),
       endFov: 52
     };
   }
@@ -1461,6 +1512,7 @@ class Game {
     if (this.hudRankBadge) this.hudRankBadge.innerHTML = rankIconMarkup(rankInfo.current);
     if (this.hudRankTitle) this.hudRankTitle.textContent = getRankTitle(rankInfo.current);
     if (this.hudScorePill) this.hudScorePill.textContent = t('hud.scorePill', { score });
+    if (this.povScoreValue) this.povScoreValue.textContent = String(score);
     if (this.hudHighScore) this.hudHighScore.textContent = Math.max(this.highScore, score);
     if (this.hudRankBar) this.hudRankBar.style.width = `${(progress * 100).toFixed(1)}%`;
 
@@ -1609,11 +1661,14 @@ class Game {
 
     if (this.batteryDead) {
       this.batteryDeadTimer += dt;
-      if (this.batteryDeadTimer >= 5) {
+      // Show the recharge progress on the battery bar while the chase cam runs.
+      this.battery = Math.min(100, (this.batteryDeadTimer / BATTERY_RECHARGE_SECONDS) * 100);
+      if (this.batteryDeadTimer >= BATTERY_RECHARGE_SECONDS) {
         this.battery = 100;
         this.batteryDead = false;
         this.batteryDeadTimer = 0;
         this.rechargedTimer = 3;
+        this.endBatteryChaseCamera();
       }
       return;
     }
@@ -1625,6 +1680,50 @@ class Game {
     this.batteryDead = true;
     this.batteryDeadTimer = 0;
     this.akReloadPending = true;
+    this.beginBatteryChaseCamera();
+  }
+
+  /** Swap the dead drone feed for the engine operator's POV or a chase view. */
+  beginBatteryChaseCamera() {
+    const renderer = this.renderer;
+    const from = {
+      position: renderer.camera.position.clone(),
+      look: renderer.lookTarget.clone()
+    };
+    if (BATTERY_CAMERA === 'pov') {
+      this.boatCrew.officer.setHeadVisible(false);
+      this.povCamera.start(this.boatCrew.officer.getCameraMount(), from);
+      this.batteryCam = this.povCamera;
+      renderer.setHorizontalFovOverride(POV_CAMERA_OPTIONS.fov);
+      renderer.setNearPlane(this.povCamera.options.near);
+    } else {
+      this.chaseCamera.start(this.boat, from);
+      this.batteryCam = this.chaseCamera;
+      renderer.setHorizontalFovOverride(CHASE_CAMERA_OPTIONS.fov);
+    }
+    this.batteryCam.update(0);
+  }
+
+  /** Stop the battery camera but leave the renderer pose/FOV for a hand-off. */
+  stopBatteryCamera() {
+    if (!this.batteryCam) return;
+    this.batteryCam.stop();
+    this.batteryCam = null;
+    this.boatCrew.officer.setHeadVisible(true);
+    this.renderer.setNearPlane(null);
+  }
+
+  endBatteryChaseCamera() {
+    if (!this.batteryCam) return;
+    this.stopBatteryCamera();
+    this.renderer.clearManualCamera();
+    this.renderer.clearHorizontalFovOverride();
+  }
+
+  updateChaseCamera(dt) {
+    if (!this.batteryCam) return;
+    this.batteryCam.update(dt);
+    this.renderer.setManualCamera(this.batteryCam.position, this.batteryCam.look);
   }
 
   updateOSD() {
@@ -1670,6 +1769,7 @@ class Game {
 
     this.osd.root.classList.toggle('low-battery', lowBattery);
     this.osd.root.classList.toggle('signal-lost', playing && this.batteryDead);
+    if (this.povScore) this.povScore.classList.toggle('visible', playing && !!this.batteryCam && BATTERY_CAMERA === 'pov');
     this.osd.root.classList.toggle(
       'battery-recharged',
       playing && this.rechargedTimer > 0
@@ -1739,6 +1839,7 @@ class Game {
       this.boat.position.z
     );
     if (this.state === 'GAMEOVER') this.updateGameOverFocus(dt);
+    else if (this.state === 'PLAYING') this.updateChaseCamera(dt);
     this.renderer.updateCamera(dt);
     this.updatePartnerBubble(dt);
     this.updateKillStreakPosition();

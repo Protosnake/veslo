@@ -44,6 +44,16 @@ export class BoatOfficer {
     this.update();
   }
 
+  /** Mount for a first-person camera: eye on the head, facing the way the boat does. */
+  getCameraMount() {
+    return { anchor: this.soldier.joints.head, orientation: this.boat.officerGroup };
+  }
+
+  /** Hide the head/helmet so a POV camera sitting inside it sees nothing of it. */
+  setHeadVisible(visible) {
+    this.soldier.joints.head.visible = visible;
+  }
+
   update() {
     this.boat.group.updateMatrixWorld(true);
     this.solveRightHand();

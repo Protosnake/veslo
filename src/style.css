@@ -1767,8 +1767,21 @@ body.game-over .osd-heading {
   inset: 0;
   z-index: 50;
   display: none;
-  background: #040404;
   pointer-events: none;
+}
+
+/* Drone feed is dead but the chase camera keeps the scene visible: hide the
+   TV snow and show only the SIGNAL LOST label, pinned near the top. */
+.drone-osd.signal-lost .osd-signal-loss .osd-snow {
+  display: none;
+}
+
+.drone-osd.signal-lost .osd-signal-loss::after {
+  display: none;
+}
+
+.drone-osd.signal-lost .osd-signal-loss .osd-signal-loss-bar {
+  top: 18%;
 }
 
 .drone-osd.signal-lost .osd-signal-loss {
@@ -2692,3 +2705,21 @@ body.intro .drone-osd {
 .touch-device .osd-top-left .osd-battery {
   margin-top: 0;
 }
+
+/* First-person (battery-out) view: score floats above the rower */
+.pov-score {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  font-family: var(--osd-mono);
+  color: var(--osd-bright);
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+.pov-score.visible { display: flex; }
+.pov-score-label { font-size: 11px; letter-spacing: 0.18em; color: var(--osd-dim); }
+.pov-score-value { font-size: 34px; letter-spacing: 0.04em; }
