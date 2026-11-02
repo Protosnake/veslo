@@ -411,7 +411,7 @@ export class Boat {
   createOfficer() {
     this.officerGroup = new THREE.Group();
     this.officerGroup.position.set(-1.05, 0.55, 0.2);
-    this.group.add(this.officerGroup);
+    this.hull.add(this.officerGroup);
   }
 
   createPlayerAndOar() {
@@ -424,7 +424,7 @@ export class Boat {
     this.oars.left = this.createOarMount('left');
     this.oars.right = this.createOarMount('right');
 
-    this.group.add(this.playerGroup);
+    this.hull.add(this.playerGroup);
   }
 
   createOarMount(side) {
@@ -514,7 +514,7 @@ export class Boat {
     this.overboardVelocity.set(0, 0, 0);
     if (this.overboardMarker) this.overboardMarker.visible = false;
 
-    this.group.attach(this.playerGroup);
+    this.hull.add(this.playerGroup);
     this.playerGroup.position.set(PLAYER_BOARD_POS.x, PLAYER_BOARD_POS.y, PLAYER_BOARD_POS.z);
     this.playerGroup.rotation.set(0, 0, 0);
 
@@ -878,7 +878,7 @@ export class Boat {
   recoverPlayer() {
     if (!this.isManOverboard) return;
 
-    this.group.attach(this.playerGroup);
+    this.hull.add(this.playerGroup);
     this.playerGroup.position.set(PLAYER_BOARD_POS.x, PLAYER_BOARD_POS.y, PLAYER_BOARD_POS.z);
     this.playerGroup.rotation.set(0, 0, 0);
     this.resetOars();

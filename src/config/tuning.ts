@@ -43,6 +43,10 @@ export interface TuningConfig {
   initialBattery: number;
   /** Seconds a dead drone battery takes to recharge (chase camera runs meanwhile). */
   batteryRechargeSeconds: number;
+  /** Seconds before recharge ends when the radio rumbles and the countdown shows. */
+  droneReadyCountdownSeconds: number;
+  /** Seconds the static screen covers the cut back to the drone view (before and after the switch). */
+  droneSwitchStaticSeconds: number;
   /** Third-person boat camera shown while the drone is recharging. */
   chaseCamera: ChaseCameraTuning;
   /** Which view replaces the dead drone feed: 'pov' (engine operator) or 'chase'. */
@@ -64,6 +68,8 @@ export interface TuningConfig {
 export const TUNING: TuningConfig = {
   initialBattery: 100,
   batteryRechargeSeconds: 30,
+  droneReadyCountdownSeconds: 5,
+  droneSwitchStaticSeconds: 0.8,
   chaseCamera: {
     distance: 9,
     height: 4,

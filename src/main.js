@@ -126,6 +126,11 @@ const BATTERY_RECHARGE_SECONDS =
   ?? readPositive(import.meta.env.VITE_BATTERY_RECHARGE_SECONDS)
   ?? TUNING.batteryRechargeSeconds;
 
+const DRONE_READY_COUNTDOWN_SECONDS =
+  readPositive(import.meta.env.VITE_DRONE_READY_COUNTDOWN_SECONDS, 60) ?? TUNING.droneReadyCountdownSeconds;
+const DRONE_SWITCH_STATIC_SECONDS =
+  readPositive(import.meta.env.VITE_DRONE_SWITCH_STATIC_SECONDS, 5) ?? TUNING.droneSwitchStaticSeconds;
+
 const CHASE_CAMERA_OPTIONS = {
   distance: readPositive(import.meta.env.VITE_CHASE_CAMERA_DISTANCE, 100) ?? TUNING.chaseCamera.distance,
   height: readPositive(import.meta.env.VITE_CHASE_CAMERA_HEIGHT, 100) ?? TUNING.chaseCamera.height,
@@ -263,8 +268,6 @@ class Game {
     this.hudRankBadge = document.getElementById('hud-rank-badge');
     this.hudRankTitle = document.getElementById('hud-rank-title');
     this.hudScorePill = document.getElementById('hud-score-pill');
-    this.povScore = document.getElementById('pov-score');
-    this.povScoreValue = document.getElementById('pov-score-value');
     this.hudRankBar = document.getElementById('hud-rank-bar');
     this.hudRankNext = document.getElementById('hud-rank-next');
     this.hudHighScore = document.getElementById('hud-high-score');
@@ -313,6 +316,7 @@ class Game {
       batteryFill: document.getElementById('osd-battery-fill'),
       batteryVal: document.getElementById('osd-battery-val'),
       batteryWarningVal: document.getElementById('osd-battery-warning-val'),
+      droneReadyVal: document.getElementById('osd-drone-ready-val'),
       degrade: document.getElementById('osd-degrade'),
       gps: document.getElementById('osd-gps'),
       threatCount: document.getElementById('osd-threat-count'),
@@ -325,8 +329,13 @@ class Game {
     this.batteryDeadTimer = 0;
     this.chaseCamera = new ChaseCamera(CHASE_CAMERA_OPTIONS);
     this.povCamera = new MountCamera(POV_CAMERA_OPTIONS);
+    this.floatLocal = new THREE.Vector3();
+    this.floatRight = new THREE.Vector3();
+    this.floatSide = new THREE.Vector3();
     this.batteryCam = null; // whichever camera currently replaces the drone feed
     this.rechargedTimer = 0;
+    this.switchStaticTimer = 0;
+    this.droneReadySeconds = 0;
     this.akReloadPending = false;
     this.akShotCooldownUntil = 0;
     this.fps = 0;
@@ -731,11 +740,14 @@ class Game {
     this.batteryDeadTimer = 0;
     this.endBatteryChaseCamera();
     this.rechargedTimer = 0;
+    this.switchStaticTimer = 0;
+    this.droneReadySeconds = 0;
+    this.boatCrew.oarsman.soldier.chestRadio.update(0, false);
     this.akReloadPending = false;
     this.akShotCooldownUntil = 0;
     this.prevThreatCount = 0;
     if (this.osd.root) {
-      this.osd.root.classList.remove('low-battery', 'signal-lost', 'battery-recharged');
+      this.osd.root.classList.remove('low-battery', 'signal-lost', 'battery-recharged', 'drone-ready', 'switch-static');
     }
     if (this.container) this.container.classList.remove('feed-degraded');
 
@@ -1162,15 +1174,40 @@ class Game {
   }
 
   createFloatingScore(worldPos, text, type = 'whack') {
-    const vector = worldPos.clone();
-    vector.y += 1.0;
-    vector.project(this.renderer.camera);
+    // Show the popup beside the boat on the side of the impact. Rotor kills
+    // (and anything dead centre) pick a side at random.
+    this.boat.group.updateMatrixWorld(true);
+    this.floatLocal.copy(worldPos);
+    this.boat.group.worldToLocal(this.floatLocal);
+    const hitSign =
+      Math.abs(this.floatLocal.z) < 0.4 || type === 'shred'
+        ? (Math.random() < 0.5 ? -1 : 1)
+        : Math.sign(this.floatLocal.z);
 
-    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+    const camera = this.renderer.camera;
+    camera.updateMatrixWorld();
+    const pov = !!this.batteryCam && BATTERY_CAMERA === 'pov';
+    let x;
+    let y;
+    if (pov) {
+      // The eye sits inside the boat: pin popups to the matching screen edge.
+      this.floatRight.setFromMatrixColumn(camera.matrixWorld, 0);
+      this.floatSide.set(0, 0, 1).transformDirection(this.boat.group.matrixWorld);
+      const screenSign = hitSign * (this.floatSide.dot(this.floatRight) >= 0 ? 1 : -1);
+      x = window.innerWidth * (0.5 + screenSign * 0.27);
+      y = window.innerHeight * (0.5 + (Math.random() - 0.5) * 0.12);
+    } else {
+      this.floatSide.set(0.3, 1.2, hitSign * 2.4);
+      this.boat.group.localToWorld(this.floatSide);
+      this.floatSide.project(camera);
+      x = (this.floatSide.x * 0.5 + 0.5) * window.innerWidth;
+      y = (-(this.floatSide.y * 0.5) + 0.5) * window.innerHeight;
+      x = Math.min(Math.max(x, 60), window.innerWidth - 60);
+      y = Math.min(Math.max(y, 60), window.innerHeight - 60);
+    }
 
     const popup = document.createElement('div');
-    popup.className = `float-score type-${type}`;
+    popup.className = `float-score type-${type}${pov ? ' pov' : ''}`;
     popup.textContent = text;
     popup.style.left = `${x}px`;
     popup.style.top = `${y}px`;
@@ -1512,7 +1549,6 @@ class Game {
     if (this.hudRankBadge) this.hudRankBadge.innerHTML = rankIconMarkup(rankInfo.current);
     if (this.hudRankTitle) this.hudRankTitle.textContent = getRankTitle(rankInfo.current);
     if (this.hudScorePill) this.hudScorePill.textContent = t('hud.scorePill', { score });
-    if (this.povScoreValue) this.povScoreValue.textContent = String(score);
     if (this.hudHighScore) this.hudHighScore.textContent = Math.max(this.highScore, score);
     if (this.hudRankBar) this.hudRankBar.style.width = `${(progress * 100).toFixed(1)}%`;
 
@@ -1659,8 +1695,20 @@ class Game {
       this.rechargedTimer = Math.max(0, this.rechargedTimer - dt);
     }
 
+    if (this.switchStaticTimer > 0) {
+      this.switchStaticTimer = Math.max(0, this.switchStaticTimer - dt);
+    }
+
+    const radio = this.boatCrew.oarsman.soldier.chestRadio;
     if (this.batteryDead) {
       this.batteryDeadTimer += dt;
+      const remaining = Math.max(0, BATTERY_RECHARGE_SECONDS - this.batteryDeadTimer);
+      const countdown = remaining <= Math.min(DRONE_READY_COUNTDOWN_SECONDS, BATTERY_RECHARGE_SECONDS);
+      this.droneReadySeconds = countdown ? Math.ceil(remaining) : 0;
+      radio.update(dt, countdown);
+      if (remaining <= DRONE_SWITCH_STATIC_SECONDS) {
+        this.switchStaticTimer = DRONE_SWITCH_STATIC_SECONDS;
+      }
       // Show the recharge progress on the battery bar while the chase cam runs.
       this.battery = Math.min(100, (this.batteryDeadTimer / BATTERY_RECHARGE_SECONDS) * 100);
       if (this.batteryDeadTimer >= BATTERY_RECHARGE_SECONDS) {
@@ -1668,6 +1716,9 @@ class Game {
         this.batteryDead = false;
         this.batteryDeadTimer = 0;
         this.rechargedTimer = 3;
+        this.droneReadySeconds = 0;
+        this.switchStaticTimer = DRONE_SWITCH_STATIC_SECONDS * 0.5;
+        radio.update(0, false);
         this.endBatteryChaseCamera();
       }
       return;
@@ -1769,7 +1820,11 @@ class Game {
 
     this.osd.root.classList.toggle('low-battery', lowBattery);
     this.osd.root.classList.toggle('signal-lost', playing && this.batteryDead);
-    if (this.povScore) this.povScore.classList.toggle('visible', playing && !!this.batteryCam && BATTERY_CAMERA === 'pov');
+    this.osd.root.classList.toggle('drone-ready', playing && this.batteryDead && this.droneReadySeconds > 0);
+    this.osd.root.classList.toggle('switch-static', playing && this.switchStaticTimer > 0);
+    if (this.osd.droneReadyVal && this.droneReadySeconds > 0) {
+      this.osd.droneReadyVal.textContent = String(this.droneReadySeconds);
+    }
     this.osd.root.classList.toggle(
       'battery-recharged',
       playing && this.rechargedTimer > 0

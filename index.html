@@ -104,15 +104,18 @@
         <div class="osd-signal-loss-bar"><span data-i18n="osd.alert.signalLost">SIGNAL LOST</span></div>
       </div>
 
+      <!-- Radio countdown before the drone feed returns -->
+      <div class="osd-drone-ready" id="osd-drone-ready"><span data-i18n="osd.alert.droneReady">DRONE READY IN</span> <span id="osd-drone-ready-val">5</span> <span data-i18n="osd.alert.sec">SEC</span></div>
+
+      <!-- Static that covers the cut back to the drone view -->
+      <div class="osd-switch-static" id="osd-switch-static"><div class="osd-snow"></div></div>
+
       <!-- Battery swapped -->
       <div class="osd-battery-recharged" id="osd-battery-recharged" data-i18n="osd.alert.batteryRecharged">BATTERY RECHARGED</div>
     </div>
 
     <!-- UI Overlay Layer -->
     <div id="ui-layer">
-      <!-- Big score readout for the first-person (battery-out) view -->
-      <div class="pov-score" id="pov-score"><span class="pov-score-label">SCORE</span><span class="pov-score-value" id="pov-score-value">0</span></div>
-
       <!-- Merged rank + score HUD -->
       <div class="hud-header">
         <div class="hud-panel rank-panel">
@@ -179,7 +182,7 @@
               id="touch-left"
               aria-label="Steer left"
             >
-              <span class="steer-glyph" aria-hidden="true">&#8249;</span>
+              <svg class="steer-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 L8 12 L15 19" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <button
               class="touch-btn touch-steer-btn"
@@ -187,7 +190,7 @@
               id="touch-right"
               aria-label="Steer right"
             >
-              <span class="steer-glyph" aria-hidden="true">&#8250;</span>
+              <svg class="steer-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5 L16 12 L9 19" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
         </div>

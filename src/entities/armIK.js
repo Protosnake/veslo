@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const UPPER_ARM_LENGTH = 0.3;
 const FOREARM_LENGTH = 0.28;
-const MAX_REACH = UPPER_ARM_LENGTH + FOREARM_LENGTH - 0.005;
+export const MAX_REACH = UPPER_ARM_LENGTH + FOREARM_LENGTH - 0.005;
 
 export function createArmScratch() {
   return {

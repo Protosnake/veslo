@@ -18,7 +18,8 @@ const GEO = {
   button: new THREE.BoxGeometry(0.022, 0.05, 0.018),
   antenna: new THREE.CylinderGeometry(0.006, 0.01, 0.12, 6),
   antennaBase: new THREE.CylinderGeometry(0.014, 0.014, 0.02, 8),
-  led: new THREE.SphereGeometry(0.008, 6, 5)
+  led: new THREE.SphereGeometry(0.008, 6, 5),
+  stroke: new THREE.BoxGeometry(0.05, 0.012, 0.004)
 };
 
 function part(geometry, material, position, rotation) {
@@ -51,5 +52,64 @@ export class ChestRadio {
 
     this.group.add(part(GEO.antennaBase, MATS.knob, [-0.03, 0.085, 0.02]));
     this.group.add(part(GEO.antenna, MATS.antenna, [-0.035, 0.15, 0.015], [0, 0, 0.12]));
+
+    this.buildBurst();
+    this.time = 0;
+    this.base = null;
+  }
+
+  // Cartoon "vibrating" strokes: short bars radiating from the radio that pulse
+  // outward and fade, like the motion lines drawn around a buzzing phone.
+  buildBurst() {
+    this.burst = new THREE.Group();
+    this.burst.position.set(0, 0.02, 0.07);
+    this.burst.visible = false;
+    this.group.add(this.burst);
+    this.strokes = [];
+    const count = 8;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 + Math.PI / count;
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffe14a,
+        transparent: true,
+        depthTest: false
+      });
+      const mesh = new THREE.Mesh(GEO.stroke, material);
+      mesh.renderOrder = 10;
+      const holder = new THREE.Group();
+      holder.rotation.z = angle;
+      holder.add(mesh);
+      this.burst.add(holder);
+      this.strokes.push({ mesh, material, phase: (i % 4) / 4 });
+    }
+  }
+
+  /** Shake the radio and emit motion strokes while `active`; call every frame. */
+  update(dt, active) {
+    if (!this.base) this.base = this.group.position.clone();
+    if (!active) {
+      if (this.burst.visible) {
+        this.burst.visible = false;
+        this.group.position.copy(this.base);
+        this.group.rotation.set(0, 0, 0);
+      }
+      return;
+    }
+    this.time += dt;
+    const t = this.time;
+    this.burst.visible = true;
+    // High-frequency jitter plus a slow wobble.
+    this.group.position.set(
+      this.base.x + Math.sin(t * 90) * 0.006,
+      this.base.y + Math.sin(t * 110 + 1) * 0.006,
+      this.base.z
+    );
+    this.group.rotation.z = Math.sin(t * 70) * 0.12;
+    for (const stroke of this.strokes) {
+      const k = (t * 2.2 + stroke.phase) % 1;
+      stroke.mesh.position.x = 0.09 + k * 0.1;
+      stroke.mesh.scale.setScalar(1 - k * 0.4);
+      stroke.material.opacity = Math.sin(Math.PI * Math.min(1, k * 1.15)) * 0.95;
+    }
   }
 }

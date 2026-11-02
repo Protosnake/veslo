@@ -333,7 +333,7 @@ textarea {
   text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 4px 15px rgba(255, 230, 0, 0.8);
   transform: translate(-50%, -50%);
   animation: floatUpAndFade 0.85s forwards ease-out;
-  z-index: 50;
+  z-index: 60;
 }
 
 .float-score.type-shred {
@@ -347,6 +347,11 @@ textarea {
   font-size: 28px;
   text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 0 14px #2cd9ff;
 }
+
+/* First-person view: larger so it reads against the scene */
+.float-score.pov { font-size: 52px; }
+.float-score.pov.type-shred { font-size: 64px; }
+.float-score.pov.type-ram { font-size: 46px; }
 
 @keyframes floatUpAndFade {
   0% { opacity: 1; transform: translate(-50%, -50%) scale(0.85); }
@@ -1597,6 +1602,9 @@ body.game-over .osd-heading {
 }
 
 .osd-alert.warn { color: var(--osd-warn); }
+
+/* Battery-out view stacks SIGNAL LOST (18%) and DRONE READY IN (28%); drop alerts below them. */
+.drone-osd.signal-lost .osd-alert { top: 38%; }
 .osd-alert.danger { color: var(--osd-danger); text-shadow: 0 0 12px rgba(255, 77, 94, 0.6); }
 
 /* Bottom telemetry */
@@ -1825,6 +1833,44 @@ body.game-over .osd-heading {
   text-shadow: 0 0 16px rgba(255, 45, 60, 0.9);
   white-space: nowrap;
   animation: signalLostBlink 0.8s steps(2) infinite;
+}
+
+.osd-drone-ready {
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 52;
+  padding: 8px 20px;
+  border: 2px solid #ffe14a;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffe14a;
+  font-size: clamp(12px, 2vmin, 18px);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  white-space: nowrap;
+  text-shadow: 0 0 14px rgba(255, 225, 74, 0.8);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.drone-osd.drone-ready .osd-drone-ready {
+  opacity: 1;
+  visibility: visible;
+}
+
+.osd-switch-static {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.drone-osd.switch-static .osd-switch-static {
+  opacity: 1;
 }
 
 .osd-battery-recharged {
@@ -2173,11 +2219,11 @@ body.game-over .osd-heading {
   color: var(--osd-bright);
 }
 
-.steer-glyph {
-  font-size: clamp(26px, 10vmin, 46px);
-  font-weight: 900;
-  line-height: 1;
-  transform: translateY(-2px);
+.touch-btn svg.steer-glyph {
+  width: 50%;
+  height: 50%;
+  fill: none;
+  display: block;
 }
 
 .touch-hit {
@@ -2668,10 +2714,6 @@ body.intro .drone-osd {
     height: 64px;
   }
 
-  .steer-glyph {
-    font-size: 34px;
-  }
-
   .touch-hit {
     width: 80px;
     height: 80px;
@@ -2705,21 +2747,3 @@ body.intro .drone-osd {
 .touch-device .osd-top-left .osd-battery {
   margin-top: 0;
 }
-
-/* First-person (battery-out) view: score floats above the rower */
-.pov-score {
-  position: absolute;
-  top: 70px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  font-family: var(--osd-mono);
-  color: var(--osd-bright);
-  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
-  pointer-events: none;
-}
-.pov-score.visible { display: flex; }
-.pov-score-label { font-size: 11px; letter-spacing: 0.18em; color: var(--osd-dim); }
-.pov-score-value { font-size: 34px; letter-spacing: 0.04em; }
