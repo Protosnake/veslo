@@ -9,3 +9,6 @@ src/dev/*.local.js
 
 # Local tuning overrides
 .env.local
+
+# Claude Code worktrees
+.claude/worktrees/
