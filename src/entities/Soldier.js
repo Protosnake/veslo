@@ -1,10 +1,19 @@
 import * as THREE from 'three';
+import { ChestRadio } from './ChestRadio.js';
 
 export const SOLDIER_MATS = {
-  skin: new THREE.MeshLambertMaterial({ color: 0xd6a37d }),
-  uniform: new THREE.MeshLambertMaterial({ color: 0x3c4a33, flatShading: true }),
-  vest: new THREE.MeshLambertMaterial({ color: 0x242c1f, flatShading: true }),
-  boot: new THREE.MeshLambertMaterial({ color: 0x14170f }),
+  skin: new THREE.MeshLambertMaterial({ color: 0xd6a37d, flatShading: true }),
+  uniform: new THREE.MeshLambertMaterial({ color: 0x5a6844, flatShading: true }),
+  helmet: new THREE.MeshLambertMaterial({ color: 0x4a5638, flatShading: true }),
+  vest: new THREE.MeshLambertMaterial({ color: 0x262a20, flatShading: true }),
+  boot: new THREE.MeshLambertMaterial({ color: 0x2b241c, flatShading: true }),
+  glove: new THREE.MeshLambertMaterial({ color: 0x2c2b24, flatShading: true }),
+  webbing: new THREE.MeshLambertMaterial({ color: 0x6e6a4c, flatShading: true }),
+  buckle: new THREE.MeshStandardMaterial({ color: 0x6a6b5c, roughness: 0.5, metalness: 0.5 }),
+  sole: new THREE.MeshLambertMaterial({ color: 0x15130f }),
+  strap: new THREE.MeshLambertMaterial({ color: 0x0c0e0a }),
+  lens: new THREE.MeshStandardMaterial({ color: 0x3d5a60, roughness: 0.2, metalness: 0.3 }),
+  eye: new THREE.MeshBasicMaterial({ color: 0x0b0b0a }),
   metal: new THREE.MeshStandardMaterial({
     color: 0x20261f,
     roughness: 0.62,
@@ -14,15 +23,15 @@ export const SOLDIER_MATS = {
 
 const SMUGGLER_MATS = {
   charcoal: {
-    cloth: new THREE.MeshLambertMaterial({ color: 0x1b1d1f, flatShading: true }),
+    cloth: new THREE.MeshLambertMaterial({ color: 0x26292b, flatShading: true }),
     hat: new THREE.MeshLambertMaterial({ color: 0x101113, flatShading: true })
   },
   olive: {
-    cloth: new THREE.MeshLambertMaterial({ color: 0x2b3026, flatShading: true }),
+    cloth: new THREE.MeshLambertMaterial({ color: 0x3a4030, flatShading: true }),
     hat: new THREE.MeshLambertMaterial({ color: 0x151810, flatShading: true })
   },
   navy: {
-    cloth: new THREE.MeshLambertMaterial({ color: 0x1a2029, flatShading: true }),
+    cloth: new THREE.MeshLambertMaterial({ color: 0x232b38, flatShading: true }),
     hat: new THREE.MeshLambertMaterial({ color: 0x0d1116, flatShading: true })
   }
 };
@@ -40,30 +49,93 @@ const OUTFITS = {
   soldier: {
     cloth: SOLDIER_MATS.uniform,
     boots: SOLDIER_MATS.boot,
-    hat: SOLDIER_MATS.vest,
-    vest: SOLDIER_MATS.vest
+    hat: SOLDIER_MATS.helmet,
+    vest: SOLDIER_MATS.vest,
+    gloves: SOLDIER_MATS.glove,
+    headgear: 'helmet'
   },
   ...Object.fromEntries(
     SMUGGLER_OUTFITS.map((key) => {
       const look = SMUGGLER_MATS[key.replace('smuggler-', '')];
-      return [key, { cloth: look.cloth, boots: SOLDIER_MATS.boot, hat: look.hat, vest: null }];
+      const headgear = key === 'smuggler-olive' ? 'cap' : 'beanie';
+      return [
+        key,
+        {
+          cloth: look.cloth,
+          boots: SOLDIER_MATS.boot,
+          hat: look.hat,
+          vest: null,
+          gloves: SOLDIER_MATS.skin,
+          headgear
+        }
+      ];
     })
   )
 };
 
+// Box whose top and bottom faces can differ in size: gives the torso and
+// plate carrier a shoulders-to-waist taper instead of a plain crate.
+function taperedBox(topW, botW, height, topD, botD) {
+  const geometry = new THREE.BoxGeometry(1, height, 1);
+  const position = geometry.attributes.position;
+  for (let i = 0; i < position.count; i += 1) {
+    const top = position.getY(i) > 0;
+    position.setX(i, position.getX(i) * (top ? topW : botW));
+    position.setZ(i, position.getZ(i) * (top ? topD : botD));
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 const GEO = {
-  pelvis: new THREE.BoxGeometry(0.36, 0.2, 0.26),
-  thigh: new THREE.BoxGeometry(0.18, 0.42, 0.2),
-  shin: new THREE.BoxGeometry(0.16, 0.32, 0.18),
-  boot: new THREE.BoxGeometry(0.17, 0.16, 0.3),
-  torso: new THREE.BoxGeometry(0.54, 0.52, 0.3),
-  vest: new THREE.BoxGeometry(0.48, 0.42, 0.35),
+  pelvis: taperedBox(0.4, 0.24, 0.14, 0.27, 0.22),
+  thigh: new THREE.CylinderGeometry(0.095, 0.072, 0.42, 6),
+  hipBall: new THREE.SphereGeometry(0.092, 6, 4),
+  kneeBall: new THREE.SphereGeometry(0.07, 6, 4),
+  cargo: new THREE.BoxGeometry(0.05, 0.14, 0.13),
+  shin: new THREE.CylinderGeometry(0.07, 0.052, 0.32, 6),
+  kneePad: new THREE.BoxGeometry(0.13, 0.12, 0.05),
+  cuff: new THREE.CylinderGeometry(0.085, 0.09, 0.07, 8),
+  bootUpper: taperedBox(0.16, 0.17, 0.13, 0.22, 0.26),
+  bootToe: new THREE.SphereGeometry(0.085, 6, 4),
+  bootSole: new THREE.BoxGeometry(0.2, 0.05, 0.34),
+  torso: taperedBox(0.56, 0.44, 0.52, 0.31, 0.26),
+  belt: new THREE.BoxGeometry(0.47, 0.08, 0.29),
+  buckle: new THREE.BoxGeometry(0.06, 0.045, 0.02),
+  vest: taperedBox(0.5, 0.46, 0.36, 0.36, 0.33),
+  pouch: new THREE.BoxGeometry(0.1, 0.13, 0.06),
+  vestStrap: new THREE.BoxGeometry(0.09, 0.05, 0.33),
+  backPlate: new THREE.BoxGeometry(0.3, 0.3, 0.05),
+  holster: new THREE.BoxGeometry(0.06, 0.17, 0.11),
+  collar: new THREE.CylinderGeometry(0.1, 0.13, 0.06, 8),
   neck: new THREE.CylinderGeometry(0.06, 0.07, 0.09, 8),
-  head: new THREE.SphereGeometry(0.15, 8, 7),
-  helmet: new THREE.SphereGeometry(0.17, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
-  upperArm: new THREE.BoxGeometry(0.12, 0.3, 0.13),
-  forearm: new THREE.BoxGeometry(0.1, 0.26, 0.11),
-  hand: new THREE.BoxGeometry(0.09, 0.11, 0.07)
+  scarf: new THREE.TorusGeometry(0.085, 0.034, 5, 10),
+  head: new THREE.SphereGeometry(0.15, 7, 5),
+  mouth: new THREE.BoxGeometry(0.06, 0.008, 0.01),
+  nose: new THREE.BoxGeometry(0.032, 0.05, 0.04),
+  ear: new THREE.SphereGeometry(0.03, 6, 5),
+  eye: new THREE.BoxGeometry(0.036, 0.02, 0.012),
+  brow: new THREE.BoxGeometry(0.06, 0.014, 0.014),
+  helmet: new THREE.SphereGeometry(0.18, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+  helmetRail: new THREE.BoxGeometry(0.02, 0.04, 0.14),
+  helmetRim: new THREE.CylinderGeometry(0.18, 0.185, 0.025, 12),
+  helmetMount: new THREE.BoxGeometry(0.07, 0.05, 0.03),
+  goggleBand: new THREE.TorusGeometry(0.16, 0.012, 4, 14, Math.PI * 1.35),
+  goggles: new THREE.BoxGeometry(0.22, 0.065, 0.05),
+  beanie: new THREE.SphereGeometry(0.163, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.58),
+  beanieRoll: new THREE.CylinderGeometry(0.162, 0.166, 0.045, 10),
+  capDome: new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.42),
+  capBrim: new THREE.BoxGeometry(0.2, 0.014, 0.1),
+  shoulderPad: new THREE.SphereGeometry(0.085, 6, 4),
+  upperArm: new THREE.CylinderGeometry(0.072, 0.06, 0.3, 6),
+  forearm: new THREE.CylinderGeometry(0.06, 0.046, 0.26, 6),
+  elbowBall: new THREE.SphereGeometry(0.06, 6, 4),
+  elbowPad: new THREE.SphereGeometry(0.056, 6, 5),
+  armCuff: new THREE.CylinderGeometry(0.05, 0.047, 0.03, 8),
+  palm: new THREE.BoxGeometry(0.085, 0.085, 0.06),
+  knuckles: new THREE.BoxGeometry(0.085, 0.03, 0.065),
+  finger: new THREE.BoxGeometry(0.018, 0.05, 0.022),
+  thumb: new THREE.BoxGeometry(0.028, 0.06, 0.03)
 };
 
 // Joint order is also the order shown in the dev sprite viewer's rig panel.
@@ -131,9 +203,11 @@ function blend(rotation, axis, target, amount) {
   rotation[axis] += (target - rotation[axis]) * amount;
 }
 
-function buildMesh(geometry, material, position) {
+function buildMesh(geometry, material, position, scale, rotation) {
   const mesh = new THREE.Mesh(geometry, material);
   if (position) mesh.position.set(position[0], position[1], position[2]);
+  if (scale) mesh.scale.set(scale[0], scale[1], scale[2]);
+  if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
   mesh.castShadow = true;
   return mesh;
 }
@@ -152,7 +226,7 @@ export class Soldier {
   }
 
   build() {
-    this.group.add(buildMesh(GEO.pelvis, this.look.cloth, [0, 0.93, 0]));
+    this.group.add(buildMesh(GEO.pelvis, this.look.cloth, [0, 0.96, 0]));
 
     this.legs = {
       left: this.createLeg(-1),
@@ -164,20 +238,25 @@ export class Soldier {
     this.group.add(spine);
 
     spine.add(buildMesh(GEO.torso, this.look.cloth, [0, 0.26, 0]));
-    if (this.look.vest) {
-      spine.add(buildMesh(GEO.vest, this.look.vest, [0, 0.3, 0.01]));
-    }
+    spine.add(buildMesh(GEO.belt, SOLDIER_MATS.strap, [0, 0.02, 0]));
+    spine.add(buildMesh(GEO.buckle, SOLDIER_MATS.buckle, [0, 0.02, 0.145]));
+    if (this.look.vest) this.buildCarrier(spine);
 
     const neck = new THREE.Group();
     neck.position.y = 0.52;
     spine.add(neck);
     neck.add(buildMesh(GEO.neck, SOLDIER_MATS.skin, [0, 0.04, 0]));
+    if (this.look.vest) {
+      neck.add(buildMesh(GEO.collar, this.look.cloth, [0, 0.0, 0]));
+    } else {
+      // Civilians wear a loose scarf instead of a collar.
+      neck.add(buildMesh(GEO.scarf, this.look.cloth, [0, 0.02, 0.01], [1, 1, 1], [Math.PI / 2, 0, 0]));
+    }
 
     const head = new THREE.Group();
     head.position.y = 0.08;
     neck.add(head);
-    head.add(buildMesh(GEO.head, SOLDIER_MATS.skin, [0, 0.13, 0]));
-    head.add(buildMesh(GEO.helmet, this.look.hat, [0, 0.14, 0]));
+    this.buildHead(head);
 
     this.arms = {
       left: this.createArm(-1, spine),
@@ -203,21 +282,86 @@ export class Soldier {
     };
   }
 
+  // Plate carrier: tapered shell, shoulder straps, back panel and the chest radio.
+  buildCarrier(spine) {
+    spine.add(buildMesh(GEO.vest, this.look.vest, [0, 0.32, 0.005]));
+    for (const side of [-1, 1]) {
+      spine.add(buildMesh(GEO.vestStrap, this.look.vest, [side * 0.17, 0.52, 0]));
+    }
+    // One row of magazine pouches along the bottom of the carrier.
+    for (const x of [-0.14, 0, 0.14]) {
+      spine.add(buildMesh(GEO.pouch, SOLDIER_MATS.webbing, [x, 0.17, 0.2]));
+    }
+
+    // Chest radio on the left of the carrier (kept as a handle for interactions).
+    this.chestRadio = new ChestRadio();
+    this.chestRadio.group.position.set(-0.15, 0.37, 0.185);
+    spine.add(this.chestRadio.group);
+    spine.add(buildMesh(GEO.backPlate, SOLDIER_MATS.webbing, [0, 0.3, -0.2]));
+  }
+
+  buildHead(head) {
+    // Slightly egg-shaped skull, mouth line, nose, ears, eyes and brow so the face reads
+    // from the camera and the top-down view alike.
+    head.add(buildMesh(GEO.head, SOLDIER_MATS.skin, [0, 0.13, 0], [0.95, 1.05, 1]));
+    head.add(buildMesh(GEO.mouth, SOLDIER_MATS.eye, [0, 0.07, 0.139]));
+    head.add(buildMesh(GEO.nose, SOLDIER_MATS.skin, [0, 0.12, 0.155]));
+    for (const side of [-1, 1]) {
+      head.add(buildMesh(GEO.ear, SOLDIER_MATS.skin, [side * 0.142, 0.12, -0.005], [0.6, 1.2, 1]));
+      head.add(buildMesh(GEO.eye, SOLDIER_MATS.eye, [side * 0.052, 0.15, 0.142]));
+      head.add(buildMesh(GEO.brow, SOLDIER_MATS.eye, [side * 0.052, 0.178, 0.143], null, [0, 0, side * -0.12]));
+    }
+
+    const hat = this.look.hat;
+    switch (this.look.headgear) {
+      case 'beanie':
+        head.add(buildMesh(GEO.beanie, hat, [0, 0.15, 0], [1, 1, 1.02]));
+        head.add(buildMesh(GEO.beanieRoll, hat, [0, 0.185, 0]));
+        break;
+      case 'cap':
+        head.add(buildMesh(GEO.capDome, hat, [0, 0.16, -0.005], [1, 0.9, 1.04]));
+        head.add(buildMesh(GEO.capBrim, hat, [0, 0.215, 0.165], null, [0.12, 0, 0]));
+        break;
+      default:
+        // Combat helmet: shell, rim, NVG mount, goggles pushed up.
+        head.add(buildMesh(GEO.helmet, hat, [0, 0.15, 0], [1.05, 0.85, 1.1]));
+        for (const side of [-1, 1]) {
+          head.add(buildMesh(GEO.helmetRail, SOLDIER_MATS.metal, [side * 0.17, 0.19, 0]));
+        }
+        head.add(buildMesh(GEO.helmetRim, hat, [0, 0.145, 0], [1, 1, 1.05]));
+        head.add(buildMesh(GEO.helmetMount, SOLDIER_MATS.metal, [0, 0.26, 0.15], null, [0.5, 0, 0]));
+        head.add(buildMesh(GEO.goggles, SOLDIER_MATS.lens, [0, 0.235, 0.158], null, [-0.15, 0, 0]));
+        head.add(buildMesh(GEO.goggleBand, SOLDIER_MATS.strap, [0, 0.2, 0], null, [Math.PI / 2, 0, Math.PI * 0.15]));
+    }
+  }
+
   createLeg(side) {
     const hip = new THREE.Group();
     hip.position.set(side * 0.115, 0.92, 0);
     this.group.add(hip);
-    hip.add(buildMesh(GEO.thigh, this.look.cloth, [0, -0.21, 0]));
+    hip.add(buildMesh(GEO.hipBall, this.look.cloth, [0, 0, 0]));
+    hip.add(buildMesh(GEO.thigh, this.look.cloth, [0, -0.21, 0], [1, 1, 0.95]));
+    if (this.look.vest && side < 0) {
+      hip.add(buildMesh(GEO.cargo, this.look.cloth, [-0.1, -0.2, 0.01]));
+    }
+    if (this.look.vest && side > 0) {
+      hip.add(buildMesh(GEO.holster, SOLDIER_MATS.strap, [0.1, -0.15, 0.01]));
+    }
 
     const knee = new THREE.Group();
     knee.position.y = -0.42;
     hip.add(knee);
-    knee.add(buildMesh(GEO.shin, this.look.cloth, [0, -0.16, 0]));
+    knee.add(buildMesh(GEO.kneeBall, this.look.cloth, [0, 0, 0]));
+    knee.add(buildMesh(GEO.shin, this.look.cloth, [0, -0.16, 0], [1, 1, 0.95]));
+    if (this.look.vest) knee.add(buildMesh(GEO.kneePad, SOLDIER_MATS.webbing, [0, 0.0, 0.075]));
 
     const ankle = new THREE.Group();
     ankle.position.y = -0.32;
     knee.add(ankle);
-    ankle.add(buildMesh(GEO.boot, this.look.boots, [0, -0.09, 0.04]));
+    ankle.add(buildMesh(GEO.cuff, this.look.boots, [0, 0.0, 0]));
+    ankle.add(buildMesh(GEO.bootUpper, this.look.boots, [0, -0.07, 0.035]));
+    ankle.add(buildMesh(GEO.bootToe, this.look.boots, [0, -0.1, 0.12], [0.95, 0.7, 1]));
+    ankle.add(buildMesh(GEO.bootSole, SOLDIER_MATS.sole, [0, -0.15, 0.04]));
 
     return { hip, knee, ankle, side };
   }
@@ -226,18 +370,32 @@ export class Soldier {
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.3, 0.52, 0);
     parent.add(shoulder);
+    shoulder.add(buildMesh(GEO.shoulderPad, this.look.vest || this.look.cloth, [0, 0.0, 0], [1, 0.95, 1]));
     shoulder.add(buildMesh(GEO.upperArm, this.look.cloth, [0, -0.15, 0]));
 
     const elbow = new THREE.Group();
     elbow.position.y = -0.3;
     shoulder.add(elbow);
+    elbow.add(buildMesh(GEO.elbowBall, this.look.cloth, [0, 0, 0]));
     elbow.add(buildMesh(GEO.forearm, this.look.cloth, [0, -0.13, 0]));
+    if (this.look.vest) elbow.add(buildMesh(GEO.elbowPad, SOLDIER_MATS.webbing, [0, 0.0, -0.03]));
+    elbow.add(buildMesh(GEO.armCuff, this.look.cloth, [0, -0.235, 0]));
 
     const wrist = new THREE.Group();
     wrist.position.y = -0.26;
     elbow.add(wrist);
-    const hand = buildMesh(GEO.hand, SOLDIER_MATS.skin, [0, -0.02, 0]);
+
+    // Hand: palm, curled fingers and a thumb. A Group so props can parent to it.
+    const hand = new THREE.Group();
+    hand.position.y = -0.02;
     wrist.add(hand);
+    const glove = this.look.gloves;
+    hand.add(buildMesh(GEO.palm, glove, [0, 0, 0]));
+    hand.add(buildMesh(GEO.knuckles, glove, [0, -0.055, 0.005], null, [0.25, 0, 0]));
+    for (const x of [-0.03, -0.01, 0.01, 0.03]) {
+      hand.add(buildMesh(GEO.finger, SOLDIER_MATS.skin, [x, -0.095, 0.02], null, [0.5, 0, 0]));
+    }
+    hand.add(buildMesh(GEO.thumb, glove, [-side * 0.052, -0.01, 0.025], null, [0.2, 0, -side * 0.2]));
 
     return { shoulder, elbow, wrist, hand, side };
   }
