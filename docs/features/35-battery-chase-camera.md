@@ -1,6 +1,6 @@
 # 35 — Battery-out chase camera
 
-Source: `src/core/ChaseCamera.ts`, `src/core/MountCamera.ts`, `src/entities/BoatOfficer.js`, `src/main.js`, `src/config/tuning.ts`, `src/style.css`.
+Source: `src/core/ChaseCamera.ts`, `src/core/MountCamera.ts`, `src/entities/BoatOfficer.js`, `src/entities/BoatCrew.js`, `src/main.js`, `src/config/tuning.ts`, `src/style.css`.
 
 ```mermaid
 flowchart TD
@@ -33,6 +33,23 @@ Radio countdown: in the last `droneReadyCountdownSeconds` (5) of the recharge th
 
 Knobs: `VITE_BATTERY_CAMERA` / `?batteryCam=pov|chase`, `VITE_POV_CAMERA_FOV` (80), `VITE_POV_CAMERA_BLEND_SECONDS` (0.8), `VITE_BATTERY_RECHARGE_SECONDS` / `?recharge=` (default 30), `VITE_CHASE_CAMERA_DISTANCE`, `_HEIGHT`, `_BLEND_SECONDS`, `_FOV`.
 
+POV look: each frame `updateChaseCamera` sets the `MountCamera` yaw target = `sign(r) * r²` where `r = clamp(angularVelocity / turnSpeed, -1, 1)`, times 180° (look into the turn; the square keeps small turns calm) plus up to 20° toward the officer's closest enemy; the yaw eases at `yawSmoothing` and rotates the look direction about the mount's up axis. Separately `BoatCrew.updateGaze` turns the rower's and officer's head joints (clamped to ±80°) toward their own closest live enemy within 45 m, easing back to centre when none is in sight.
+
+```mermaid
+flowchart TD
+    A["each frame (not paused)"] --> B["BoatCrew.updateGaze: per crew member<br/>closest live smuggler within range"]
+    B --> C{"enemy in sight?"}
+    C -->|yes| D["head.yaw -> bearing (clamped 80 deg, eased)"]
+    C -->|no| E["head.yaw -> 0"]
+    B --> F["officer bearing"]
+    A --> R["officer.updateReverseLook: reverse speed -> 0..1, eased slowly<br/>torso 25deg + head 25deg over the shoulder"]
+    R --> H
+    A --> G["POV: turn = sign*(angVel / turnSpeed)^2 in -1..1"]
+    G --> H["yawTarget = turn*180deg + clamp(bearing, 20deg) + 45deg*reverse"]
+    F --> H
+    H --> I["MountCamera eases yaw, rotates look dir about up axis"]
+```
+
 ## Decisions
 
 - **Battery-out shows the engine operator's first-person view, not a black screen.** Why: the black screen was dead time; seeing the scene keeps the player engaged. Alternative: third-person `ChaseCamera`, built first and kept as `?batteryCam=chase`.
@@ -46,3 +63,7 @@ Knobs: `VITE_BATTERY_CAMERA` / `?batteryCam=pov|chase`, `VITE_POV_CAMERA_FOV` (8
   **Alternatives:** Keep projecting over the target (unreliable in POV); keep the score readout (rejected by the user).
 
 - **Decision:** Radio countdown + static cover the POV-to-drone cut instead of cutting instantly. **Why:** the hard cut between two unrelated views felt jarring and gave no warning. **Alternatives:** a fade to black (loses the drone-feed look), a longer camera blend (the drone pose is unrelated to the POV pose).
+
+- **Decision:** POV view yaw follows the boat's angular velocity (quadratic response, full 180° only at top turn rate) instead of a fixed forward view; the enemy nudge is capped at 20°. **Why:** a fixed forward view was too restrictive; looking into turns shows where the boat is going, while the enemy bias stays "slight". **Alternatives:** free-look input (no input in this mode), full lock-on to the enemy (too disorienting).
+
+- **Decision:** Reversing makes the engine operator look over the right shoulder (torso 25°, head 25°, POV +45°), eased at 1/s on reverse speed (full at 5 m/s). **Why:** a driver backing up naturally looks where the boat is heading; slow easing avoids dizziness. The IK shoulders are rotated with the spine so hands stay on the tiller and lifeline. **Alternatives:** instant snap (dizzy), looking over the left shoulder (right hand is on the tiller, so right turns the body into the tiller side).

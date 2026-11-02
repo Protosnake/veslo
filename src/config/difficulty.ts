@@ -47,17 +47,20 @@ export interface DifficultyTuning {
   spawn: {
     /** Multiplies every spawn interval; higher means fewer smugglers. */
     intervalScale: number;
-    baseInterval: number;
-    pressureDrop: number;
-    /** 1.4 keeps the old full-pressure point at 1,400 score. */
-    pressureGain: number;
-    pressureMidpoint: number;
+    /** Seconds between waves at run start (before intervalScale). */
+    startInterval: number;
+    /** Seconds between waves once fully ramped (before intervalScale). */
     minInterval: number;
-    jitterMin: number;
-    jitterMax: number;
-    warmupWaves: number;
-    warmupMin: number;
-    warmupMax: number;
+    /** Run seconds over which the interval falls linearly from start to min. */
+    rampSeconds: number;
+    /** +/- fraction of random wobble on each interval (0 = metronome). */
+    jitter: number;
+    /** Smugglers in the first wave group. */
+    startGroupSize: number;
+    /** Waves between each +1 in group size (linear growth). */
+    wavesPerExtra: number;
+    /** Group size ceiling. */
+    maxGroupSize: number;
   };
 }
 
@@ -88,15 +91,12 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
   },
   spawn: {
     intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 1.7),
-    baseInterval: 9,
-    pressureDrop: 3.5,
-    pressureGain: 1.4,
-    pressureMidpoint: 560,
-    minInterval: 3,
-    jitterMin: 0.7,
-    jitterMax: 1.3,
-    warmupWaves: 2,
-    warmupMin: 11,
-    warmupMax: 15
+    startInterval: envNumber(import.meta.env.VITE_SPAWN_START_INTERVAL, 8),
+    minInterval: envNumber(import.meta.env.VITE_SPAWN_MIN_INTERVAL, 3),
+    rampSeconds: envNumber(import.meta.env.VITE_SPAWN_RAMP_SECONDS, 240),
+    jitter: envNumber(import.meta.env.VITE_SPAWN_JITTER, 0.1),
+    startGroupSize: envNumber(import.meta.env.VITE_SPAWN_START_GROUP, 1),
+    wavesPerExtra: envNumber(import.meta.env.VITE_SPAWN_WAVES_PER_EXTRA, 4),
+    maxGroupSize: envNumber(import.meta.env.VITE_SPAWN_MAX_GROUP, 3)
   }
 };

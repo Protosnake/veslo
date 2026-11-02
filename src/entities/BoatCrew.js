@@ -1,5 +1,8 @@
+import * as THREE from 'three';
 import { BoatOfficer } from './BoatOfficer.js';
 import { BoatOarsman } from './BoatOarsman.js';
+
+const NOTICEABLE_STATES = new Set(['walking', 'swimming', 'disembarking', 'waiting']);
 
 export class BoatCrew {
   constructor(boat) {
@@ -10,6 +13,51 @@ export class BoatCrew {
 
     // Oarsman seated on the raised front bench, both hands solved onto the oar.
     this.oarsman = new BoatOarsman(boat);
+
+    this.head = new THREE.Vector3();
+    this.local = new THREE.Vector3();
+    /** Bearing (radians, soldier-local, +Y rotation) of the officer's watched enemy, or null. */
+    this.officerBearing = null;
+    this.gazeYaw = new Map();
+  }
+
+  /** Turn both crew heads toward the closest visible enemy (or back to centre). */
+  updateGaze(dt, smugglers, { range, maxYaw, smoothing }) {
+    this.officerBearing = this.lookAtClosest(this.officer.soldier, smugglers, dt, range, maxYaw, smoothing);
+    this.lookAtClosest(this.oarsman.soldier, smugglers, dt, range, maxYaw, smoothing);
+    // Reversing: the officer's head adds a little over-the-shoulder turn on top of the gaze.
+    this.officer.soldier.joints.head.rotation.y += this.officer.headLook;
+  }
+
+  lookAtClosest(soldier, smugglers, dt, range, maxYaw, smoothing) {
+    const head = soldier.joints.head;
+    head.getWorldPosition(this.head);
+    let best = null;
+    let bestSq = range * range;
+    for (const s of smugglers || []) {
+      if (!s || s.isDead || !s.group || !s.group.visible || !NOTICEABLE_STATES.has(s.state)) continue;
+      const dx = s.position.x - this.head.x;
+      const dz = s.position.z - this.head.z;
+      const distanceSq = dx * dx + dz * dz;
+      if (distanceSq < bestSq) {
+        bestSq = distanceSq;
+        best = s;
+      }
+    }
+
+    let bearing = null;
+    if (best) {
+      this.local.set(best.position.x, this.head.y, best.position.z);
+      soldier.group.worldToLocal(this.local);
+      bearing = Math.atan2(this.local.x, this.local.z);
+    }
+    const relative = bearing === null ? 0 : bearing - soldier.joints.spine.rotation.y; // head sits on the turned torso
+    const target = THREE.MathUtils.clamp(relative, -maxYaw, maxYaw);
+    const current = this.gazeYaw.get(soldier) ?? 0;
+    const next = current + (target - current) * (1 - Math.exp(-dt * smoothing));
+    this.gazeYaw.set(soldier, next);
+    head.rotation.y = next;
+    return bearing;
   }
 
   update() {

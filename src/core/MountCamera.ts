@@ -25,6 +25,8 @@ export interface MountCameraOptions {
   fov: number | null;
   /** Near clip plane for this view, or null to keep the renderer's. */
   near: number | null;
+  /** How fast (1/s) the view yaw eases toward its target. */
+  yawSmoothing: number;
 }
 
 export const DEFAULT_MOUNT_OPTIONS: MountCameraOptions = {
@@ -33,13 +35,20 @@ export const DEFAULT_MOUNT_OPTIONS: MountCameraOptions = {
   lookDistance: 20,
   blendSeconds: 0.8,
   fov: 80,
-  near: 0.1
+  near: 0.1,
+  yawSmoothing: 1.5
 };
+
+const UP = new THREE.Vector3(0, 1, 0);
 
 export class MountCamera {
   readonly options: MountCameraOptions;
   readonly position = new THREE.Vector3();
   readonly look = new THREE.Vector3();
+
+  /** Current view yaw (radians, about the mount's up axis) relative to straight ahead. */
+  yaw = 0;
+  private yawTarget = 0;
 
   private mount: CameraMount | null = null;
   private blend = 1;
@@ -58,8 +67,15 @@ export class MountCamera {
     return this.mount !== null;
   }
 
+  /** Where the view should turn to (radians, + = toward the mount's +X side). Eased in `update`. */
+  setYawTarget(radians: number): void {
+    this.yawTarget = radians;
+  }
+
   start(mount: CameraMount, from?: { position: THREE.Vector3; look: THREE.Vector3 }): void {
     this.mount = mount;
+    this.yaw = 0;
+    this.yawTarget = 0;
     this.sample();
     this.position.copy(this.livePos);
     this.look.copy(this.liveLook);
@@ -78,6 +94,7 @@ export class MountCamera {
 
   update(dt: number): void {
     if (!this.mount) return;
+    this.yaw += (this.yawTarget - this.yaw) * (1 - Math.exp(-dt * this.options.yawSmoothing));
     this.sample();
     if (this.blend < 1) {
       this.blend = Math.min(1, this.blend + dt / this.options.blendSeconds);
@@ -100,7 +117,7 @@ export class MountCamera {
     const orient = orientation ?? anchor;
     orient.updateWorldMatrix(true, false);
     orient.getWorldQuaternion(this.quat);
-    this.dir.copy(o.lookDirection).normalize().applyQuaternion(this.quat);
+    this.dir.copy(o.lookDirection).normalize().applyAxisAngle(UP, this.yaw).applyQuaternion(this.quat);
     this.liveLook.copy(this.livePos).addScaledVector(this.dir, o.lookDistance);
   }
 }

@@ -12,6 +12,7 @@ export class SmugglerManager {
 
     this.smugglers = [];
     this.spawnTimer = 0;
+    this.elapsed = 0;
     this.totalSmacked = 0;
     this.score = 0;
     this.isRunning = true;
@@ -22,7 +23,7 @@ export class SmugglerManager {
     this.smugglers.forEach((s) => s.destroy());
     this.smugglers = [];
     this.spawnTimer = 0.7;
-    this.firstWave = true;
+    this.elapsed = 0;
     this.waveCount = 0;
     this.totalSmacked = 0;
     this.score = 0;
@@ -35,32 +36,19 @@ export class SmugglerManager {
     return 1 + gain * (this.score / (this.score + midpoint));
   }
 
+  /** Linear in run time (not score), so pacing is the same every run. */
   getSpawnInterval() {
-    const tuning = DIFFICULTY_TUNING.spawn;
-    if (this.waveCount <= tuning.warmupWaves) {
-      return (tuning.warmupMin + Math.random() * (tuning.warmupMax - tuning.warmupMin)) * tuning.intervalScale;
-    }
-
-    const pressure = tuning.pressureGain * (this.score / (this.score + tuning.pressureMidpoint));
-    const baseInterval = Math.max(tuning.minInterval, tuning.baseInterval - pressure * tuning.pressureDrop);
-    return baseInterval * tuning.intervalScale * (tuning.jitterMin + Math.random() * (tuning.jitterMax - tuning.jitterMin));
+    const t = DIFFICULTY_TUNING.spawn;
+    const progress = Math.min(1, this.elapsed / Math.max(1, t.rampSeconds));
+    const base = t.startInterval + (t.minInterval - t.startInterval) * progress;
+    const wobble = 1 + (Math.random() * 2 - 1) * t.jitter;
+    return base * t.intervalScale * wobble;
   }
 
+  /** Deterministic: grows by one every `wavesPerExtra` waves up to the cap. */
   getGroupSize() {
-    const roll = Math.random();
-
-    if (this.waveCount <= 2) return 1;
-    if (this.waveCount <= 4) return roll < 0.6 ? 1 : 2;
-    if (this.waveCount <= 6) {
-      if (roll < 0.45) return 1;
-      if (roll < 0.75) return 2;
-      return 3;
-    }
-
-    if (roll < 0.35) return 1;
-    if (roll < 0.65) return 2;
-    if (roll < 0.85) return 3;
-    return 4;
+    const t = DIFFICULTY_TUNING.spawn;
+    return Math.min(t.maxGroupSize, t.startGroupSize + Math.floor(this.waveCount / t.wavesPerExtra));
   }
 
   getBaseSpeed() {
@@ -155,10 +143,10 @@ export class SmugglerManager {
     this.flushWhackBatchIfReady(boat);
 
     // Spawn timer
+    this.elapsed += dt;
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      const groupSize = this.firstWave ? 1 : this.getGroupSize();
-      this.firstWave = false;
+      const groupSize = this.getGroupSize();
       let spawnDistanceOffset = 0;
 
       for (let i = 0; i < groupSize; i++) {

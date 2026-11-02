@@ -24,9 +24,9 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    S["score"] --> P["pressure = pressureGain *<br/>score / (score + pressureMidpoint)"]
-    P --> W["baseInterval = max(minInterval,<br/>baseInterval - pressure * pressureDrop)"]
-    W --> J["* random jitter<br/>[jitterMin, jitterMax]"]
+    T["run time"] --> W["interval = lerp(startInterval, minInterval,<br/>time / rampSeconds)"]
+    W --> J["* intervalScale * (1 +/- jitter)"]
+    T --> G["group = min(maxGroup, 1 + floor(waves / wavesPerExtra))"]
     S --> V["speed = 1 + gain *<br/>score / (score + midpoint)"]
     S --> R["rank = highest threshold <= score"]
 ```
@@ -36,10 +36,12 @@ flowchart LR
 - Tunables are split by concern: `src/config/ranking.ts` holds `RANK_DEFINITIONS` (order, i18n key, sprite, optional `minScore` pin), `RANK_CURVE` (quadratic, linear, `roundDownTo`), and `PROMOTION_TUNING`; `src/config/difficulty.ts` holds speed and spawn tuning.
 - Defaults: `70n² + 500n` rounded down to 50 gives Junior Lieutenant at 10,150 and General at 31,650. The smallest gap is 550, above the 500-point propeller kill, so one kill cannot skip a rank.
 - `checkRankUp` returns every crossed rank in order. `main.js` queues them and chains banners (`visibleMs`, then `gapMs`), clearing the queue when a run starts. This preserves intermediate promotions that the old single-return version silently dropped.
-- Difficulty uses asymptotic curves instead of hard caps: `1 + gain * score / (score + midpoint)` for speed and a pressure ratio for spawn timing, so high scores keep ramping. Waves within `warmupWaves` use the calmer `warmupMin..warmupMax` range.
+- Difficulty uses asymptotic curves instead of hard caps: `1 + gain * score / (score + midpoint)` for speed and spawn timing is linear in run time (see Decisions).
 - Ranks remain per-run; `startGame()` resets `rankSystem`, clears the pending promotion queue, hides the active banner, and resets the run score.
 - `startGame()` also acquires the screen wake lock (released on pause and game over), and `main.js` registers the offline service worker at boot; both are orthogonal to ranking ([20-wake-lock.md](20-wake-lock.md), [22-offline-pwa.md](22-offline-pwa.md)).
 
 ## Decisions
 
 - **Spawn interval scale 2.5 → 1.7 (`VITE_SMUGGLER_SPAWN_INTERVAL_SCALE`).** Why: after slowing spawns, runs felt empty, especially during the battery-out view. Alternative: leave 2.5 and rely on `?spawn=` for testing. Revisit when: spawn pacing is playtested with AK back on.
+
+- **Decision:** Spawn pacing is linear in run time with deterministic group sizes, replacing score-based pressure, random group sizes (1-4), ±30% jitter and random warmup. **Why:** runs were unpredictable (a pile at once in one run, 2 smugglers in another) and score feedback made fast players swarmed. **Alternatives:** keep score pressure with smaller jitter (still reactive). Tune via `VITE_SPAWN_*`; set `VITE_SPAWN_JITTER=0` for a metronome.

@@ -157,7 +157,29 @@ const BATTERY_CAMERA = (() => {
 
 const POV_CAMERA_OPTIONS = {
   fov: readPositive(import.meta.env.VITE_POV_CAMERA_FOV, 120) ?? TUNING.povCamera.fov,
-  blendSeconds: readPositive(import.meta.env.VITE_POV_CAMERA_BLEND_SECONDS, 10) ?? TUNING.povCamera.blendSeconds
+  blendSeconds: readPositive(import.meta.env.VITE_POV_CAMERA_BLEND_SECONDS, 10) ?? TUNING.povCamera.blendSeconds,
+  yawSmoothing: readPositive(import.meta.env.VITE_POV_YAW_SMOOTHING, 60) ?? TUNING.povCamera.yawSmoothing
+};
+const POV_MAX_TURN_YAW =
+  THREE.MathUtils.degToRad(readPositive(import.meta.env.VITE_POV_MAX_TURN_YAW_DEGREES, 180) ?? TUNING.povCamera.maxTurnYawDegrees);
+const POV_TURN_RATE_FRACTION =
+  readPositive(import.meta.env.VITE_POV_TURN_RATE_FRACTION, 1) ?? TUNING.povCamera.turnRateFraction;
+const POV_ENEMY_BIAS =
+  THREE.MathUtils.degToRad(readPositive(import.meta.env.VITE_POV_ENEMY_BIAS_DEGREES, 90) ?? TUNING.povCamera.enemyBiasDegrees);
+const rl = TUNING.reverseLook;
+const REVERSE_LOOK = {
+  fullSpeed: readPositive(import.meta.env.VITE_REVERSE_LOOK_FULL_SPEED, 50) ?? rl.fullSpeed,
+  torsoYaw: -THREE.MathUtils.degToRad(readPositive(import.meta.env.VITE_REVERSE_LOOK_TORSO_DEGREES, 90) ?? rl.torsoDegrees),
+  headYaw: -THREE.MathUtils.degToRad(readPositive(import.meta.env.VITE_REVERSE_LOOK_HEAD_DEGREES, 90) ?? rl.headDegrees),
+  cameraYaw: -THREE.MathUtils.degToRad(readPositive(import.meta.env.VITE_REVERSE_LOOK_CAMERA_DEGREES, 180) ?? rl.cameraDegrees),
+  smoothing: readPositive(import.meta.env.VITE_REVERSE_LOOK_SMOOTHING, 20) ?? rl.smoothing
+};
+const CREW_GAZE = {
+  range: readPositive(import.meta.env.VITE_CREW_GAZE_RANGE, 500) ?? TUNING.crewGaze.range,
+  maxYaw: THREE.MathUtils.degToRad(
+    readPositive(import.meta.env.VITE_CREW_GAZE_MAX_YAW_DEGREES, 120) ?? TUNING.crewGaze.maxHeadYawDegrees
+  ),
+  smoothing: readPositive(import.meta.env.VITE_CREW_GAZE_SMOOTHING, 60) ?? TUNING.crewGaze.smoothing
 };
 
 const INITIAL_SPAWN_COUNT =
@@ -1773,6 +1795,19 @@ class Game {
 
   updateChaseCamera(dt) {
     if (!this.batteryCam) return;
+    if (this.batteryCam === this.povCamera) {
+      // Look into the turn (up to 180 deg), nudged toward the enemy the operator is watching.
+      const fullRate = this.boat.turnSpeed * POV_TURN_RATE_FRACTION;
+      const raw = THREE.MathUtils.clamp(this.boat.angularVelocity / fullRate, -1, 1);
+      const turn = Math.sign(raw) * raw * raw; // ease-in: gentle for small turns
+      const bearing = this.boatCrew.officerBearing;
+      const bias = bearing === null ? 0 : THREE.MathUtils.clamp(bearing, -POV_ENEMY_BIAS, POV_ENEMY_BIAS);
+      this.povCamera.setYawTarget(THREE.MathUtils.clamp(
+        turn * POV_MAX_TURN_YAW + bias + REVERSE_LOOK.cameraYaw * this.boatCrew.officer.reverseAmount,
+        -Math.PI,
+        Math.PI
+      ));
+    }
     this.batteryCam.update(dt);
     this.renderer.setManualCamera(this.batteryCam.position, this.batteryCam.look);
   }
@@ -1884,7 +1919,11 @@ class Game {
       this.updateVanVisibility(dt);
     }
 
-    if (this.state !== 'PAUSED') this.boatCrew.update(dt);
+    if (this.state !== 'PAUSED') {
+      this.boatCrew.officer.updateReverseLook(dt, REVERSE_LOOK);
+      this.boatCrew.update(dt);
+      this.boatCrew.updateGaze(dt, this.smugglerManager.smugglers, CREW_GAZE);
+    }
 
     this.world.update(dt);
     if (this.state !== 'PAUSED') this.birdManager.update(dt);

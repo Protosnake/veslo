@@ -36,6 +36,36 @@ export interface PovCameraTuning {
   fov: number;
   /** Seconds to ease from the drone view into the first-person view. */
   blendSeconds: number;
+  /** Max view yaw (degrees) when the boat turns hard; the view looks into the turn. */
+  maxTurnYawDegrees: number;
+  /** Fraction of the boat's top turn rate that reaches the full turn yaw. */
+  turnRateFraction: number;
+  /** How fast (1/s) the view yaw eases toward its target. */
+  yawSmoothing: number;
+  /** Extra yaw (degrees, max) toward the closest enemy the operator is watching. */
+  enemyBiasDegrees: number;
+}
+
+export interface ReverseLookTuning {
+  /** Boat reverse speed (m/s) at which the full look-back is reached. */
+  fullSpeed: number;
+  /** Torso turn (degrees) over the shoulder at full reverse. */
+  torsoDegrees: number;
+  /** Extra head turn (degrees) at full reverse. */
+  headDegrees: number;
+  /** Extra POV view yaw (degrees) at full reverse. */
+  cameraDegrees: number;
+  /** How fast (1/s) the look-back eases in and out; low keeps it calm. */
+  smoothing: number;
+}
+
+export interface CrewGazeTuning {
+  /** Metres within which a crew member notices and watches an enemy. */
+  range: number;
+  /** Max head turn (degrees) either side of straight ahead. */
+  maxHeadYawDegrees: number;
+  /** How fast (1/s) heads ease toward their target. */
+  smoothing: number;
 }
 
 export interface TuningConfig {
@@ -53,6 +83,10 @@ export interface TuningConfig {
   batteryCamera: 'pov' | 'chase';
   /** First-person view from the engine operator. */
   povCamera: PovCameraTuning;
+  /** Rower and engine operator heads tracking the closest enemy. */
+  crewGaze: CrewGazeTuning;
+  /** Engine operator looking over the shoulder while reversing. */
+  reverseLook: ReverseLookTuning;
   /** Allow AK shooting while the drone battery is dead (feature kept, off for now). */
   akEnabled: boolean;
   /** Extra smugglers spawned immediately at run start. */
@@ -79,7 +113,23 @@ export const TUNING: TuningConfig = {
   batteryCamera: 'pov',
   povCamera: {
     fov: 80,
-    blendSeconds: 0.8
+    blendSeconds: 0.8,
+    maxTurnYawDegrees: 180,
+    turnRateFraction: 1,
+    yawSmoothing: 1.5,
+    enemyBiasDegrees: 20
+  },
+  reverseLook: {
+    fullSpeed: 5,
+    torsoDegrees: 25,
+    headDegrees: 25,
+    cameraDegrees: 45,
+    smoothing: 1
+  },
+  crewGaze: {
+    range: 45,
+    maxHeadYawDegrees: 80,
+    smoothing: 8
   },
   akEnabled: false,
   initialSpawnCount: 0,
