@@ -40,7 +40,7 @@ export const LIFELINE = Object.freeze({
   xMin: -1.5,
   xMax: 0.7,
   y: 0.68,
-  z: 1.02,
+  z: 0.8,
   sag: 0.02
 });
 
@@ -154,7 +154,7 @@ export class Boat {
 
     const tubeRadius = 0.20;
     const tubeY = 0.45; // elevated so water waves never clip into floor
-    const tubeZ = 1.02;
+    const tubeZ = LIFELINE.z;
 
     // Side pontoon tubes: running from x = -1.5 to x = +0.7 (length 2.2, centered at x = -0.4)
     const sideTubeLength = 2.2;
@@ -276,11 +276,11 @@ export class Boat {
     // Solid hull floor in the same rubber green as the tubes, shaped to the
     // bow taper. No planks on top: the inside of the boat is one green shell.
     const floorShape = new THREE.Shape();
-    floorShape.moveTo(-1.5, 0.82);
-    floorShape.lineTo(0.7, 0.82);
+    floorShape.moveTo(-1.5, 0.62);
+    floorShape.lineTo(0.7, 0.62);
     floorShape.lineTo(2.0, 0);
-    floorShape.lineTo(0.7, -0.82);
-    floorShape.lineTo(-1.5, -0.82);
+    floorShape.lineTo(0.7, -0.62);
+    floorShape.lineTo(-1.5, -0.62);
     floorShape.closePath();
 
     const floorMat = rubberMat.clone();
@@ -292,7 +292,7 @@ export class Boat {
     this.hull.add(floor);
 
     // Solid Transom Board (-X)
-    const transomGeo = new THREE.BoxGeometry(0.12, 0.4, 1.92);
+    const transomGeo = new THREE.BoxGeometry(0.12, 0.4, 1.52);
     const transom = new THREE.Mesh(transomGeo, transomMat);
     transom.position.set(-1.5, 0.46, 0);
     transom.castShadow = true;
@@ -305,8 +305,8 @@ export class Boat {
     // One long rectangular block per bench, floor to seat height, so each seat
     // reads as a plain prolonged rectangle instead of a stacked pyramid.
     const createBench = (x) => {
-      const bench = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.07, 1.9), seatMat);
-      bench.position.set(x, 0.545, 0);
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.12, 1.5), seatMat);
+      bench.position.set(x, 0.58, 0);
       bench.castShadow = true;
       bench.receiveShadow = true;
       this.hull.add(bench);
@@ -319,7 +319,7 @@ export class Boat {
 
     // 2. Outboard Motor mounted on Transom (-X)
     this.motorPivot = new THREE.Group();
-    this.motorPivot.position.set(-1.65, 0.52, 0);
+    this.motorPivot.position.set(-1.65, 0.36, 0);
 
     const engineMount = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.3), metalMat);
     engineMount.position.set(0.1, 0.1, 0);

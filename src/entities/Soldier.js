@@ -96,9 +96,7 @@ const GEO = {
   shin: new THREE.CylinderGeometry(0.07, 0.052, 0.32, 6),
   kneePad: new THREE.BoxGeometry(0.13, 0.12, 0.05),
   cuff: new THREE.CylinderGeometry(0.085, 0.09, 0.07, 8),
-  bootUpper: taperedBox(0.16, 0.17, 0.13, 0.22, 0.26),
-  bootToe: new THREE.SphereGeometry(0.085, 6, 4),
-  bootSole: new THREE.BoxGeometry(0.2, 0.05, 0.34),
+  boot: new THREE.BoxGeometry(0.13, 0.15, 0.27),
   torso: taperedBox(0.56, 0.44, 0.52, 0.31, 0.26),
   belt: new THREE.BoxGeometry(0.47, 0.08, 0.29),
   buckle: new THREE.BoxGeometry(0.06, 0.045, 0.02),
@@ -126,13 +124,13 @@ const GEO = {
   beanieRoll: new THREE.CylinderGeometry(0.162, 0.166, 0.045, 10),
   capDome: new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.42),
   capBrim: new THREE.BoxGeometry(0.2, 0.014, 0.1),
-  shoulderPad: new THREE.SphereGeometry(0.085, 6, 4),
+  shoulderPad: new THREE.SphereGeometry(0.072, 7, 5),
   upperArm: new THREE.CylinderGeometry(0.072, 0.06, 0.3, 6),
   forearm: new THREE.CylinderGeometry(0.06, 0.046, 0.26, 6),
   elbowBall: new THREE.SphereGeometry(0.06, 6, 4),
   elbowPad: new THREE.SphereGeometry(0.056, 6, 5),
   armCuff: new THREE.CylinderGeometry(0.05, 0.047, 0.03, 8),
-  palm: new THREE.BoxGeometry(0.085, 0.085, 0.06),
+  palm: new THREE.BoxGeometry(0.085, 0.12, 0.07),
   knuckles: new THREE.BoxGeometry(0.085, 0.03, 0.065),
   finger: new THREE.BoxGeometry(0.018, 0.05, 0.022),
   thumb: new THREE.BoxGeometry(0.028, 0.06, 0.03)
@@ -188,7 +186,7 @@ export const SOLDIER_POSES = {
   sitSteer: {
     legs: { hip: -Math.PI / 2, knee: Math.PI / 2 },
     left: { shoulder: [-0.65, 0.8, 0.45], elbow: 0.05 },
-    right: { shoulder: [0.25, 0.3, 0.1], elbow: -1.25 }
+    right: { shoulder: [0.3, 0, 0.12], elbow: -0.6 }
   },
   sitRow: {
     legs: { hip: -Math.PI / 2, knee: Math.PI / 2 },
@@ -331,7 +329,6 @@ export class Soldier {
         head.add(buildMesh(GEO.helmetRim, hat, [0, 0.145, 0], [1, 1, 1.05]));
         head.add(buildMesh(GEO.helmetMount, SOLDIER_MATS.metal, [0, 0.26, 0.15], null, [0.5, 0, 0]));
         head.add(buildMesh(GEO.goggles, SOLDIER_MATS.lens, [0, 0.235, 0.158], null, [-0.15, 0, 0]));
-        head.add(buildMesh(GEO.goggleBand, SOLDIER_MATS.strap, [0, 0.2, 0], null, [Math.PI / 2, 0, Math.PI * 0.15]));
     }
   }
 
@@ -358,10 +355,8 @@ export class Soldier {
     const ankle = new THREE.Group();
     ankle.position.y = -0.32;
     knee.add(ankle);
-    ankle.add(buildMesh(GEO.cuff, this.look.boots, [0, 0.0, 0]));
-    ankle.add(buildMesh(GEO.bootUpper, this.look.boots, [0, -0.07, 0.035]));
-    ankle.add(buildMesh(GEO.bootToe, this.look.boots, [0, -0.1, 0.12], [0.95, 0.7, 1]));
-    ankle.add(buildMesh(GEO.bootSole, SOLDIER_MATS.sole, [0, -0.15, 0.04]));
+    ankle.add(buildMesh(GEO.cuff, this.look.cloth, [0, 0.0, 0]));
+    ankle.add(buildMesh(GEO.boot, this.look.boots, [0, -0.1, 0.05]));
 
     return { hip, knee, ankle, side };
   }
@@ -370,7 +365,6 @@ export class Soldier {
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.3, 0.52, 0);
     parent.add(shoulder);
-    shoulder.add(buildMesh(GEO.shoulderPad, this.look.vest || this.look.cloth, [0, 0.0, 0], [1, 0.95, 1]));
     shoulder.add(buildMesh(GEO.upperArm, this.look.cloth, [0, -0.15, 0]));
 
     const elbow = new THREE.Group();
@@ -385,17 +379,12 @@ export class Soldier {
     wrist.position.y = -0.26;
     elbow.add(wrist);
 
-    // Hand: palm, curled fingers and a thumb. A Group so props can parent to it.
+    // Hand: a simple glove block. A Group so props can parent to it.
     const hand = new THREE.Group();
     hand.position.y = -0.02;
     wrist.add(hand);
     const glove = this.look.gloves;
-    hand.add(buildMesh(GEO.palm, glove, [0, 0, 0]));
-    hand.add(buildMesh(GEO.knuckles, glove, [0, -0.055, 0.005], null, [0.25, 0, 0]));
-    for (const x of [-0.03, -0.01, 0.01, 0.03]) {
-      hand.add(buildMesh(GEO.finger, SOLDIER_MATS.skin, [x, -0.095, 0.02], null, [0.5, 0, 0]));
-    }
-    hand.add(buildMesh(GEO.thumb, glove, [-side * 0.052, -0.01, 0.025], null, [0.2, 0, -side * 0.2]));
+    hand.add(buildMesh(GEO.palm, glove, [0, -0.03, 0]));
 
     return { shoulder, elbow, wrist, hand, side };
   }
