@@ -87,7 +87,7 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     recoverySeconds: 6
   },
   spawn: {
-    intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 2.5),
+    intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 1.7),
     baseInterval: 9,
     pressureDrop: 3.5,
     pressureGain: 1.4,

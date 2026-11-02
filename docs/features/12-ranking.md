@@ -39,3 +39,7 @@ flowchart LR
 - Difficulty uses asymptotic curves instead of hard caps: `1 + gain * score / (score + midpoint)` for speed and a pressure ratio for spawn timing, so high scores keep ramping. Waves within `warmupWaves` use the calmer `warmupMin..warmupMax` range.
 - Ranks remain per-run; `startGame()` resets `rankSystem`, clears the pending promotion queue, hides the active banner, and resets the run score.
 - `startGame()` also acquires the screen wake lock (released on pause and game over), and `main.js` registers the offline service worker at boot; both are orthogonal to ranking ([20-wake-lock.md](20-wake-lock.md), [22-offline-pwa.md](22-offline-pwa.md)).
+
+## Decisions
+
+- **Spawn interval scale 2.5 → 1.7 (`VITE_SMUGGLER_SPAWN_INTERVAL_SCALE`).** Why: after slowing spawns, runs felt empty, especially during the battery-out view. Alternative: leave 2.5 and rely on `?spawn=` for testing. Revisit when: spawn pacing is playtested with AK back on.
