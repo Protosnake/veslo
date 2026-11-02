@@ -1,6 +1,6 @@
 import { Frog, Snake } from './Wildlife.js';
 import { sound } from '../systems/Audio.js';
-import { sx } from '../world/Bounds.js';
+import { STREAMING_TUNING } from '../config/world.js';
 
 const SMUGGLER_SCARE_RADIUS = 4;
 
@@ -33,10 +33,10 @@ export class WildlifeManager {
     return interval * (0.85 + Math.random() * 0.3);
   }
 
-  spawnCreature() {
+  spawnCreature(boat) {
     const type = Math.random() < 0.5 ? 'frog' : 'snake';
     const side = Math.random() < 0.5 ? -1 : 1;
-    const x = sx(-25) + Math.random() * sx(50);
+    const x = (boat ? boat.position.x : 0) + (Math.random() - 0.5) * 70;
 
     const creature = type === 'frog'
       ? new Frog(this.scene, this.world, side, x)
@@ -105,7 +105,7 @@ export class WildlifeManager {
   update(dt, boat, smugglers = []) {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0 && this.creatures.length < this.maxActive) {
-      this.spawnCreature();
+      this.spawnCreature(boat);
       this.spawnTimer = this.getSpawnInterval();
     }
 
@@ -115,6 +115,11 @@ export class WildlifeManager {
 
     for (let i = this.creatures.length - 1; i >= 0; i--) {
       const creature = this.creatures[i];
+      if (Math.abs(creature.position.x - boat.position.x) > STREAMING_TUNING.despawnDistance) {
+        creature.destroy();
+        this.creatures.splice(i, 1);
+        continue;
+      }
       creature.update(dt);
       this.scareFromSmugglers(creature, smugglers);
 

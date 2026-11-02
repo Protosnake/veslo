@@ -343,6 +343,7 @@ class BirdGroup {
     this.x = x;
     this.elapsed = 0;
     this.finished = false;
+    this.focusX = 0;
 
     const config = kind === 'stork'
       ? { minY: 7, maxY: 11, minSpeed: 5.5, maxSpeed: 7.5, minSize: 1.25, maxSize: 1.45 }
@@ -495,7 +496,7 @@ class BirdGroup {
       member.bird.animate(t, flapPhase);
     }
 
-    if (this.x * this.dir >= BOUND_X) {
+    if ((this.x - this.focusX) * this.dir >= BOUND_X) {
       this.finished = true;
     }
   }
@@ -665,9 +666,9 @@ export class BirdManager {
 
   spawnGroup(kind = pickKind(), initial = false) {
     const dir = Math.random() < 0.5 ? -1 : 1;
-    const x = initial
+    const x = this.focusX + (initial
       ? (Math.random() * 1.6 - 0.8) * BOUND_X
-      : -dir * BOUND_X;
+      : -dir * BOUND_X);
 
     const group = new BirdGroup(
       this.scene,
@@ -682,7 +683,8 @@ export class BirdManager {
     return group;
   }
 
-  update(dt) {
+  update(dt, focusX = 0) {
+    this.focusX = focusX;
     this.elapsed += dt;
     this.spawnTimer -= dt;
 
@@ -711,6 +713,7 @@ export class BirdManager {
 
     for (let i = this.groups.length - 1; i >= 0; i--) {
       const group = this.groups[i];
+      group.focusX = focusX;
       group.update(dt);
       if (group.finished) {
         group.destroy();

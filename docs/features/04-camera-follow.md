@@ -28,3 +28,4 @@ flowchart TD
 - `settleFollow` snaps all camera vectors on start/restart so the camera never sweeps in from an old position.
 - Game over reuses `manualCamera`: `main.js` eases a target-lock pose and a 50° horizontal FOV override onto the crash/breach point while `state === 'GAMEOVER'` (see [13-game-over.md](13-game-over.md)).
 - Tuning overrides: `?y=`, `?look=`, `?fov=`, `?aim=`, `?drone=`.
+- On tall screens the rig yaws 90° about the follow point and the target is shifted by a lead along screen-up; see [36-portrait-mode.md](36-portrait-mode.md).

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
-import { PLAY_MIN_X, PLAY_MAX_X, PLAY_MIN_Z, PLAY_MAX_Z } from '../world/Bounds.js';
+import { PLAY_MIN_Z, PLAY_MAX_Z } from '../world/Bounds.js';
 
 const MAN_OVERBOARD_SPEED_RATIO = 0.8;
 const MAN_OVERBOARD_TURN_RATIO = 0.35;
@@ -727,7 +727,7 @@ export class Boat {
     const spot = this.overboardSafeSpot;
 
     const clampIntoBounds = (x, z, out) => {
-      out.x = THREE.MathUtils.clamp(x, PLAY_MIN_X + 1, PLAY_MAX_X - 1);
+      out.x = x;
       out.z = THREE.MathUtils.clamp(z, PLAY_MIN_Z + 1.2, PLAY_MAX_Z - 1.2);
       return out;
     };
@@ -750,7 +750,6 @@ export class Boat {
         const x = this.position.x + Math.cos(angle) * radius;
         const z = this.position.z + Math.sin(angle) * radius;
 
-        if (x < PLAY_MIN_X + 1 || x > PLAY_MAX_X - 1) continue;
         if (z < PLAY_MIN_Z + 1.2 || z > PLAY_MAX_Z - 1.2) continue;
         if (!this.isOverboardSpotClear(x, z)) continue;
 
@@ -831,11 +830,6 @@ export class Boat {
     // has no way to reach him for pickup.
     this.resolveOverboardRockCollisions(1);
 
-    this.overboardPosition.x = THREE.MathUtils.clamp(
-      this.overboardPosition.x,
-      PLAY_MIN_X + 1,
-      PLAY_MAX_X - 1
-    );
     this.overboardPosition.z = THREE.MathUtils.clamp(
       this.overboardPosition.z,
       PLAY_MIN_Z + 1.2,
@@ -1004,7 +998,7 @@ export class Boat {
     );
   }
 
-  bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier) {
+  bounceOffBarrier(rockHit) {
     let normalX = 0;
     let normalZ = 0;
 
@@ -1017,12 +1011,6 @@ export class Boat {
       const minDistance = (rockHit.visualRadius ?? rockHit.radius) + 2.6;
       this.position.x = rockHit.x + normalX * minDistance;
       this.position.z = rockHit.z + normalZ * minDistance;
-    } else if (hitWestBarrier) {
-      this.position.x = PLAY_MIN_X;
-      normalX = 1;
-    } else if (hitEastBarrier) {
-      this.position.x = PLAY_MAX_X;
-      normalX = -1;
     }
 
     const normalSpeed = this.velocity.x * normalX + this.velocity.z * normalZ;
@@ -1210,8 +1198,6 @@ export class Boat {
       engineNorthPenetration > PROP_REED_TOLERANCE &&
       this.velocity.z <= -PROP_REED_ESCAPE_SPEED;
     const engineStuckSouth = engineSouthPenetration >= 0;
-    const hitWestBarrier = this.position.x <= PLAY_MIN_X;
-    const hitEastBarrier = this.position.x >= PLAY_MAX_X;
 
     let engineRock = null;
     if (!this.isCrashed && this.world.findRockCollision) {
@@ -1271,8 +1257,8 @@ export class Boat {
       return;
     }
 
-    if (!this.isCrashed && (rockHit || hitWestBarrier || hitEastBarrier)) {
-      this.bounceOffBarrier(rockHit, hitWestBarrier, hitEastBarrier);
+    if (!this.isCrashed && rockHit) {
+      this.bounceOffBarrier(rockHit);
     }
 
     if (!this.isCrashed && engineInNorthReeds) {

@@ -188,11 +188,7 @@ class WildlifeCreature {
       const side = Math.abs(dx) > 0.5
         ? Math.sign(dx)
         : (Math.random() < 0.5 ? -1 : 1);
-      let targetX = avoidPoint.x + side * (8 + Math.random() * 3);
-      if (targetX < sx(-29) || targetX > sx(29)) {
-        targetX = avoidPoint.x - side * (8 + Math.random() * 3);
-      }
-      targetX = THREE.MathUtils.clamp(targetX, sx(-29), sx(29));
+      const targetX = avoidPoint.x + side * (8 + Math.random() * 3);
 
       const dirZ = Math.sign(this.crossZ - this.position.z) || 1;
       const zMin = Math.min(this.startZ, this.crossZ) + 0.4;
@@ -255,7 +251,6 @@ class WildlifeCreature {
       this.position.z += dirZ * this.speed * 0.35 * dt;
     }
 
-    this.position.x = THREE.MathUtils.clamp(this.position.x, sx(-29), sx(29));
 
     if (this.diveTimer <= 0) {
       if (this.diveTarget) {
@@ -336,7 +331,6 @@ class WildlifeCreature {
     const moveLen = Math.hypot(moveX, moveZ) || 1;
     this.position.x += (moveX / moveLen) * moveSpeed * dt;
     this.position.z += (moveZ / moveLen) * moveSpeed * dt;
-    this.position.x = THREE.MathUtils.clamp(this.position.x, sx(-29), sx(29));
 
     const targetHeading = Math.atan2(moveX, moveZ);
     let diff = targetHeading - this.heading;

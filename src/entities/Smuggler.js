@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
 import { sx, sz } from '../world/Bounds.js';
 import { DIFFICULTY_TUNING } from '../config/difficulty.js';
+import { STREAMING_TUNING } from '../config/world.js';
 import { Soldier, randomSmugglerOutfit } from './Soldier.js';
 
 // Shared geometry cache to avoid runtime allocations / memory leaks
@@ -107,6 +108,9 @@ export class Smuggler {
 
     // Spawn out along the gravel road and follow it down to the reeds
     this.path = riverWorld.gravelPath;
+    // The gravel road repeats with every world chunk; walk the copy nearest the boat.
+    this.pathShiftX = Number.isFinite(options.pathShiftX) ? options.pathShiftX : 0;
+    this.breached = false;
     this.pathDistance = 0;
     this.pathOffset = 0;
 
@@ -122,7 +126,7 @@ export class Smuggler {
       this.pathOffset = Number.isFinite(options.pathOffset)
         ? options.pathOffset
         : (Math.random() - 0.5) * this.path.halfWidth * 1.1;
-      const frame = this.path.frameAt(this.pathDistance);
+      const frame = this.pathFrame(this.pathDistance);
       this.position = new THREE.Vector3(
         frame.x + frame.nx * this.pathOffset,
         frame.y,
@@ -400,44 +404,33 @@ export class Smuggler {
     return nearest;
   }
 
+  pathFrame(distance) {
+    const frame = this.path.frameAt(distance);
+    if (!this.pathShiftX) return frame;
+    return { ...frame, x: frame.x + this.pathShiftX };
+  }
+
+  // Where the swimmer enters the water: never closer than spawnMinDistance to the
+  // boat (nor beyond spawnMaxDistance). Keeps its own walking spot when that is
+  // already in the band, otherwise picks a point along the river inside it.
   chooseEmergeX(boat) {
-    const minX = sx(-27);
-    const maxX = sx(27);
-    const minDistance = 15;
-    const maxDistance = 24;
+    const { spawnMinDistance: minDist, spawnMaxDistance: maxDist } = STREAMING_TUNING;
     const boatX = boat ? boat.position.x : 0;
     const boatZ = boat ? boat.position.z : 0;
-    const preferredSide = Math.sign(-boatX) || (Math.random() > 0.5 ? 1 : -1);
-    const candidates = [];
+    const dz = this.emergeZ - boatZ;
+    const own = Math.hypot(this.position.x - boatX, dz);
+    if (own >= minDist && own <= maxDist) return this.position.x;
 
-    for (let i = 0; i < 12; i++) {
-      const side = i < 10 ? preferredSide : -preferredSide;
-      const distance = minDistance + Math.random() * (maxDistance - minDistance);
-      candidates.push({
-        x: THREE.MathUtils.clamp(boatX + side * distance, minX, maxX),
-        distance: 0
-      });
-    }
-
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
-      candidate.distance = Math.hypot(candidate.x - boatX, this.emergeZ - boatZ);
-    }
-
-    let farthest = candidates[0];
-    for (let i = 1; i < candidates.length; i++) {
-      if (candidates[i].distance > farthest.distance) farthest = candidates[i];
-    }
-
-    const farCandidates = candidates.filter(
-      (candidate) => candidate.distance >= Math.max(minDistance, farthest.distance * 0.8)
-    );
-    return farCandidates[Math.floor(Math.random() * farCandidates.length)].x;
+    const reach = (r) => Math.sqrt(Math.max(0, r * r - dz * dz));
+    const lo = reach(minDist);
+    const hi = Math.max(lo, reach(maxDist));
+    const side = Math.random() > 0.5 ? 1 : -1;
+    return boatX + side * (lo + Math.random() * (hi - lo));
   }
 
   beginDisembark(startPosition, options = {}) {
     const frame = this.path && this.path.frameAt
-      ? this.path.frameAt(this.pathDistance)
+      ? this.pathFrame(this.pathDistance)
       : null;
     const side = options.side >= 0 ? 1 : -1;
     const headingEnd = frame ? frame.heading : 0;
@@ -605,10 +598,10 @@ export class Smuggler {
     let reachedEnd = false;
 
     if (this.path && this.path.frameAt) {
-      let frame = this.path.frameAt(this.pathDistance);
+      let frame = this.pathFrame(this.pathDistance);
 
       this.pathDistance = Math.min(this.path.length, this.pathDistance + stepSpeed * dt);
-      frame = this.path.frameAt(this.pathDistance);
+      frame = this.pathFrame(this.pathDistance);
       this.position.set(
         frame.x + frame.nx * lateralOffset,
         frame.y,
@@ -903,8 +896,6 @@ export class Smuggler {
       this.position.z += current.z * dt;
     }
 
-    // Clamp inside river boundaries
-    this.position.x = Math.max(sx(-36), Math.min(sx(36), this.position.x));
     this.position.y = this.isDiving
       ? -this.diveDepth + Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.03
       : Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.05;

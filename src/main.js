@@ -20,6 +20,7 @@ import { t, getRankTitle, onLocaleChange } from './systems/I18n.js';
 import { PROMOTION_TUNING } from './config/ranking.js';
 import { TUNING } from './config/tuning.js';
 import { ChaseCamera } from './core/ChaseCamera.js';
+import { ProximityMarkers } from './systems/ProximityMarkers.js';
 import { MountCamera } from './core/MountCamera.js';
 
 function isTouchDevice() {
@@ -35,7 +36,9 @@ function lockLandscape() {
   const orientation = screen.orientation;
   if (!orientation || typeof orientation.lock !== 'function') return;
   try {
-    const result = orientation.lock('landscape');
+    // Portrait play is supported: only pin the orientation when it is disabled.
+    if (!LOCK_ORIENTATION) return;
+    const result = orientation.lock(LOCK_ORIENTATION);
     if (result && typeof result.catch === 'function') result.catch(() => {});
   } catch {}
 }
@@ -121,6 +124,18 @@ function readPositive(value, max = 600) {
   return Math.min(max, parsed);
 }
 
+const BATTERY_DRAIN_PER_MINUTE =
+  readPositive(new URLSearchParams(window.location.search).get('drain'), 10000)
+  ?? readPositive(import.meta.env.VITE_BATTERY_DRAIN_PER_MINUTE, 10000)
+  ?? TUNING.batteryDrainPerMinute;
+
+const BATTERY_EVENTS = (() => {
+  const raw = new URLSearchParams(window.location.search).get('batteryEvents')
+    ?? import.meta.env.VITE_BATTERY_EVENTS;
+  if (raw === undefined || raw === null || raw === '') return TUNING.batteryEvents;
+  return raw === '1' || raw === 'true';
+})();
+
 const BATTERY_RECHARGE_SECONDS =
   readPositive(new URLSearchParams(window.location.search).get('recharge'))
   ?? readPositive(import.meta.env.VITE_BATTERY_RECHARGE_SECONDS)
@@ -181,6 +196,60 @@ const CREW_GAZE = {
   ),
   smoothing: readPositive(import.meta.env.VITE_CREW_GAZE_SMOOTHING, 60) ?? TUNING.crewGaze.smoothing
 };
+
+const PORTRAIT_FLOW = String(
+  new URLSearchParams(window.location.search).get('flow')
+  ?? import.meta.env.VITE_PORTRAIT_FLOW
+  ?? TUNING.portrait.flow
+).toLowerCase() === 'up' ? 'up' : 'down';
+
+function readNumber(value, min, max) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+const PORTRAIT_FPV = {
+  enabled: new URLSearchParams(window.location.search).get('fpv') === '0'
+    ? false
+    : (import.meta.env.VITE_PORTRAIT_FPV === undefined || import.meta.env.VITE_PORTRAIT_FPV === ''
+      ? TUNING.portrait.fpv.enabled
+      : readFlag(import.meta.env.VITE_PORTRAIT_FPV)),
+  distance: readPositive(import.meta.env.VITE_PORTRAIT_FPV_DISTANCE, 60) ?? TUNING.portrait.fpv.distance,
+  height: readPositive(import.meta.env.VITE_PORTRAIT_FPV_HEIGHT, 40) ?? TUNING.portrait.fpv.height,
+  lookAhead: readNumber(import.meta.env.VITE_PORTRAIT_FPV_LOOK_AHEAD, 0, 80) ?? TUNING.portrait.fpv.lookAhead,
+  fov: readPositive(import.meta.env.VITE_PORTRAIT_FPV_FOV, 120) ?? TUNING.portrait.fpv.fov,
+  desktop: new URLSearchParams(window.location.search).get('fpvDesktop') === '0'
+    ? false
+    : (import.meta.env.VITE_FPV_DESKTOP === undefined || import.meta.env.VITE_FPV_DESKTOP === ''
+      ? TUNING.portrait.fpv.desktop
+      : readFlag(import.meta.env.VITE_FPV_DESKTOP)),
+  desktopFov: readPositive(import.meta.env.VITE_FPV_DESKTOP_FOV, 140) ?? TUNING.portrait.fpv.desktopFov,
+  headingStiffness: readPositive(import.meta.env.VITE_PORTRAIT_FPV_HEADING_STIFFNESS, 20) ?? TUNING.portrait.fpv.headingStiffness,
+  bank: readNumber(import.meta.env.VITE_PORTRAIT_FPV_BANK, 0, 3) ?? TUNING.portrait.fpv.bank
+};
+
+const PORTRAIT_OPTIONS = {
+  fpv: PORTRAIT_FPV,
+  enabled: new URLSearchParams(window.location.search).get('portrait') === '0'
+    ? false
+    : (import.meta.env.VITE_PORTRAIT_ENABLED === undefined || import.meta.env.VITE_PORTRAIT_ENABLED === ''
+      ? TUNING.portrait.enabled
+      : readFlag(import.meta.env.VITE_PORTRAIT_ENABLED)),
+  flow: PORTRAIT_FLOW,
+  fov: readPositive(import.meta.env.VITE_PORTRAIT_FOV, 120) ?? TUNING.portrait.fov,
+  rigHeight: readPositive(import.meta.env.VITE_PORTRAIT_RIG_HEIGHT, 80) ?? TUNING.portrait.rigHeight,
+  rigDistance: readPositive(import.meta.env.VITE_PORTRAIT_RIG_DISTANCE, 100) ?? TUNING.portrait.rigDistance,
+  tilt: Number.isFinite(Number(import.meta.env.VITE_PORTRAIT_TILT)) && import.meta.env.VITE_PORTRAIT_TILT !== undefined && import.meta.env.VITE_PORTRAIT_TILT !== ''
+    ? Math.min(60, Math.max(-30, Number(import.meta.env.VITE_PORTRAIT_TILT)))
+    : TUNING.portrait.tilt,
+  lead: Number.isFinite(Number(import.meta.env.VITE_PORTRAIT_LEAD)) && import.meta.env.VITE_PORTRAIT_LEAD !== undefined && import.meta.env.VITE_PORTRAIT_LEAD !== ''
+    ? Number(import.meta.env.VITE_PORTRAIT_LEAD)
+    : TUNING.portrait.lead
+};
+// Phones that cannot rotate vertically stay locked to landscape.
+const LOCK_ORIENTATION = PORTRAIT_OPTIONS.enabled ? null : 'landscape';
 
 const INITIAL_SPAWN_COUNT =
   readSpawnCount(new URLSearchParams(window.location.search).get('spawn'))
@@ -389,6 +458,7 @@ class Game {
 
     // Core 3D engine
     this.renderer = new GameRenderer(this.container);
+    this.renderer.setPortraitOptions(PORTRAIT_OPTIONS);
     this.world = new RiverWorld(this.renderer.scene);
     this.boat = new Boat(
       this.renderer.scene,
@@ -405,7 +475,7 @@ class Game {
       this.renderer.scene,
       this.world,
       (points, pos, text, type, count) => this.onSmugglerSmacked(points, pos, text, type, count),
-      (smuggler) => this.onGameOver(smuggler)
+      (smuggler, result) => this.onBreach(smuggler, result)
     );
 
     this.wildlifeManager = new WildlifeManager(
@@ -415,6 +485,7 @@ class Game {
     );
 
     this.birdManager = new BirdManager(this.renderer.scene, this.world, this.wildlifeManager);
+    this.proximityMarkers = new ProximityMarkers(this.renderer.scene);
 
     this.minivan = new Minivan(this.renderer.scene);
     this.soldier = new WatchtowerSoldier(this.renderer.scene);
@@ -741,6 +812,7 @@ class Game {
     document.body.classList.add('intro');
 
     this.boat.reset();
+    this.world.rockField.reset(this.boat.position.x);
     this.smugglerManager.reset();
     this.wildlifeManager.reset();
     rankSystem.reset();
@@ -1490,31 +1562,53 @@ class Game {
     this.partnerBubble.style.top = `${y}px`;
   }
 
-  onGameOver(breachedSmuggler) {
+  // A smuggler reaching the south shore is no longer the end of the run: it
+  // costs rank (the score drops to the threshold of the rank below).
+  onBreach(breachedSmuggler, result) {
     if (this.state !== 'PLAYING') return;
+    if (result.eliminated) {
+      this.onBreachGameOver(breachedSmuggler, result);
+      return;
+    }
+    this.renderer.triggerScreenShake(0.6);
+    this.world.triggerCrowdReaction();
+    sound.playAlert();
+    this.glitchOsd(700);
+
+    const demoted = result.toIndex < result.fromIndex;
+    const title = getRankTitle(rankSystem.getRankForScore(result.score).current).toUpperCase();
+    this.showOsdAlert(
+      demoted ? t('osd.alert.derank', { title }) : t('osd.alert.breachNoRank'),
+      'danger',
+      4
+    );
+    this.showPartnerLine(t('partner.breach'), 3);
+    if (breachedSmuggler && breachedSmuggler.position) {
+      this.createFloatingScore(breachedSmuggler.position, t('score.breach'), 'shred');
+    }
+    logger.log('BREACH', 'Smuggler reached shore - demoted', result);
+    this.updateHUD();
+  }
+
+  // A breach while already at the lowest rank (deranking below Recruit) ends the run.
+  onBreachGameOver(breachedSmuggler, result) {
     this.state = 'GAMEOVER';
     this.gameOverAt = performance.now();
     this.hidePartnerBubble();
     this.hideKillStreak();
     this.clearInput();
     releaseWakeLock();
-    this.renderer.triggerScreenShake(0.8);
+    this.renderer.triggerScreenShake(1.0);
     this.world.triggerCrowdReaction();
+    sound.playGameOver();
     this.glitchOsd(1400);
 
-    logger.log('BREACH', 'Smuggler reached shore!');
+    logger.log('BREACH', 'Smuggler reached shore at lowest rank - game over', result);
 
     this.lastGameOver = { type: 'breach' };
     this.renderGameOverText();
-
-    let focusTarget = this.boat.position;
-    if (breachedSmuggler && breachedSmuggler.position) {
-      this.createFloatingScore(breachedSmuggler.position, t('score.breach'), 'shred');
-      focusTarget = breachedSmuggler.position;
-    }
-
     this.handleGameOverRanks();
-    this.startGameOverFocus(focusTarget, breachedSmuggler);
+    this.startGameOverFocus(breachedSmuggler?.position ?? this.boat.position);
     this.showGameOverScreen();
   }
 
@@ -1546,8 +1640,9 @@ class Game {
 
   handleGameOverRanks() {
     const score = this.smugglerManager.score;
-    if (score > this.highScore) {
-      this.highScore = score;
+    const best = Math.max(score, this.smugglerManager.peakScore || 0);
+    if (best > this.highScore) {
+      this.highScore = best;
       localStorage.setItem('veslo_high_score', this.highScore.toString());
     }
 
@@ -1746,7 +1841,12 @@ class Game {
       return;
     }
 
-    this.battery = Math.max(0, this.battery - dt * (100 / 60));
+    this.battery = Math.max(0, this.battery - dt * (BATTERY_DRAIN_PER_MINUTE / 60));
+    if (!BATTERY_EVENTS) {
+      // Low/dead battery events are disabled: the gauge drains but never goes flat.
+      this.battery = Math.max(1, this.battery);
+      return;
+    }
     if (this.battery > 0) return;
 
     this.battery = 0;
@@ -1838,7 +1938,7 @@ class Game {
     }
 
     const batteryPct = Math.round(this.battery);
-    const lowBattery = playing && !this.batteryDead && this.battery <= 20;
+    const lowBattery = BATTERY_EVENTS && playing && !this.batteryDead && this.battery <= 20;
     if (this.osd.batteryFill) {
       this.osd.batteryFill.style.width = `${batteryPct}%`;
       this.osd.batteryFill.classList.toggle('low', this.battery <= 20);
@@ -1897,7 +1997,9 @@ class Game {
     const dt = Math.min(rawDt, 0.1);
     this.updateFps(rawDt);
 
-    const portraitLocked = document.body.classList.contains('is-portrait');
+    // Only block play in portrait when vertical mode is turned off.
+    const portraitLocked =
+      !PORTRAIT_OPTIONS.enabled && document.body.classList.contains('is-portrait');
 
     if (this.state === 'INTRO') {
       if (!portraitLocked) this.updateIntro(dt);
@@ -1905,6 +2007,7 @@ class Game {
       this.missionTime += dt;
       this.updateBattery(dt);
       this.boat.update(dt, this.input, this.smugglerManager.smugglers);
+      this.proximityMarkers.update(dt, this.boat, this.smugglerManager.smugglers);
       this.smugglerManager.update(dt, this.boat, this.wildlifeManager.creatures);
       this.wildlifeManager.update(dt, this.boat, this.smugglerManager.smugglers);
     } else if (this.state !== 'PAUSED') {
@@ -1925,13 +2028,15 @@ class Game {
       this.boatCrew.updateGaze(dt, this.smugglerManager.smugglers, CREW_GAZE);
     }
 
-    this.world.update(dt);
-    if (this.state !== 'PAUSED') this.birdManager.update(dt);
+    this.world.update(dt, this.boat.position.x, this.boat.velocity.x);
+    if (this.state !== 'PAUSED') this.birdManager.update(dt, this.boat.position.x);
+    if (this.state !== 'PLAYING') this.proximityMarkers.hide();
 
     this.renderer.setFollowTarget(
       this.boat.position.x,
       this.boat.position.z
     );
+    this.renderer.setFollowHeading(this.boat.angle);
     if (this.state === 'GAMEOVER') this.updateGameOverFocus(dt);
     else if (this.state === 'PLAYING') this.updateChaseCamera(dt);
     this.renderer.updateCamera(dt);
@@ -1988,6 +2093,10 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.classList.toggle(
       'is-portrait',
       touch && window.innerHeight > window.innerWidth
+    );
+    document.body.classList.toggle(
+      'portrait-play',
+      PORTRAIT_OPTIONS.enabled && window.innerHeight > window.innerWidth
     );
   };
 

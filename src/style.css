@@ -1236,6 +1236,54 @@ body.game-over .osd-heading {
   }
 }
 
+/* Portrait: stack the report so score + rank share a row and the four stats
+   get the full width underneath, instead of three columns overflowing. */
+@media (orientation: portrait) {
+  .gameover-panel {
+    width: calc(100% - 24px);
+    gap: 12px;
+  }
+
+  .gameover-report {
+    padding: 12px 14px 14px;
+    background: linear-gradient(180deg, rgba(4, 14, 9, 0.88), rgba(4, 14, 9, 0.78));
+    border: 1px solid rgba(141, 255, 176, 0.22);
+    border-radius: 2px;
+  }
+
+  .gameover-report-label {
+    font-size: 9px;
+    margin-bottom: 10px;
+  }
+
+  .gameover-report-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas:
+      "score rank"
+      "stats stats";
+    gap: 12px 10px;
+  }
+
+  .gameover-score { grid-area: score; }
+  .gameover-rank { grid-area: rank; padding-left: 12px; }
+
+  .gameover-stats {
+    grid-area: stats;
+    padding-top: 10px;
+    border-top: 1px solid rgba(141, 255, 176, 0.18);
+    gap: 4px;
+  }
+
+  .gameover-score-value { font-size: 44px; }
+  .go-stat-val { font-size: 22px; }
+  .go-stat-label { font-size: 8px; letter-spacing: 0.06em; white-space: normal; }
+  .gameover-rank-label { display: block; font-size: 8px; }
+  .gameover-rank-title { font-size: 15px; white-space: normal; line-height: 1.1; }
+  #final-rank-badge { width: 32px; height: 46px; }
+
+  .gameover-restart { width: 100%; justify-content: center; }
+}
+
 /* ============================================================
    DRONE VIEWFINDER (OSD)
    ============================================================ */
@@ -2473,7 +2521,7 @@ body.intro .drone-osd {
   pointer-events: auto;
 }
 
-.touch-device.is-portrait .orientation-lock {
+.touch-device.is-portrait:not(.portrait-play) .orientation-lock {
   display: flex;
 }
 
@@ -2746,4 +2794,109 @@ body.intro .drone-osd {
 
 .touch-device .osd-top-left .osd-battery {
   margin-top: 0;
+}
+
+
+/* ============================================================
+   PORTRAIT PLAY (vertical phone, river runs up the screen)
+   ============================================================ */
+.portrait-play .touch-controls {
+  padding:
+    0 max(16px, env(safe-area-inset-right))
+    max(28px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+}
+
+/*
+ * One grid for the whole phone HUD. Every piece shares the same side gutter
+ * and the status row shares one vertical centre line:
+ *
+ *   [telemetry bar ......................................]
+ *   [battery]        [   rank panel   ]            [pause]     <- status row
+ *   [viewfinder frame, same gutter ......................]
+ *   [ ...play area ...                                    ]
+ *   [throttle]                         [strike / steer]       <- same gutter
+ */
+.portrait-play {
+  --pt-top: env(safe-area-inset-top, 0px);
+  --pt-gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --pt-gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  --pt-row-y: calc(var(--pt-top) + 70px); /* centre line of the status row */
+  --pt-frame-top: calc(var(--pt-top) + 100px);
+  --pt-side-reserve: 108px; /* screen edge to the rank panel: gutter + battery / pause + gap */
+  --pt-controls-h: calc(
+    var(--hit-size) + var(--steer-size) + var(--ctl-gap) +
+    max(28px, env(safe-area-inset-bottom)) + 14px
+  );
+}
+
+/* Telemetry bar: only what fits a phone width, on the shared gutter. */
+.portrait-play .osd-topbar {
+  padding: 0 var(--pt-gutter-r) 0 var(--pt-gutter-l);
+  font-size: 10px;
+}
+
+.portrait-play .osd-topbar .osd-sep,
+.portrait-play .osd-topbar .osd-dim {
+  display: none;
+}
+
+/* Viewfinder frame wraps the play area: below the status row, above the thumbs. */
+.portrait-play .osd-frame {
+  inset: var(--pt-frame-top) var(--pt-gutter-r) var(--pt-controls-h) var(--pt-gutter-l);
+}
+
+.portrait-play .osd-corner {
+  width: 28px;
+  height: 28px;
+}
+
+/* Status row, left: compact battery on the centre line. */
+.portrait-play.touch-device .osd-top-left {
+  top: var(--pt-row-y);
+  left: var(--pt-gutter-l);
+  transform: translateY(-50%);
+}
+
+.portrait-play.touch-device .osd-top-left .osd-battery {
+  margin-top: 0;
+  gap: 6px;
+}
+
+.portrait-play.touch-device .osd-top-left .osd-battery .k {
+  display: none;
+}
+
+.portrait-play.touch-device .osd-top-left .osd-battery-bar {
+  width: 56px;
+}
+
+/* Status row, centre: rank panel, centred and never wider than the free space. */
+.portrait-play.touch-device .hud-header {
+  top: var(--pt-row-y);
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.portrait-play.touch-device .rank-panel {
+  max-width: calc(100vw - 2 * var(--pt-side-reserve));
+}
+
+.portrait-play.touch-device .rank-up-popup {
+  top: var(--pt-row-y);
+  bottom: auto;
+}
+
+/* Status row, right: pause button centred on the same line. */
+.portrait-play .mobile-pause-btn {
+  top: calc(var(--pt-row-y) - var(--pause-size) / 2);
+  right: var(--pt-gutter-r);
+}
+
+/* Thumb controls share the HUD gutter. */
+.portrait-play .touch-controls {
+  padding:
+    0 var(--pt-gutter-r)
+    max(28px, env(safe-area-inset-bottom))
+    var(--pt-gutter-l);
 }

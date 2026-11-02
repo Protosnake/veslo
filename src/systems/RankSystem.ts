@@ -56,6 +56,23 @@ export class RankSystem {
     return Math.min(1.0, Math.max(0.0, progress));
   }
 
+  /**
+   * Drop `ranks` ranks: the score falls to the threshold of the rank reached
+   * (0 at the bottom). Keeps promotion tracking in sync so the lost ranks can
+   * be earned (and announced) again.
+   */
+  demote(
+    score: number,
+    ranks = 1
+  ): { score: number; fromIndex: number; toIndex: number; eliminated: boolean } {
+    const fromIndex = this.getRankForScore(score).index;
+    // Dropping below the lowest rank ends the run; the score is kept for the results screen.
+    if (fromIndex - ranks < 0) return { score, fromIndex, toIndex: 0, eliminated: true };
+    const toIndex = fromIndex - ranks;
+    this.lastRankIndex = toIndex;
+    return { score: toIndex === 0 ? 0 : RANKS[toIndex].minScore, fromIndex, toIndex, eliminated: false };
+  }
+
   checkRankUp(score: number): Rank[] {
     const { index } = this.getRankForScore(score);
     if (index <= this.lastRankIndex) return [];

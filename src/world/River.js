@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { sx, sz, RIVER_HALF_WIDTH } from './Bounds.js';
+import { sx, sz, RIVER_HALF_WIDTH, WORLD_CHUNK_WIDTH, WORLD_CHUNKS, WORLD_PERIOD, foldChunkX } from './Bounds.js';
+import { RockField } from './RockField.js';
 import { IDLE_DECOR_ENABLED, runWhenIdle } from '../systems/IdleScheduler.js';
 import { QUALITY } from '../config/quality.js';
 
@@ -84,40 +85,128 @@ export class RiverWorld {
       z: 0.2
     };
 
+    this.sceneRoot = scene;
+    this.chunkWidth = WORLD_CHUNK_WIDTH;
+    this.chunkCount = WORLD_CHUNKS;
+    this.period = WORLD_PERIOD;
     this.riverHalfWidth = RIVER_HALF_WIDTH;
     this.northBankY = NORTH_BANK_Y;
     this.riverSamples = this.buildRiverCenterline();
     this.rockColliders = [];
     this.watchtowers = [];
+    this.waterMat = null;
 
-    this.createBanks();
-    this.createGravelPath();
-    this.createWater();
-    this.createRiverBoundaries(); // East & West natural barriers (rocks, boulders, reeds)
-    this.createReedsAndVegetation();
-    this.createBankVegetation();
-    this.createEnvironmentDetails();
+    // Endless river. The static world is `chunkCount` distinct chunks laid end
+    // to end (one period). Three copies ("rings") of that period are kept and
+    // re-centred on the boat every frame, so the river never ends. Everything
+    // below adds static content through `this.scene` (a proxy) which places it
+    // in the active chunk of every ring.
+    this.rings = [-1, 0, 1].map(() => {
+      const ring = new THREE.Group();
+      scene.add(ring);
+      return ring;
+    });
+    this.chunkGroups = this.rings.map((ring) => {
+      const groups = [];
+      for (let i = 0; i < this.chunkCount; i++) {
+        const group = new THREE.Group();
+        group.position.x = i * this.chunkWidth;
+        ring.add(group);
+        groups.push(group);
+      }
+      return groups;
+    });
+    this.activeChunk = 0;
+    this.foldInstances = false;
+    this.ringBase = Number.NaN;
+    this.scene = { add: (object) => this.addStatic(object) };
+
+    for (let i = 0; i < this.chunkCount; i++) {
+      this.activeChunk = i;
+      this.createBanks();
+      this.createGravelPath();
+      this.createWater();
+      this.createReedsAndVegetation();
+      this.foldInstances = true;
+      this.createBankVegetation();
+      this.foldInstances = false;
+      this.createEnvironmentDetails();
+    }
     this.buildDeferredDecor();
     this.createParticleSystem();
+    this.updateRings(0);
+
+    // Rocks are not part of the static world: they are scattered at random
+    // along the river and recycled around the boat.
+    this.rockField = new RockField(scene, this.rockColliders, this.riverHalfWidth, (material) => this.addReedSway(material));
+    this.rockField.reset(0);
+  }
+
+  // Place a static object in the active chunk of the centre ring and a clone
+  // in the same chunk of both neighbouring rings.
+  addStatic(object) {
+    const chunk = this.activeChunk;
+    if (this.foldInstances && object.isInstancedMesh) this.foldInstancedMesh(object);
+    this.chunkGroups[1][chunk].add(object);
+    for (const ring of [0, 2]) {
+      const copy = object.clone();
+      const lights = [];
+      copy.traverse((child) => {
+        if (child.isLight) lights.push(child);
+      });
+      lights.forEach((light) => light.parent.remove(light));
+      this.chunkGroups[ring][chunk].add(copy);
+    }
+  }
+
+  foldInstancedMesh(mesh) {
+    const m = new THREE.Matrix4();
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, m);
+      m.elements[12] = foldChunkX(m.elements[12]);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.boundingSphere = null;
+  }
+
+  foldX(x) {
+    return foldChunkX(x);
+  }
+
+  // Slide the three rings so the boat always sits near the middle ring.
+  updateRings(focusX) {
+    const centre = ((this.chunkCount - 1) * this.chunkWidth) / 2;
+    const base = Math.round((focusX - centre) / this.period);
+    if (base === this.ringBase) return;
+    this.ringBase = base;
+    this.rings.forEach((ring, i) => {
+      ring.position.x = (base + i - 1) * this.period;
+    });
   }
 
   // Forests and the crowd are pure decoration: nothing gameplay-related reads
   // them, so they are built after the first frame on idle instead of blocking
   // boot. The intro still has 10+ seconds to show them before the player moves.
   buildDeferredDecor() {
-    const buildForests = () => this.createForests();
-    const buildCrowd = () => this.createAppalledCrowd();
+    const buildAll = (chunk, fn) => () => {
+      const previous = this.activeChunk;
+      this.activeChunk = chunk;
+      fn();
+      this.activeChunk = previous;
+    };
+    const tasks = [];
+    for (let i = 0; i < this.chunkCount; i++) {
+      tasks.push(buildAll(i, () => this.createForests()));
+      tasks.push(buildAll(i, () => this.createAppalledCrowd()));
+    }
 
     if (!IDLE_DECOR_ENABLED) {
-      buildForests();
-      buildCrowd();
+      tasks.forEach((task) => task());
       return;
     }
 
-    const schedule = () => {
-      runWhenIdle(buildForests);
-      runWhenIdle(buildCrowd);
-    };
+    const schedule = () => tasks.forEach((task) => runWhenIdle(task));
 
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(schedule);
@@ -126,60 +215,21 @@ export class RiverWorld {
     }
   }
 
-  // The playable stretch stays perfectly straight so the banks line up with the
-  // boat's collision limits; beyond the barriers the river sweeps away to the
-  // south-west and north-east and disappears into the forest.
+  // The river is a straight, endless channel along X. Each chunk models the
+  // stretch [-chunkWidth/2, chunkWidth/2] so neighbouring chunks meet exactly.
   buildRiverCenterline() {
-    const points = [];
-
-    const westBend = new THREE.CubicBezierCurve3(
-      new THREE.Vector3(sx(-340), 0, sz(170)),
-      new THREE.Vector3(sx(-190), 0, sz(110)),
-      new THREE.Vector3(sx(-90), 0, 0),
-      new THREE.Vector3(sx(-45), 0, 0)
-    );
-    const eastBend = new THREE.CubicBezierCurve3(
-      new THREE.Vector3(sx(45), 0, 0),
-      new THREE.Vector3(sx(95), 0, 0),
-      new THREE.Vector3(sx(170), 0, sz(-40)),
-      new THREE.Vector3(sx(340), 0, sz(-200))
-    );
-
-    for (let i = 0; i < 80; i++) points.push(westBend.getPoint(i / 80));
-    for (let x = sx(-45); x <= sx(45); x += 2.5) points.push(new THREE.Vector3(x, 0, 0));
-    for (let i = 1; i <= 100; i++) points.push(eastBend.getPoint(i / 100));
-
-    // Continue both ends far into the fog so the river/water surface never
-    // visibly stops. The playable stretch and its barriers stay unchanged.
-    const extensionLength = 800;
-    const extensionStep = 5;
-
-    const westOut = new THREE.Vector3().subVectors(points[0], points[1]).normalize();
-    const westExtension = [];
-    for (let d = extensionStep; d <= extensionLength; d += extensionStep) {
-      westExtension.push(points[0].clone().addScaledVector(westOut, d));
-    }
-    points.unshift(...westExtension.reverse());
-
-    const eastOut = new THREE.Vector3()
-      .subVectors(points[points.length - 1], points[points.length - 2])
-      .normalize();
-    const eastEnd = points[points.length - 1].clone();
-    for (let d = extensionStep; d <= extensionLength; d += extensionStep) {
-      points.push(eastEnd.clone().addScaledVector(eastOut, d));
-    }
-
     const samples = [];
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      const prev = points[Math.max(0, i - 1)];
-      const next = points[Math.min(points.length - 1, i + 1)];
-      const tangent = new THREE.Vector3().subVectors(next, prev);
-      if (tangent.lengthSq() < 1e-6) tangent.set(1, 0, 0);
-      tangent.normalize();
-      // Positive offset points south (+Z), negative points north (-Z)
-      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
-      samples.push({ p: p.clone(), t: tangent, n: normal });
+    const half = WORLD_CHUNK_WIDTH / 2;
+    const step = 2.5;
+    const count = Math.ceil(WORLD_CHUNK_WIDTH / step);
+    for (let i = 0; i <= count; i++) {
+      const x = -half + (WORLD_CHUNK_WIDTH * i) / count;
+      samples.push({
+        p: new THREE.Vector3(x, 0, 0),
+        t: new THREE.Vector3(1, 0, 0),
+        // Positive offset points south (+Z), negative points north (-Z)
+        n: new THREE.Vector3(0, 0, 1)
+      });
     }
     return samples;
   }
@@ -276,8 +326,10 @@ export class RiverWorld {
     ));
 
     // Close the polygon far away on the same side of the river.
-    points.push(new THREE.Vector2(2500, farSide * -2500));
-    points.push(new THREE.Vector2(-2500, farSide * -2500));
+    const last = samples[samples.length - 1].p.x;
+    const first = samples[0].p.x;
+    points.push(new THREE.Vector2(last, farSide * -900));
+    points.push(new THREE.Vector2(first, farSide * -900));
 
     return new THREE.Shape(points);
   }
@@ -580,7 +632,7 @@ export class RiverWorld {
     const waterWidth = (this.riverHalfWidth + shoreOverlap) * 2;
     this.waterWidth = waterWidth;
 
-    this.waterMat = new THREE.MeshStandardMaterial({
+    this.waterMat = this.waterMat || new THREE.MeshStandardMaterial({
       color: 0xffffff,
       vertexColors: true,
       roughness: 0.16,
@@ -590,6 +642,13 @@ export class RiverWorld {
       side: THREE.DoubleSide,
       dithering: true
     });
+    if (this.waterMat.userData.configured) {
+      this.waterMesh = new THREE.Mesh(this.waterGeo, this.waterMat);
+      this.waterMesh.receiveShadow = false;
+      this.scene.add(this.waterMesh);
+      return;
+    }
+    this.waterMat.userData.configured = true;
     this.waterMat.customProgramCacheKey = () => 'river-water';
 
     this.waterMat.onBeforeCompile = (shader) => {
@@ -618,7 +677,7 @@ if (waterBankDist < 1.1) {
   float waterShoreT = 1.0 - waterBankDist / 1.1;
   waterShoreDrop = -0.28 * waterShoreT * waterShoreT;
 }
-transformed.y += riverSwellHeight(transformed.xz, uTime) * waterFade + waterShoreDrop;
+transformed.y += riverSwellHeight((modelMatrix * vec4(transformed, 1.0)).xz, uTime) * waterFade + waterShoreDrop;
 vWaterWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
 vWaterUv = uv;`
         );
@@ -687,22 +746,9 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
   }
 
   // Signed distance from the river centerline (negative = north bank side).
+  // The channel is straight along X, so this is just Z.
   lateralOffsetAt(x, z) {
-    let bestSq = Infinity;
-    let bestOffset = 0;
-
-    for (let i = 0; i < this.riverSamples.length; i++) {
-      const s = this.riverSamples[i];
-      const dx = x - s.p.x;
-      const dz = z - s.p.z;
-      const distanceSq = dx * dx + dz * dz;
-
-      if (distanceSq < bestSq) {
-        bestSq = distanceSq;
-        bestOffset = dx * s.n.x + dz * s.n.z;
-      }
-    }
-    return bestOffset;
+    return z;
   }
 
   findRockCollision(x, z, radius) {
@@ -908,6 +954,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     });
 
     const addExtraReed = (x, y, z, sizeScale = 1) => {
+      x = this.foldX(x);
       const path = this.gravelPath;
       if (
         path &&
@@ -1219,8 +1266,6 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     // glued to the banks as the channel bends away into the fog.
     for (let i = 0; i < this.riverSamples.length; i += 2) {
       const sample = this.riverSamples[i];
-      if (Math.abs(sample.p.x) < sx(46)) continue;
-      if (Math.hypot(sample.p.x, sample.p.z) > 500) continue;
 
       // Northern bank: waterline, cliff lip and plateau rows. Offsets are kept
       // clear of the cliff/lip geometry so no reed grows through the ground.
@@ -1510,169 +1555,14 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     );
   }
 
-  createRiverBoundaries() {
-    // Natural impassable barriers at West (X = -32 to -35) and East (X = +32 to +35)
-    // Rocks, boulders, and thick standing камыши
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x525659, flatShading: true });
-    const mossRockMat = new THREE.MeshLambertMaterial({ color: 0x48523c, flatShading: true });
-    const reedMat = new THREE.MeshLambertMaterial({ color: 0x4a6b2f, flatShading: true });
-    const cattailMat = new THREE.MeshLambertMaterial({ color: 0x3d220e });
-    this.addReedSway(reedMat);
-    this.addReedSway(cattailMat);
-
-    const rocks = [];
-    const mossRocks = [];
-    const stalks = [];
-    const heads = [];
-
-    const boundarySides = [sx(-33.5), sx(33.5)];
-    const reedClusters = [];
-
-    boundarySides.forEach((baseX) => {
-      const isWest = baseX < 0;
-      const riverSide = isWest ? 1 : -1;
-
-      let z = sz(-16.5);
-      while (z <= sz(16.5)) {
-        const clusterZ = z + (Math.random() - 0.5) * sz(1.4);
-        const clusterX = baseX + riverSide * sx(0.2 + Math.random() * 1.6);
-        const clusterSize = 1 + Math.floor(Math.random() * 3);
-
-        for (let i = 0; i < clusterSize; i++) {
-          const size = 0.9 + Math.random() * 1.5;
-          const x = clusterX + riverSide * sx(Math.random() * 2.0 - 0.2);
-          const zz = clusterZ + (Math.random() - 0.5) * sz(2.4);
-          const target = Math.random() > 0.48 ? rocks : mossRocks;
-          target.push({
-            x,
-            y: 0.25 + Math.random() * 0.55,
-            z: zz,
-            s: size,
-            rx: Math.random() * Math.PI,
-            ry: Math.random() * Math.PI,
-            rz: Math.random() * Math.PI
-          });
-          this.rockColliders.push({
-            x,
-            z: zz,
-            radius: size * 0.88,
-            visualRadius: size
-          });
-        }
-
-        reedClusters.push({ clusterX, clusterZ, riverSide });
-        z += sz(2.0) + Math.random() * sz(2.4);
-      }
-
-      for (let i = 0; i < 7; i++) {
-        const size = 0.6 + Math.random() * 1.3;
-        const x = baseX + riverSide * sx(1.8 + Math.random() * 2.8);
-        const zz = sz(-15) + Math.random() * sz(30);
-        const target = Math.random() > 0.5 ? rocks : mossRocks;
-        target.push({
-          x,
-          y: 0.2 + Math.random() * 0.45,
-          z: zz,
-          s: size,
-          rx: Math.random() * Math.PI,
-          ry: Math.random() * Math.PI,
-          rz: Math.random() * Math.PI
-        });
-        this.rockColliders.push({
-          x,
-          z: zz,
-          radius: size * 0.88,
-          visualRadius: size
-        });
-      }
-    });
-
-    const addBoundaryReed = (x, z, height) => {
-      if (this.isNearRock(x, z, 0.16)) return;
-
-      // At the northern end of a barrier the rock line runs into the high
-      // bank; stand those reeds on the bank top instead of letting them clip
-      // through the ground.
-      const baseY = this.lateralOffsetAt(x, z) < sz(-15.9) ? NORTH_BANK_Y : 0;
-
-      stalks.push({ x, y: baseY, z, sy: height, baseY });
-
-      if (Math.random() > 0.45) {
-        heads.push({ x, y: baseY + height * 0.82 - 0.3, z, sy: 0.6, baseY });
-      }
-    };
-
-    reedClusters.forEach(({ clusterX, clusterZ, riverSide }) => {
-      const clumpCount = Math.random() > 0.25 ? 5 + Math.floor(Math.random() * 3) : 0;
-      const clumpX = clusterX + riverSide * (0.4 + Math.random() * 0.8);
-
-      for (let s = 0; s < clumpCount; s++) {
-        addBoundaryReed(
-          clumpX + (Math.random() - 0.5) * 1.1,
-          clusterZ + (Math.random() - 0.5) * 1.8,
-          2.1 + Math.random() * 1.4
-        );
-      }
-    });
-
-    this.rockColliders.forEach((rock) => {
-      const ringCount = 12 + Math.floor(Math.random() * 8);
-
-      for (let i = 0; i < ringCount; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = rock.radius + 0.3 + Math.random() * 1.0;
-
-        addBoundaryReed(
-          rock.x + Math.cos(angle) * radius,
-          rock.z + Math.sin(angle) * radius,
-          1.8 + Math.random() * 1.8
-        );
-      }
-    });
-
-    const dummy = new THREE.Object3D();
-    const build = (geometry, material, items, receiveShadow = false) => {
-      if (!items.length) return;
-      const mesh = new THREE.InstancedMesh(geometry, material, items.length);
-      items.forEach((it, i) => {
-        dummy.position.set(it.x, it.y, it.z);
-        dummy.rotation.set(it.rx || 0, it.ry || 0, it.rz || 0);
-        dummy.scale.set(it.s ?? it.sx ?? 1, it.sy ?? it.s ?? 1, it.s ?? it.sz ?? 1);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i, dummy.matrix);
-      });
-      if (material === reedMat || material === cattailMat) {
-        const bases = new Float32Array(items.length);
-        items.forEach((it, i) => {
-          bases[i] = it.baseY ?? 0;
-        });
-        geometry.setAttribute('aBaseY', new THREE.InstancedBufferAttribute(bases, 1));
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.castShadow = true;
-      mesh.receiveShadow = receiveShadow;
-      this.scene.add(mesh);
-    };
-
-    const rockGeo = new THREE.DodecahedronGeometry(1, 1);
-    const stalkGeo = new THREE.CylinderGeometry(0.05, 0.07, 1, 4);
-    stalkGeo.translate(0, 0.5, 0);
-    const headGeo = new THREE.CylinderGeometry(0.1, 0.1, 1, 5);
-    headGeo.translate(0, 0.5, 0);
-
-    build(rockGeo, rockMat, rocks, true);
-    build(rockGeo.clone(), mossRockMat, mossRocks, true);
-    build(stalkGeo, reedMat, stalks);
-    build(headGeo, cattailMat, heads);
-  }
-
   createEnvironmentDetails() {
     const postGeo = new THREE.CylinderGeometry(0.18, 0.18, 3.2, 6);
     const postMat = new THREE.MeshLambertMaterial({ color: 0xee2222 });
     const signGeo = new THREE.BoxGeometry(2.2, 1.1, 0.15);
     const signMat = new THREE.MeshLambertMaterial({ color: 0xffea00 });
 
-    for (let x = sx(-28); x <= sx(28); x += sx(14)) {
+    const postStep = sx(14);
+    for (let x = -this.chunkWidth / 2 + postStep / 2; x < this.chunkWidth / 2; x += postStep) {
       const post = new THREE.Mesh(postGeo, postMat);
       post.position.set(x, NORTH_BANK_Y - 0.5, sz(-19.8));
       post.castShadow = true;
@@ -1684,7 +1574,6 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       this.scene.add(signBoard);
     }
 
-    this.createWatchtower(sx(-20), sz(24));
     this.createWatchtower(sx(20), sz(24));
   }
 
@@ -1698,15 +1587,12 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     const addTree = (x, z, side, scale) => {
       // Keep the mission area readable: no trees on the beach, the patrol path
       // or in the water.
-      if (Math.abs(x) < sx(47) && z > sz(-23) && z < sz(25)) return;
+      x = this.foldX(x);
+      if (z > sz(-23) && z < sz(25)) return;
 
       // Keep a wide clearing around the gravel path so the drop-off van and
       // the road stay readable from the intro drone shot.
       if (this.gravelPath && this.gravelPath.isNear(x, z, 9)) return;
-
-      // The river now continues far past the play space; don't populate the
-      // fogged-out extensions with trees.
-      if (Math.hypot(x, z) > 450) return;
 
       trees.push({
         x,
@@ -1903,16 +1789,18 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     roof.castShadow = true;
     tower.add(roof);
 
-    const cabinLight = new THREE.PointLight(0xffdfae, 6, 8, 2);
-    cabinLight.position.set(0, 10.9 + rise, 0.6);
-    tower.add(cabinLight);
+    if (this.activeChunk === 0) {
+      const cabinLight = new THREE.PointLight(0xffdfae, 6, 8, 2);
+      cabinLight.position.set(0, 10.9 + rise, 0.6);
+      tower.add(cabinLight);
+    }
 
     const towerY = -3.0;
     tower.position.set(x, towerY, z);
     tower.rotation.y = Math.PI;
     this.scene.add(tower);
 
-    this.watchtowers.push({
+    if (this.activeChunk === 0) this.watchtowers.push({
       x,
       z,
       y: towerY,
@@ -2123,7 +2011,7 @@ gl_FragColor.a *= vParticleOpacity;`
     this.particleMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
     this.particleMesh.instanceMatrix.needsUpdate = true;
     this.particleMesh.instanceColor.needsUpdate = true;
-    this.scene.add(this.particleMesh);
+    this.sceneRoot.add(this.particleMesh);
   }
 
   emitParticle(x, y, z, vx, vy, vz, color = 0xffffff, size = 1, maxLife = 0.8) {
@@ -2205,8 +2093,10 @@ gl_FragColor.a *= vParticleOpacity;`
     }
   }
 
-  update(dt) {
+  update(dt, focusX = 0, velocityX = 0) {
     this.time += dt;
+    this.updateRings(focusX);
+    if (this.rockField) this.rockField.update(dt, focusX, velocityX);
 
     // Water displacement and reed sway both run on the GPU now. The CPU only
     // uploads two scalar uniforms per frame instead of rewriting thousands of

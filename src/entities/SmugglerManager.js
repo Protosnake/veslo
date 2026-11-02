@@ -2,19 +2,23 @@ import { Smuggler } from './Smuggler.js';
 import { sound } from '../systems/Audio.js';
 import { t } from '../systems/I18n.js';
 import { DIFFICULTY_TUNING } from '../config/difficulty.js';
+import { BREACH_TUNING, STREAMING_TUNING } from '../config/world.js';
+import { rankSystem } from '../systems/RankSystem.js';
+import { WORLD_CHUNK_WIDTH } from '../world/Bounds.js';
 
 export class SmugglerManager {
-  constructor(scene, riverWorld, onScore, onGameOver) {
+  constructor(scene, riverWorld, onScore, onBreach) {
     this.scene = scene;
     this.world = riverWorld;
     this.onScore = onScore;
-    this.onGameOver = onGameOver;
+    this.onBreach = onBreach;
 
     this.smugglers = [];
     this.spawnTimer = 0;
     this.elapsed = 0;
     this.totalSmacked = 0;
     this.score = 0;
+    this.peakScore = 0;
     this.isRunning = true;
     this.whackBatch = null;
   }
@@ -27,6 +31,8 @@ export class SmugglerManager {
     this.waveCount = 0;
     this.totalSmacked = 0;
     this.score = 0;
+    this.peakScore = 0;
+    this.breaches = 0;
     this.isRunning = true;
     this.whackBatch = null;
   }
@@ -56,19 +62,56 @@ export class SmugglerManager {
     return 0.75 * this.getSpeedMultiplier() + (Math.random() - 0.5) * 0.1;
   }
 
-  spawnSmuggler(spawnDistanceOffset = 0) {
+  spawnSmuggler(spawnDistanceOffset = 0, boat = null) {
     const path = this.world.gravelPath;
     const xPos = path
       ? path.x + (Math.random() - 0.5) * path.halfWidth * 1.2
       : -26 + Math.random() * 52;
+    const pathShiftX = boat ? Math.round(boat.position.x / WORLD_CHUNK_WIDTH) * WORLD_CHUNK_WIDTH : 0;
+    const options = { pathShiftX };
+    if (boat && path && path.frameAt) {
+      const point = this.pickSpawnPoint(path, boat, spawnDistanceOffset);
+      if (point) Object.assign(options, point);
+    }
     const smuggler = new Smuggler(
       this.scene,
       this.world,
       xPos,
       this.getBaseSpeed(),
-      spawnDistanceOffset
+      spawnDistanceOffset,
+      options
     );
     this.smugglers.push(smuggler);
+  }
+
+  /**
+   * Pick where along the (chunk-repeating) road a new swimmer starts so it is
+   * between spawnMinDistance and spawnMaxDistance from the boat. Returns
+   * { pathDistance, pathShiftX } or null when no road point qualifies.
+   */
+  pickSpawnPoint(path, boat, offset) {
+    const { spawnMinDistance: minDist, spawnMaxDistance: maxDist } = STREAMING_TUNING;
+    const base = Math.min(
+      Math.max(0, path.length - 8),
+      path.smugglerSpawnDistance + offset + (Math.random() - 0.5) * 12
+    );
+    const centre = Math.round(boat.position.x / WORLD_CHUNK_WIDTH);
+    const valid = [];
+    for (let k = -3; k <= 3; k++) {
+      const shift = (centre + k) * WORLD_CHUNK_WIDTH;
+      // Nearest road point to the default spawn that is in the spawn band for this copy.
+      for (let i = 0; i <= 20; i++) {
+        let hit = null;
+        for (const d of i === 0 ? [base] : [base - i * 2, base + i * 2]) {
+          if (d < 0 || d > path.length - 8) continue;
+          const f = path.frameAt(d);
+          const dist = Math.hypot(f.x + shift - boat.position.x, f.z - boat.position.z);
+          if (dist >= minDist && dist <= maxDist) { hit = d; break; }
+        }
+        if (hit !== null) { valid.push({ pathDistance: hit, pathShiftX: shift }); break; }
+      }
+    }
+    return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null;
   }
 
   spawnSmugglerAt(pathDistance, pathOffset = 0) {
@@ -150,13 +193,15 @@ export class SmugglerManager {
       let spawnDistanceOffset = 0;
 
       for (let i = 0; i < groupSize; i++) {
-        this.spawnSmuggler(spawnDistanceOffset);
+        this.spawnSmuggler(spawnDistanceOffset, boat);
         spawnDistanceOffset += 1.4 + Math.random() * 1.8;
       }
 
       this.waveCount += 1;
       this.spawnTimer = this.getSpawnInterval();
     }
+
+    this.peakScore = Math.max(this.peakScore, this.score);
 
     // Hitboxes
     const whackHitboxes = boat.getWhackHitboxes();
@@ -168,12 +213,33 @@ export class SmugglerManager {
       const s = this.smugglers[i];
       s.update(dt, boat, wildlife, this.smugglers);
 
-      // 1-life sudden death check
-      if ((s.state === 'swimming' || s.state === 'escaping') && s.reachedSouth && !s.isDead) {
-        this.isRunning = false;
+      // Streaming: swimmers left far behind are dropped, no penalty.
+      if (
+        !s.breached &&
+        Math.abs(s.position.x - boat.position.x) > STREAMING_TUNING.despawnDistance
+      ) {
+        s.destroy();
+        this.smugglers.splice(i, 1);
+        continue;
+      }
+
+      // A smuggler reaching the south shore costs rank, not the run.
+      if ((s.state === 'swimming' || s.state === 'escaping') && s.reachedSouth && !s.isDead && !s.breached) {
+        s.breached = true;
+        this.breaches += 1;
+        const result = rankSystem.demote(this.score, BREACH_TUNING.ranksLost);
+        this.score = result.score;
         sound.playGameOver();
-        this.onGameOver(s);
-        return;
+        this.onBreach(s, result);
+      }
+
+      // Breached smugglers keep running up the beach, then vanish.
+      if (s.breached) {
+        if (s.escapedAway) {
+          s.destroy();
+          this.smugglers.splice(i, 1);
+        }
+        continue;
       }
 
       if (!s.isDead && s.state === 'swimming') {

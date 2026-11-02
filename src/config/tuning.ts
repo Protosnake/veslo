@@ -68,15 +68,62 @@ export interface CrewGazeTuning {
   smoothing: number;
 }
 
+export interface PortraitFpvTuning {
+  /** FPV-drone chase in portrait: the camera sits behind the boat and turns with its heading. */
+  enabled: boolean;
+  /** Metres behind the boat. */
+  distance: number;
+  /** Metres above the water. */
+  height: number;
+  /** Metres ahead of the boat the camera looks. */
+  lookAhead: number;
+  /** Horizontal FOV (degrees); FPV drones are wide. */
+  fov: number;
+  /** Use the same FPV chase camera in landscape / desktop. */
+  desktop: boolean;
+  /** Horizontal FOV (degrees) of the FPV camera in landscape. */
+  desktopFov: number;
+  /** How quickly the camera swings round behind a turn (1/s); lower is lazier. */
+  headingStiffness: number;
+  /** Bank (roll) into turns, 0 = none, 1 = default amount. */
+  bank: number;
+}
+
+export interface PortraitTuning {
+  fpv: PortraitFpvTuning;
+  /** Allow the vertical (portrait) camera rig on tall screens. */
+  enabled: boolean;
+  /** Which way the river runs on screen: 'down' (flows toward the bottom) or 'up'. */
+  flow: 'down' | 'up';
+  /** Horizontal FOV (degrees) for the gameplay camera in portrait. */
+  fov: number;
+  /** Metres the drone hovers above the water in portrait. */
+  rigHeight: number;
+  /** Metres the drone sits back from the follow point along the river. */
+  rigDistance: number;
+  /** Metres the view leads ahead of the boat; 0 keeps the boat centred. */
+  lead: number;
+  /** Degrees the camera orbits down toward the horizon in portrait, keeping the boat centred (0 = none). */
+  tilt: number;
+  /** Seconds the camera rig takes to swing between landscape and portrait. */
+  blendSeconds: number;
+}
+
 export interface TuningConfig {
   /** Starting battery percentage (0-100). */
   initialBattery: number;
+  /** Percent of battery the drone loses per minute of play. */
+  batteryDrainPerMinute: number;
+  /** Low-battery / battery-out event (degraded feed, signal lost, POV cam). Off for now. */
+  batteryEvents: boolean;
   /** Seconds a dead drone battery takes to recharge (chase camera runs meanwhile). */
   batteryRechargeSeconds: number;
   /** Seconds before recharge ends when the radio rumbles and the countdown shows. */
   droneReadyCountdownSeconds: number;
   /** Seconds the static screen covers the cut back to the drone view (before and after the switch). */
   droneSwitchStaticSeconds: number;
+  /** Vertical (portrait) play on phones. */
+  portrait: PortraitTuning;
   /** Third-person boat camera shown while the drone is recharging. */
   chaseCamera: ChaseCameraTuning;
   /** Which view replaces the dead drone feed: 'pov' (engine operator) or 'chase'. */
@@ -101,9 +148,32 @@ export interface TuningConfig {
 
 export const TUNING: TuningConfig = {
   initialBattery: 100,
+  batteryDrainPerMinute: 1,
+  batteryEvents: false,
   batteryRechargeSeconds: 30,
   droneReadyCountdownSeconds: 5,
   droneSwitchStaticSeconds: 0.8,
+  portrait: {
+    fpv: {
+      enabled: true,
+      distance: 9,
+      height: 4,
+      lookAhead: 12,
+      fov: 62,
+      desktop: true,
+      desktopFov: 90,
+      headingStiffness: 3,
+      bank: 1
+    },
+    enabled: true,
+    flow: 'down',
+    fov: 17,
+    rigHeight: 24,
+    rigDistance: 30,
+    lead: 0,
+    tilt: 25,
+    blendSeconds: 0.6
+  },
   chaseCamera: {
     distance: 9,
     height: 4,
