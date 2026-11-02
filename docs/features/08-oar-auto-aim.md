@@ -1,6 +1,6 @@
 # 08 — Oar auto-aim / head smack
 
-Sources: `src/main.js` (input and AK fallback), `src/entities/Boat.js` (swing, aim, hitbox), `src/entities/SmugglerManager.js` (hit resolution).
+Sources: `src/main.js` (input and AK fallback), `src/entities/Boat.js` (swing, aim, hitbox), `src/entities/BoatCrew.js` (gaze target), `src/entities/SmugglerManager.js` (hit resolution).
 
 ```mermaid
 flowchart TD
@@ -15,7 +15,8 @@ flowchart TD
     I --> J{"target already acquired?"}
     J -->|no| K["findWhackTarget(smugglers)<br/>nearest live swimming target within 6 m"]
     J -->|yes| L["keep locked target"]
-    K --> L
+    K --> K2["oarsman's watched swimmer (crew gaze,<br/>swimmers in 6 m preferred) overrides its side's target<br/>and decides the leading oar"]
+    K2 --> L
     L --> M{"target exists?"}
     M -->|yes| N["updateOarAim(target)<br/>convert target to boat-local space<br/>aim at head +0.3 m<br/>quaternion + length scale"]
     M -->|no| O["fixed oar arc fallback"]
@@ -52,3 +53,5 @@ flowchart TD
   **Alternatives:** Moving the oarsman's body/shoulders with the swing (more animation work); shortening the swing arc (changes gameplay).
 
 - Crew anchoring: `officerGroup` and `playerGroup` (oarsman, oar pivots) are children of `Boat.hull`, so the banking roll carries both soldiers with their benches. Man-overboard detaches `playerGroup` to the scene; recovery re-parents it to the hull.
+- **Decision:** The swimmer the oarsman is looking at decides which oar swings. **Why:** requested; the left oar sometimes swung while the crew's heads were turned to an enemy on the right (nearest-per-side logic ignored the gaze). **How:** `BoatCrew.updateGaze` makes the oarsman prefer swimmers within 6 m (`OAR_TARGET_RANGE`) and exposes `strikeTarget`; `Boat.findWhackTargets` assigns it to its side and `closestSide` follows it. The other oar still joins only when its own enemy is within 4.5 m. **Alternatives:** keep nearest-per-side.
+- **Decision:** No on-water hit cue ring (a yellow ring under the watched swimmer was tried and removed). **Why:** requested; the crew's head turn is the cue.

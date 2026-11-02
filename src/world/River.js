@@ -3,6 +3,7 @@ import { sx, sz, RIVER_HALF_WIDTH, WORLD_CHUNK_WIDTH, WORLD_CHUNKS, WORLD_PERIOD
 import { RockField } from './RockField.js';
 import { IDLE_DECOR_ENABLED, runWhenIdle } from '../systems/IdleScheduler.js';
 import { QUALITY } from '../config/quality.js';
+import { VEGETATION_TUNING } from '../config/world.js';
 
 // Height of the northern border bank. Lowered from 4.5 so the reeds and
 // incline stop swallowing the gravel patrol path from the drone camera.
@@ -841,7 +842,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
   createReedsAndVegetation() {
     // Density multiplier for the straight, playable stretch. The curving
     // background sections keep their full coverage.
-    const playDensity = 0.5;
+    const playDensity = 0.5 * VEGETATION_TUNING.reedDensity;
     const stalkMat = new THREE.MeshLambertMaterial({ color: 0x5e7839, flatShading: true });
     const cattailMat = new THREE.MeshLambertMaterial({ color: 0x482b14 });
     const leafMat = new THREE.MeshLambertMaterial({ color: 0x6e8f42 });
@@ -898,7 +899,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
 
       const baseY = pos.y || 0;
       const stalkCount = Math.max(
-        2,
+        VEGETATION_TUNING.reedDensity > 0 ? 1 : 0,
         Math.round((11 + (pos.y ? 6 : 0) + Math.floor(Math.sin(cIndex * 3) * 3 + 3)) * playDensity)
       );
 
@@ -1014,12 +1015,12 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       const scaledRadiusX = sx(patchRadiusX);
       const scaledRadiusZ = sz(patchRadiusZ);
 
-      for (let patch = 0; patch < patchCount; patch++) {
+      for (let patch = 0; patch < Math.round(patchCount * VEGETATION_TUNING.reedDensity); patch++) {
         const centerX = scaledXMin + Math.random() * (scaledXMax - scaledXMin);
         const centerZ = scaledZMin + Math.random() * (scaledZMax - scaledZMin);
         const reedCount = Math.max(
-          2,
-          Math.round((reedMin + Math.random() * (reedMax - reedMin + 1)) * playDensity)
+          1,
+          Math.round((reedMin + Math.random() * (reedMax - reedMin + 1)) * 0.5)
         );
 
         for (let i = 0; i < reedCount; i++) {

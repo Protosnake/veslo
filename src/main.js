@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GameRenderer } from './core/Renderer.js';
 import { RiverWorld } from './world/River.js';
-import { Boat } from './entities/Boat.js';
+import { Boat, OAR_TARGET_RANGE } from './entities/Boat.js';
 import { BoatCrew } from './entities/BoatCrew.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { WildlifeManager } from './entities/WildlifeManager.js';
@@ -36,8 +36,6 @@ function lockLandscape() {
   const orientation = screen.orientation;
   if (!orientation || typeof orientation.lock !== 'function') return;
   try {
-    // Portrait play is supported: only pin the orientation when it is disabled.
-    if (!LOCK_ORIENTATION) return;
     const result = orientation.lock(LOCK_ORIENTATION);
     if (result && typeof result.catch === 'function') result.catch(() => {});
   } catch {}
@@ -248,8 +246,8 @@ const PORTRAIT_OPTIONS = {
     ? Number(import.meta.env.VITE_PORTRAIT_LEAD)
     : TUNING.portrait.lead
 };
-// Phones that cannot rotate vertically stay locked to landscape.
-const LOCK_ORIENTATION = PORTRAIT_OPTIONS.enabled ? null : 'landscape';
+// Touch devices play in portrait only; landscape shows a rotate-back gate.
+const LOCK_ORIENTATION = 'portrait';
 
 const INITIAL_SPAWN_COUNT =
   readSpawnCount(new URLSearchParams(window.location.search).get('spawn'))
@@ -350,6 +348,9 @@ function showUnsupportedResolution() {
   document.body.appendChild(overlay);
 }
 
+const PERF_HUD =
+  new URLSearchParams(window.location.search).has('perf') || readFlag(import.meta.env.VITE_PERF_HUD);
+
 class Game {
   constructor() {
     this.container = document.getElementById('canvas-container');
@@ -430,6 +431,7 @@ class Game {
     this.akReloadPending = false;
     this.akShotCooldownUntil = 0;
     this.fps = 0;
+    this.perfCpuMs = 0;
     this.fpsFrames = 0;
     this.fpsElapsed = 0;
     this.osdTimer = 0;
@@ -1796,6 +1798,12 @@ class Game {
     this.updateHeadingTape(heading);
   }
 
+  /** `?perf=1`: draw calls, triangles and smoothed CPU ms spent inside renderer.render(). */
+  perfText() {
+    const { render, memory } = this.renderer.renderer.info;
+    return `${this.fps} | ${render.calls}dc ${(render.triangles / 1000).toFixed(0)}kt ${this.perfCpuMs.toFixed(1)}ms ${memory.geometries}g`;
+  }
+
   updateFps(rawDt) {
     this.fpsFrames++;
     this.fpsElapsed += rawDt;
@@ -1804,7 +1812,9 @@ class Game {
     this.fps = Math.round(this.fpsFrames / this.fpsElapsed);
     this.fpsFrames = 0;
     this.fpsElapsed = 0;
-    if (this.osd.fps) this.osd.fps.textContent = String(this.fps);
+    if (this.osd.fps) {
+      this.osd.fps.textContent = PERF_HUD ? this.perfText() : String(this.fps);
+    }
   }
 
   updateBattery(dt) {
@@ -1997,9 +2007,8 @@ class Game {
     const dt = Math.min(rawDt, 0.1);
     this.updateFps(rawDt);
 
-    // Only block play in portrait when vertical mode is turned off.
-    const portraitLocked =
-      !PORTRAIT_OPTIONS.enabled && document.body.classList.contains('is-portrait');
+    // Touch devices are portrait-only: pause while held sideways.
+    const portraitLocked = document.body.classList.contains('is-landscape-blocked');
 
     if (this.state === 'INTRO') {
       if (!portraitLocked) this.updateIntro(dt);
@@ -2025,7 +2034,9 @@ class Game {
     if (this.state !== 'PAUSED') {
       this.boatCrew.officer.updateReverseLook(dt, REVERSE_LOOK);
       this.boatCrew.update(dt);
-      this.boatCrew.updateGaze(dt, this.smugglerManager.smugglers, CREW_GAZE);
+      this.boatCrew.updateGaze(dt, this.smugglerManager.smugglers, CREW_GAZE, OAR_TARGET_RANGE);
+      // The watched swimmer takes the swing.
+      this.boat.focusTarget = this.boatCrew.strikeTarget;
     }
 
     this.world.update(dt, this.boat.position.x, this.boat.velocity.x);
@@ -2037,6 +2048,7 @@ class Game {
       this.boat.position.z
     );
     this.renderer.setFollowHeading(this.boat.angle);
+    this.renderer.setSpeedRatio(Math.abs(this.boat.speed) / this.boat.maxSpeed);
     if (this.state === 'GAMEOVER') this.updateGameOverFocus(dt);
     else if (this.state === 'PLAYING') this.updateChaseCamera(dt);
     this.renderer.updateCamera(dt);
@@ -2055,7 +2067,13 @@ class Game {
       this.osdTimer = 0;
       this.updateOSD();
     }
-    this.renderer.render();
+    if (PERF_HUD) {
+      const t0 = performance.now();
+      this.renderer.render();
+      this.perfCpuMs += (performance.now() - t0 - this.perfCpuMs) * 0.1;
+    } else {
+      this.renderer.render();
+    }
   }
 }
 
@@ -2093,6 +2111,10 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.classList.toggle(
       'is-portrait',
       touch && window.innerHeight > window.innerWidth
+    );
+    document.body.classList.toggle(
+      'is-landscape-blocked',
+      touch && window.innerWidth > window.innerHeight
     );
     document.body.classList.toggle(
       'portrait-play',

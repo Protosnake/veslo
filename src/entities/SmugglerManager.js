@@ -211,17 +211,32 @@ export class SmugglerManager {
     // Update active smugglers & check collisions
     for (let i = this.smugglers.length - 1; i >= 0; i--) {
       const s = this.smugglers[i];
-      s.update(dt, boat, wildlife, this.smugglers);
 
-      // Streaming: swimmers left far behind are dropped, no penalty.
-      if (
-        !s.breached &&
-        Math.abs(s.position.x - boat.position.x) > STREAMING_TUNING.despawnDistance
-      ) {
-        s.destroy();
-        this.smugglers.splice(i, 1);
-        continue;
+      // Streaming: beyond the sim radius a living swimmer goes dormant (hidden
+      // and frozen, so it costs nothing but still feeds its proximity arrow);
+      // beyond the track radius, or when dead, it is dropped with no penalty.
+      if (!s.breached) {
+        const away = Math.abs(s.position.x - boat.position.x);
+        if (away > STREAMING_TUNING.trackDistance || (away > STREAMING_TUNING.despawnDistance && s.isDead)) {
+          s.destroy();
+          this.smugglers.splice(i, 1);
+          continue;
+        }
+        if (away > STREAMING_TUNING.despawnDistance) {
+          if (!s.dormant) {
+            s.dormant = true;
+            s.wasVisible = s.group.visible;
+            s.group.visible = false;
+          }
+          continue;
+        }
+        if (s.dormant) {
+          s.dormant = false;
+          s.group.visible = s.wasVisible;
+        }
       }
+
+      s.update(dt, boat, wildlife, this.smugglers);
 
       // A smuggler reaching the south shore costs rank, not the run.
       if ((s.state === 'swimming' || s.state === 'escaping') && s.reachedSouth && !s.isDead && !s.breached) {

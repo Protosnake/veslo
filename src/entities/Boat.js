@@ -32,7 +32,7 @@ const OAR_SIDE_SIGN = { left: 1, right: -1 };
 // The closest enemy always gets its side's oar. The other side joins in only
 // when its own enemy is genuinely close, so a distant swimmer on the far side
 // does not trigger a pointless second swing.
-const OAR_TARGET_RANGE = 6;
+export const OAR_TARGET_RANGE = 6;
 const OAR_BOTH_RANGE = 4.5;
 
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -87,6 +87,8 @@ export class Boat {
     this.slapDuration = 0.55;
     this.slapCooldown = 0;
     this.slapId = 0;
+    /** Swimmer the oarsman is watching (set by the crew); its side's oar takes the swing. */
+    this.focusTarget = null;
     this.whackTargetAcquired = false;
     this.oarUp = new THREE.Vector3(0, 1, 0);
     this.oars = { left: null, right: null };
@@ -535,6 +537,13 @@ export class Boat {
     return true;
   }
 
+  /** Which oar reaches this world position: the same side test findWhackTargets uses. */
+  oarSideOf(target) {
+    const dx = target.position.x - this.position.x;
+    const dz = target.position.z - this.position.z;
+    return dx * Math.sin(this.angle) + dz * Math.cos(this.angle) >= 0 ? 'left' : 'right';
+  }
+
   findWhackTargets(smugglers) {
     const targets = { left: null, right: null };
     const nearest = { left: 36, right: 36 };
@@ -557,6 +566,15 @@ export class Boat {
         nearest[side] = distanceSq;
         targets[side] = s;
       }
+    }
+
+    // The enemy the oarsman is looking at takes its side's oar, even when
+    // another swimmer on that side is nearer.
+    const focus = this.focusTarget;
+    if (focus && !focus.isDead && focus.state === 'swimming') {
+      const dx = focus.position.x - this.position.x;
+      const dz = focus.position.z - this.position.z;
+      if (dx * dx + dz * dz < 36) targets[this.oarSideOf(focus)] = focus;
     }
 
     return targets;
@@ -1331,7 +1349,10 @@ export class Boat {
           left: distanceTo(targets.left),
           right: distanceTo(targets.right)
         };
-        const closestSide = distances.left <= distances.right ? 'left' : 'right';
+        const focusInReach = this.focusTarget && (targets.left === this.focusTarget || targets.right === this.focusTarget);
+        const closestSide = focusInReach
+          ? this.oarSideOf(this.focusTarget)
+          : distances.left <= distances.right ? 'left' : 'right';
 
         for (const side of ['left', 'right']) {
           const mount = this.oars[side];

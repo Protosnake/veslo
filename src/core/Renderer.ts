@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { QUALITY } from '../config/quality.js';
+import { ZOOM_TUNING } from '../config/world.js';
 
 export class WebGLUnavailableError extends Error {
   constructor(cause?: unknown) {
@@ -59,6 +60,9 @@ export class GameRenderer {
   renderer!: THREE.WebGLRenderer;
   camera!: THREE.PerspectiveCamera;
   elapsed = 0;
+  /** View-size multiplier (<1 = zoomed in); eases with boat speed. */
+  zoomScale = 1 / (1 + ZOOM_TUNING.zoomIn);
+  speedRatio = 0;
   readonly defaultNear = 0.5;
 
   horizontalFov!: number;
@@ -361,6 +365,11 @@ export class GameRenderer {
     this.sun.target.updateMatrixWorld();
   }
 
+  /** Boat speed as a 0..1 fraction of top speed; zooms the view out as it rises. */
+  setSpeedRatio(ratio: number): void {
+    this.speedRatio = THREE.MathUtils.clamp(ratio, 0, 1);
+  }
+
   settleFollow(x: number, z: number): void {
     this.followTarget.set(x, 0, z);
     this.fpvHeading = this.fpvTargetHeading;
@@ -459,7 +468,7 @@ export class GameRenderer {
     }
     else if (this.portrait) hDeg *= this.portraitOptions.fov / this.horizontalFov;
     const hFov = THREE.MathUtils.degToRad(hDeg);
-    const vFov = 2 * Math.atan(Math.tan(hFov / 2) / aspect);
+    const vFov = 2 * Math.atan((Math.tan(hFov / 2) * this.zoomScale) / aspect);
     this.camera.fov = THREE.MathUtils.radToDeg(vFov);
     this.camera.updateProjectionMatrix();
   }
@@ -475,6 +484,12 @@ export class GameRenderer {
   updateCamera(dt: number): void {
     this.elapsed += dt;
     const t = this.elapsed;
+
+    const zoomTarget = (1 + ZOOM_TUNING.zoomOutAtMaxSpeed * this.speedRatio) / (1 + ZOOM_TUNING.zoomIn);
+    if (Math.abs(zoomTarget - this.zoomScale) > 1e-4) {
+      this.zoomScale += (zoomTarget - this.zoomScale) * (1 - Math.exp(-dt * ZOOM_TUNING.smoothing));
+      this.applyResponsiveFov();
+    }
 
     if (this.manualCamera) {
       this.camera.position.copy(this.manualPosition);

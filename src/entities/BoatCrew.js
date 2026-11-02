@@ -19,31 +19,43 @@ export class BoatCrew {
     /** Bearing (radians, soldier-local, +Y rotation) of the officer's watched enemy, or null. */
     this.officerBearing = null;
     this.gazeYaw = new Map();
+    this.lastBest = new Map();
+    /** Swimmer the oarsman is watching inside oar reach (the one his oar will hit), or null. */
+    this.strikeTarget = null;
   }
 
   /** Turn both crew heads toward the closest visible enemy (or back to centre). */
-  updateGaze(dt, smugglers, { range, maxYaw, smoothing }) {
+  updateGaze(dt, smugglers, { range, maxYaw, smoothing }, strikeRange = 0) {
     this.officerBearing = this.lookAtClosest(this.officer.soldier, smugglers, dt, range, maxYaw, smoothing);
-    this.lookAtClosest(this.oarsman.soldier, smugglers, dt, range, maxYaw, smoothing);
+    // The oarsman prefers swimmers inside oar reach, so his gaze names the swing target.
+    this.lookAtClosest(this.oarsman.soldier, smugglers, dt, range, maxYaw, smoothing, strikeRange);
+    this.strikeTarget = this.lastBest.get(this.oarsman.soldier) ?? null;
+    if (this.strikeTarget && (this.strikeTarget.state !== 'swimming' || !strikeRange)) this.strikeTarget = null;
     // Reversing: the officer's head adds a little over-the-shoulder turn on top of the gaze.
     this.officer.soldier.joints.head.rotation.y += this.officer.headLook;
   }
 
-  lookAtClosest(soldier, smugglers, dt, range, maxYaw, smoothing) {
+  lookAtClosest(soldier, smugglers, dt, range, maxYaw, smoothing, preferSwimmerWithin = 0) {
     const head = soldier.joints.head;
     head.getWorldPosition(this.head);
     let best = null;
     let bestSq = range * range;
+    let bestReach = false;
+    const reachSq = preferSwimmerWithin * preferSwimmerWithin;
     for (const s of smugglers || []) {
       if (!s || s.isDead || !s.group || !s.group.visible || !NOTICEABLE_STATES.has(s.state)) continue;
       const dx = s.position.x - this.head.x;
       const dz = s.position.z - this.head.z;
       const distanceSq = dx * dx + dz * dz;
-      if (distanceSq < bestSq) {
+      const inReach = reachSq > 0 && s.state === 'swimming' && distanceSq < reachSq;
+      // A swimmer in oar reach always beats anything else; otherwise closest wins.
+      if ((inReach && !bestReach) || (inReach === bestReach && distanceSq < bestSq)) {
         bestSq = distanceSq;
         best = s;
+        bestReach = inReach;
       }
     }
+    this.lastBest.set(soldier, best);
 
     let bearing = null;
     if (best) {

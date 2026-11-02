@@ -38,10 +38,13 @@ export const ROCK_TUNING = {
 
 export const STREAMING_TUNING = {
   /**
-   * Swimmers and wildlife farther than this from the boat are despawned with
-   * no penalty; nothing spawns or simulates beyond it either.
+   * Wildlife farther than this from the boat is despawned with no penalty.
+   * Swimmers farther than this go dormant (hidden, frozen, still shown by
+   * their proximity arrow) until trackDistance. Nothing spawns beyond it.
    */
   despawnDistance: envNumber(import.meta.env.VITE_DESPAWN_DISTANCE, 320),
+  /** Dormant swimmers are dropped (no penalty) beyond this distance; keep above despawnDistance. */
+  trackDistance: envNumber(import.meta.env.VITE_TRACK_DISTANCE, 600),
   /** New swimmers appear at least this far from the boat (world units / metres). */
   spawnMinDistance: envNumber(import.meta.env.VITE_SPAWN_MIN_DISTANCE, 100),
   /** ...and no farther than this. Keep below despawnDistance. */
@@ -55,6 +58,8 @@ export const MARKER_TUNING = {
   radius: envNumber(import.meta.env.VITE_MARKER_RADIUS, 4.5),
   /** Swimmers closer than this get a marker. */
   range: envNumber(import.meta.env.VITE_MARKER_RANGE, 1000),
+  /** Swimmers closer than this lose their marker (they are visible by then). */
+  hideDistance: envNumber(import.meta.env.VITE_MARKER_HIDE_DISTANCE, 20),
   /** Base triangle size. */
   size: envNumber(import.meta.env.VITE_MARKER_SIZE, 0.7),
   /** Peak triangle opacity (0..1). */
@@ -71,7 +76,25 @@ export const MARKER_TUNING = {
   maxMarkers: Math.max(1, Math.round(envNumber(import.meta.env.VITE_MARKER_MAX, 5)))
 };
 
+export const ZOOM_TUNING = {
+  /** Gameplay camera zooms in this fraction on the boat at rest (0.25 = 25% closer). */
+  zoomIn: envNumber(import.meta.env.VITE_ZOOM_IN, 0.25),
+  /** Extra view widening at full speed, relative to the resting view (0.5 = up to 50% zoom out). */
+  zoomOutAtMaxSpeed: envNumber(import.meta.env.VITE_ZOOM_OUT_MAX_SPEED, 0.5),
+  /** How fast the zoom eases toward its target (per second). */
+  smoothing: envNumber(import.meta.env.VITE_ZOOM_SMOOTHING, 2)
+};
+
 export const BREACH_TUNING = {
   /** Ranks lost when a smuggler reaches the south shore. */
   ranksLost: Math.max(1, Math.round(envNumber(import.meta.env.VITE_BREACH_RANKS_LOST, 1)))
+};
+
+export const VEGETATION_TUNING = {
+  /**
+   * Multiplier on shoreline reed clumps, patches and stalks (0 = none, 1 = the
+   * original lush look). Reeds are instanced, so this cuts triangles and
+   * instance-matrix uploads, not draw calls.
+   */
+  reedDensity: Math.min(1, Math.max(0, envNumber(import.meta.env.VITE_REED_DENSITY, 0.4)))
 };

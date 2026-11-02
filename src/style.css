@@ -2497,7 +2497,7 @@ body.intro .drone-osd {
   100% { opacity: 0; transform: translate(-50%, -8px) scale(0.95); }
 }
 
-/* Landscape-only gate for touch devices */
+/* Portrait-only gate for touch devices */
 .orientation-lock {
   position: absolute;
   inset: 0;
@@ -2521,7 +2521,7 @@ body.intro .drone-osd {
   pointer-events: auto;
 }
 
-.touch-device.is-portrait:not(.portrait-play) .orientation-lock {
+.touch-device.is-landscape-blocked .orientation-lock {
   display: flex;
 }
 
@@ -2553,15 +2553,15 @@ body.intro .drone-osd {
 }
 
 @keyframes orientationHint {
-  0%, 15% { transform: rotate(0deg); }
-  45%, 70% { transform: rotate(-90deg); }
-  95%, 100% { transform: rotate(0deg); }
+  0%, 15% { transform: rotate(-90deg); }
+  45%, 70% { transform: rotate(0deg); }
+  95%, 100% { transform: rotate(-90deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .orientation-icon {
     animation: none;
-    transform: rotate(-90deg);
+    transform: none;
   }
 }
 

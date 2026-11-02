@@ -89,7 +89,7 @@ export class ProximityMarkers {
       const dx = s.position.x - bx;
       const dz = s.position.z - bz;
       const dist = Math.hypot(dx, dz);
-      if (dist > range || dist < 0.001) continue;
+      if (dist > range || dist < MARKER_TUNING.hideDistance) continue;
       groups.push({ dx, dz, dist, angle: Math.atan2(dz, dx), diving: !!s.isDiving, sum: dist, count: 1 });
     }
 
