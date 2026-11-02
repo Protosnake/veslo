@@ -52,6 +52,7 @@ Implemented features have a Mermaid logic diagram under `docs/features/`. The pr
 - [x] AK battery mode, rotor stall, and floating corpses (`src/entities/Boat.js`, `Smuggler.js`, `main.js`).
 - [x] Whack oar tracks and strikes the closest swimming smuggler's head (`src/entities/Boat.js`).
 - [x] Oarsman can fall overboard on sharp high-speed turns and is picked up by driving the hull over him; hard rock hits and fast turning stern hits always throw him, landing in rock-free water (`src/entities/Boat.js`, `src/main.js`).
+- [x] Oars sit in small oarlocks on the side tubes (`OAR_PIVOT` in `src/entities/Boat.js`); the rower grips the long inboard handle past the oarlock (`src/entities/Oar.js`, `src/entities/BoatOarsman.js`).
 - [x] Game-over space-to-restart throttle (5s) to prevent accidental instant restarts.
 - [x] Forgiving prop-in-reeds collisions: grazing the reed line only drags the boat, and backing away pulls the prop free instead of ending the run (`src/entities/Boat.js`).
 - [x] Incremental TypeScript migration started: `tsc --noEmit` tooling plus typed core modules (`src/core/Renderer.ts`, `src/systems/I18n.ts`, `Logger.ts`, `RankSystem.ts`, `RankSprites.ts`, `src/world/Bounds.ts`). Remaining JS is checked as it is converted (`checkJs: false`).

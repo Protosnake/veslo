@@ -23,6 +23,11 @@ const OAR_REST_R = new THREE.Euler(-1.84, 0, 0.6);
 const OAR_WINDUP_L = new THREE.Euler(1.44, 0, 0.5);
 const OAR_WINDUP_R = new THREE.Euler(-1.44, 0, 0.5);
 
+// Oar pivot in playerGroup space (y 0.2 + 0.56 sits just above the tube top; z 0.8 is the tube centreline); z is mirrored per side.
+const OAR_PIVOT = Object.freeze({ x: -0.625, y: 0.2, z: 0.8 });
+const OARLOCK_POST_GEO = new THREE.CylinderGeometry(0.03, 0.04, 0.12, 8);
+const OARLOCK_COLLAR_GEO = new THREE.TorusGeometry(0.06, 0.02, 6, 10);
+const OARLOCK_MAT = new THREE.MeshLambertMaterial({ color: 0x3a3d40, flatShading: true });
 const OAR_SIDE_SIGN = { left: 1, right: -1 };
 // The closest enemy always gets its side's oar. The other side joins in only
 // when its own enemy is genuinely close, so a distant swimmer on the far side
@@ -427,9 +432,23 @@ export class Boat {
     const rest = (side === 'left' ? OAR_REST_L : OAR_REST_R).clone();
     const windup = (side === 'left' ? OAR_WINDUP_L : OAR_WINDUP_R).clone();
     const pivot = new THREE.Group();
-    pivot.position.set(-0.28, 0.36, sign * 0.34);
+    pivot.position.set(OAR_PIVOT.x, OAR_PIVOT.y, sign * OAR_PIVOT.z);
     pivot.rotation.copy(rest);
     this.playerGroup.add(pivot);
+
+    // Oarlock: a short post up from the tube plus a collar the oar turns in,
+    // so the shaft visibly rests on the boat instead of floating above it.
+    const lock = new THREE.Group();
+    lock.position.set(OAR_PIVOT.x, OAR_PIVOT.y, sign * OAR_PIVOT.z);
+    const post = new THREE.Mesh(OARLOCK_POST_GEO, OARLOCK_MAT);
+    post.position.y = -0.06;
+    post.castShadow = true;
+    lock.add(post);
+    const collar = new THREE.Mesh(OARLOCK_COLLAR_GEO, OARLOCK_MAT);
+    collar.rotation.x = Math.PI / 2;
+    collar.castShadow = true;
+    lock.add(collar);
+    this.playerGroup.add(lock);
 
     return {
       side,
