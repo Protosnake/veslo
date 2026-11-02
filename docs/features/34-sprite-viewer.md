@@ -58,3 +58,5 @@ flowchart LR
 - The shared `Soldier` was upgraded from plain boxes to a detailed model (tapered torso, faceted 6-sided limbs with ball joints, face, helmet kit, fingerless gloves, pads, boots). Joint names, pivots and the `arms.*.hand` attach point are unchanged, so poses and props still work. Outfits pick `headgear` (`helmet`, `beanie`, `cap`) and `gloves`.
 
 - `ChestRadio` (`src/entities/ChestRadio.js`) is a standalone model (catalog id `chest-radio`) mounted on the soldier plate carrier; `soldier.chestRadio.led` / `.pttButton` are the hooks for later interactions. The mouth is a single straight line mesh so it can be animated for talking later.
+
+- `AssaultRifle` (`src/entities/AssaultRifle.js`, catalog id `ak-rifle`) is a standalone AK-style rifle. Origin is the pistol grip, +z the muzzle; `magazine` and `muzzleTip` are hooks for reload/firing. It is not yet attached to any soldier.

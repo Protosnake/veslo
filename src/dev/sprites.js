@@ -5,6 +5,7 @@ import { BoatCrew } from '../entities/BoatCrew.js';
 import { Oar } from '../entities/Oar.js';
 import { Soldier } from '../entities/Soldier.js';
 import { ChestRadio } from '../entities/ChestRadio.js';
+import { AssaultRifle } from '../entities/AssaultRifle.js';
 import { Smuggler } from '../entities/Smuggler.js';
 import { Frog, Snake } from '../entities/Wildlife.js';
 import { createPreviewBird } from '../entities/Birds.js';
@@ -153,6 +154,13 @@ function buildChestRadio(stage) {
   return { roots: [radio.group] };
 }
 
+function buildAssaultRifle(stage) {
+  const rifle = new AssaultRifle();
+  rifle.group.position.y = 0.3;
+  stage.add(rifle.group);
+  return { roots: [rifle.group] };
+}
+
 function buildSoldier(stage, mode = 'idle') {
   const soldier = new WatchtowerSoldier(stage);
   soldier.setVisible(true);
@@ -299,6 +307,13 @@ export const SPRITE_GROUPS = [
         note: 'Chest-mounted tactical radio with speaker grille, PTT button, knob, antenna and status LED. Worn on the left of the soldier\'s plate carrier.',
         source: 'src/entities/ChestRadio.js',
         build: buildChestRadio
+      },
+      {
+        id: 'ak-rifle',
+        label: 'AK rifle',
+        note: 'Low-poly AK-style assault rifle: wooden stock, grip and handguards, steel receiver with dust cover, gas tube, sights, muzzle and curved banana magazine. Origin is the pistol grip, +z is the muzzle.',
+        source: 'src/entities/AssaultRifle.js',
+        build: buildAssaultRifle
       },
       {
         id: 'soldier-binoculars',
