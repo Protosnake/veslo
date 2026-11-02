@@ -189,7 +189,9 @@ export class SmugglerManager {
     this.elapsed += dt;
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      const groupSize = this.getGroupSize();
+      const alive = this.smugglers.reduce((n, s) => n + (s.isDead ? 0 : 1), 0);
+      // Never exceed the alive cap: trim the group, or skip the wave when full.
+      const groupSize = Math.min(this.getGroupSize(), Math.max(0, DIFFICULTY_TUNING.spawn.maxAlive - alive));
       let spawnDistanceOffset = 0;
 
       for (let i = 0; i < groupSize; i++) {

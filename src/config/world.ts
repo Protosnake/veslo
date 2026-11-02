@@ -11,11 +11,11 @@ function envNumber(raw: unknown, fallback: number): number {
 
 export const ROCK_TUNING = {
   /** Rock clusters alive in the river at once (shared by both travel directions). */
-  count: envNumber(import.meta.env.VITE_ROCK_COUNT, 9),
+  count: envNumber(import.meta.env.VITE_ROCK_COUNT, 16),
   /** Clusters spawn this far from the boat along the river (hidden by fog). */
-  spawnDistance: envNumber(import.meta.env.VITE_ROCK_SPAWN_DISTANCE, 170),
+  spawnDistance: envNumber(import.meta.env.VITE_ROCK_SPAWN_DISTANCE, 320),
   /** Clusters farther than this from the boat are recycled ahead of it. */
-  recycleDistance: envNumber(import.meta.env.VITE_ROCK_RECYCLE_DISTANCE, 210),
+  recycleDistance: envNumber(import.meta.env.VITE_ROCK_RECYCLE_DISTANCE, 360),
   /** Big rocks per cluster (inclusive range) and their radius. */
   bigMin: envNumber(import.meta.env.VITE_ROCK_BIG_MIN, 1),
   bigMax: envNumber(import.meta.env.VITE_ROCK_BIG_MAX, 2),
@@ -31,7 +31,7 @@ export const ROCK_TUNING = {
   /** Minimum centre-to-centre gap between clusters. */
   minGap: envNumber(import.meta.env.VITE_ROCK_MIN_GAP, 30),
   /** Seconds a freshly spawned cluster takes to surface. */
-  riseSeconds: envNumber(import.meta.env.VITE_ROCK_RISE_SECONDS, 1.4),
+  riseSeconds: envNumber(import.meta.env.VITE_ROCK_RISE_SECONDS, 0.01),
   /** Margin kept between a cluster and the bank (world units). */
   bankMargin: envNumber(import.meta.env.VITE_ROCK_BANK_MARGIN, 2.5)
 };
@@ -97,4 +97,44 @@ export const VEGETATION_TUNING = {
    * instance-matrix uploads, not draw calls.
    */
   reedDensity: Math.min(1, Math.max(0, envNumber(import.meta.env.VITE_REED_DENSITY, 0.4)))
+};
+
+export const CLOUD_TUNING = {
+  /** 0..1 share of the sky covered by clouds (0 = clear sky). */
+  coverage: envNumber(import.meta.env.VITE_CLOUD_COVERAGE, 0.68),
+  /** Wind drift speed of the cloud layer (sky-units per second). */
+  speed: envNumber(import.meta.env.VITE_CLOUD_SPEED, 0.004),
+  /** Cloud feature size; higher = smaller, more numerous clouds. */
+  scale: envNumber(import.meta.env.VITE_CLOUD_SCALE, 1.6)
+};
+
+export const FOG_TUNING = {
+  /** Base FogExp2 density (higher = thicker haze everywhere). */
+  density: envNumber(import.meta.env.VITE_FOG_DENSITY, 0.0055),
+  /** Extra density multiplier right at water level (ground mist); 1 = no layering. */
+  groundBoost: envNumber(import.meta.env.VITE_FOG_GROUND_BOOST, 2.2),
+  /** Density multiplier high above the water (treetops, towers, sky). */
+  highFactor: envNumber(import.meta.env.VITE_FOG_HIGH_FACTOR, 0.35),
+  /** How fast the mist thins with height (per metre). */
+  heightFalloff: envNumber(import.meta.env.VITE_FOG_HEIGHT_FALLOFF, 0.12)
+};
+
+export const SUN_TUNING = {
+  /** Brightness of the sun glow seen through the clouds (0 = hidden). */
+  glow: envNumber(import.meta.env.VITE_SUN_GLOW, 1.0),
+  /** Sun azimuth drift in rad/s (0 = fixed sun). 0.004 is ~26 min per full turn. */
+  driftSpeed: envNumber(import.meta.env.VITE_SUN_DRIFT_SPEED, 0.004),
+  /** Mean sun elevation above the horizon, degrees. */
+  elevation: envNumber(import.meta.env.VITE_SUN_ELEVATION, 40),
+  /** Elevation swing (+/- degrees) as the sun bobs through the clouds. */
+  elevationSwing: envNumber(import.meta.env.VITE_SUN_ELEVATION_SWING, 10)
+};
+
+export const CLOUD_SHADOW_TUNING = {
+  /** Darkening under cloud patches drifting over water and land (0 = off). */
+  strength: envNumber(import.meta.env.VITE_CLOUD_SHADOW, 0.45),
+  /** Patch size in 1/metres; lower = larger patches. */
+  scale: envNumber(import.meta.env.VITE_CLOUD_SHADOW_SCALE, 0.012),
+  /** Drift speed in patch units per second. */
+  speed: envNumber(import.meta.env.VITE_CLOUD_SHADOW_SPEED, 0.03)
 };

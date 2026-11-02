@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { cloudShadowTime, CLOUD_SHADOW_SPEED } from '../world/Fog.js';
+import { FOG_TUNING, SUN_TUNING } from '../config/world.js';
 import { QUALITY } from '../config/quality.js';
 import { ZOOM_TUNING } from '../config/world.js';
 
@@ -81,6 +83,11 @@ export class GameRenderer {
   lookTarget!: THREE.Vector3;
 
   sun!: THREE.DirectionalLight;
+  ambient!: THREE.AmbientLight;
+  baseAmbient = 0.7;
+  sunDir = new THREE.Vector3(0.45, 0.75, 0.3).normalize();
+  private sunColorLow = new THREE.Color(0xffd6a0);
+  private sunColorHigh = new THREE.Color(0xfffaf0);
 
   portraitOptions: PortraitRigOptions = {
     enabled: false,
@@ -127,8 +134,8 @@ export class GameRenderer {
   constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x7dc0ea);
-    this.scene.fog = new THREE.FogExp2(0x7dc0ea, 0.007);
+    this.scene.background = new THREE.Color(0x8ea7ad);
+    this.scene.fog = new THREE.FogExp2(0x8ea7ad, FOG_TUNING.density);
 
     this.initRenderer();
     this.initCamera();
@@ -360,9 +367,25 @@ export class GameRenderer {
     // Snapping to a coarse grid keeps shadow edges from shimmering.
     const gx = Math.round(x / 4) * 4;
     const gz = Math.round(z / 4) * 4;
-    this.sun.position.set(gx + 30, 50, gz + 20);
+    this.updateSunDirection();
+    this.sun.position.set(gx + this.sunDir.x * 60, this.sunDir.y * 60, gz + this.sunDir.z * 60);
     this.sun.target.position.set(gx, 0, gz);
     this.sun.target.updateMatrixWorld();
+  }
+
+  /** Slowly drifting sun: azimuth turns, elevation bobs, warmer when low. */
+  updateSunDirection(): void {
+    const t = this.elapsed * SUN_TUNING.driftSpeed;
+    const elev = THREE.MathUtils.degToRad(
+      SUN_TUNING.elevation + Math.sin(t * 1.7) * SUN_TUNING.elevationSwing
+    );
+    const az = 0.55 + t;
+    this.sunDir.set(Math.cos(elev) * Math.cos(az), Math.sin(elev), Math.cos(elev) * Math.sin(az));
+    const warm = THREE.MathUtils.clamp(
+      1 - (Math.sin(elev) - Math.sin(THREE.MathUtils.degToRad(SUN_TUNING.elevation - SUN_TUNING.elevationSwing))) / 0.35,
+      0, 1
+    );
+    this.sun.color.copy(this.sunColorHigh).lerp(this.sunColorLow, warm);
   }
 
   /** Boat speed as a 0..1 fraction of top speed; zooms the view out as it rises. */
@@ -413,7 +436,8 @@ export class GameRenderer {
   }
 
   initLights(): void {
-    const ambientLight = new THREE.AmbientLight(0xdff1ff, 0.7);
+    const ambientLight = new THREE.AmbientLight(0xdff1ff, this.baseAmbient);
+    this.ambient = ambientLight;
     this.scene.add(ambientLight);
 
     const hemiLight = new THREE.HemisphereLight(0xfff7e6, 0x3d7068, 0.4);
@@ -483,6 +507,7 @@ export class GameRenderer {
    */
   updateCamera(dt: number): void {
     this.elapsed += dt;
+    cloudShadowTime.value += dt * CLOUD_SHADOW_SPEED;
     const t = this.elapsed;
 
     const zoomTarget = (1 + ZOOM_TUNING.zoomOutAtMaxSpeed * this.speedRatio) / (1 + ZOOM_TUNING.zoomIn);

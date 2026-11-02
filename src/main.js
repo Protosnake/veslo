@@ -6,6 +6,7 @@ import { BoatCrew } from './entities/BoatCrew.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { WildlifeManager } from './entities/WildlifeManager.js';
 import { BirdManager } from './entities/Birds.js';
+import { Skybox } from './world/Skybox.js';
 import { Minivan } from './entities/Minivan.js';
 import { WatchtowerSoldier } from './entities/WatchtowerSoldier.js';
 import { Drone } from './entities/Drone.js';
@@ -487,6 +488,7 @@ class Game {
     );
 
     this.birdManager = new BirdManager(this.renderer.scene, this.world, this.wildlifeManager);
+    this.skybox = new Skybox(this.renderer.scene);
     this.proximityMarkers = new ProximityMarkers(this.renderer.scene);
 
     this.minivan = new Minivan(this.renderer.scene);
@@ -2041,6 +2043,7 @@ class Game {
 
     this.world.update(dt, this.boat.position.x, this.boat.velocity.x);
     if (this.state !== 'PAUSED') this.birdManager.update(dt, this.boat.position.x);
+    if (this.state !== 'PAUSED') this.skybox.update(dt, this.renderer.camera, this.renderer.sunDir);
     if (this.state !== 'PLAYING') this.proximityMarkers.hide();
 
     this.renderer.setFollowTarget(

@@ -607,8 +607,8 @@ export class RiverWorld {
     const positions = this.waterGeo.attributes.position;
     const uvs = this.waterGeo.attributes.uv;
     const colors = new Float32Array(positions.count * 3);
-    const deepColor = new THREE.Color(0x17695a);
-    const shallowColor = new THREE.Color(0x3a8f70);
+    const deepColor = new THREE.Color(0x26402a);
+    const shallowColor = new THREE.Color(0x5b6b3c);
     const tint = new THREE.Color();
 
     for (let i = 0; i < positions.count; i++) {
@@ -645,7 +645,7 @@ export class RiverWorld {
     });
     if (this.waterMat.userData.configured) {
       this.waterMesh = new THREE.Mesh(this.waterGeo, this.waterMat);
-      this.waterMesh.receiveShadow = false;
+      this.waterMesh.receiveShadow = true;
       this.scene.add(this.waterMesh);
       return;
     }
@@ -720,8 +720,8 @@ normal = normalize((viewMatrix * vec4(waterWorldNormal, 0.0)).xyz);`
 vec3 waterViewWorld = normalize(cameraPosition - vWaterWorldPos);
 vec3 waterReflectDir = reflect(-waterViewWorld, waterWorldNormal);
 vec3 waterReflection = mix(
-  vec3(0.16, 0.31, 0.27),
-  vec3(0.34, 0.60, 0.80),
+  vec3(0.15, 0.20, 0.15),
+  vec3(0.46, 0.52, 0.50),
   smoothstep(-0.05, 0.65, waterReflectDir.y)
 );
 float waterFresnel = 0.02 + 0.98 * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 5.0);
@@ -738,7 +738,7 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
     };
 
     this.waterMesh = new THREE.Mesh(this.waterGeo, this.waterMat);
-    this.waterMesh.receiveShadow = false;
+    this.waterMesh.receiveShadow = true;
     this.scene.add(this.waterMesh);
   }
 

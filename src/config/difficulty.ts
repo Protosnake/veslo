@@ -61,6 +61,8 @@ export interface DifficultyTuning {
     wavesPerExtra: number;
     /** Group size ceiling. */
     maxGroupSize: number;
+    /** Living smugglers at once; waves are skipped while at the cap, so cruising away cannot pile them up. */
+    maxAlive: number;
   };
 }
 
@@ -90,13 +92,14 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     recoverySeconds: 6
   },
   spawn: {
-    intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 2.1),
+    intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 3.2),
     startInterval: envNumber(import.meta.env.VITE_SPAWN_START_INTERVAL, 8),
     minInterval: envNumber(import.meta.env.VITE_SPAWN_MIN_INTERVAL, 3),
     rampSeconds: envNumber(import.meta.env.VITE_SPAWN_RAMP_SECONDS, 240),
     jitter: envNumber(import.meta.env.VITE_SPAWN_JITTER, 0.1),
     startGroupSize: envNumber(import.meta.env.VITE_SPAWN_START_GROUP, 1),
     wavesPerExtra: envNumber(import.meta.env.VITE_SPAWN_WAVES_PER_EXTRA, 4),
-    maxGroupSize: envNumber(import.meta.env.VITE_SPAWN_MAX_GROUP, 3)
+    maxGroupSize: envNumber(import.meta.env.VITE_SPAWN_MAX_GROUP, 2),
+    maxAlive: envNumber(import.meta.env.VITE_SPAWN_MAX_ALIVE, 5)
   }
 };
