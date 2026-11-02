@@ -12,6 +12,8 @@ const DIAGRAMS_BY_SOURCE = {
     "docs/features/11-storks.md",
     "docs/features/34-sprite-viewer.md"
   ],
+  "src/core/ChaseCamera.ts": ["docs/features/35-battery-chase-camera.md"],
+  "src/core/MountCamera.ts": ["docs/features/35-battery-chase-camera.md"],
   "src/dev/SpriteViewer.js": ["docs/features/34-sprite-viewer.md"],
   "src/dev/sprites.js": ["docs/features/34-sprite-viewer.md"],
   "src/config/tuning.ts": ["docs/features/34-sprite-viewer.md"],
@@ -26,7 +28,8 @@ const DIAGRAMS_BY_SOURCE = {
     "docs/features/10-flying-birds.md",
     "docs/features/11-storks.md",
     "docs/features/12-ranking.md",
-    "docs/features/34-sprite-viewer.md"
+    "docs/features/34-sprite-viewer.md",
+    "docs/features/35-battery-chase-camera.md"
   ]
 }
 
@@ -103,7 +106,7 @@ export default async function diagramSync({ client, directory, worktree }) {
       "These feature logic diagrams are stale because their tracked source files changed:",
       ...lines,
       "",
-      "Read the changed source files and update only the Mermaid diagram and its short logic notes in the listed docs. Keep the rest of each file intact. Do not modify game source files."
+      "Read the changed source files and update the Mermaid diagram and its short logic notes in the listed docs. Also record any non-obvious decision made in the change (default chosen, feature disabled, approach rejected, trade-off) as a bullet under that doc's '## Decisions' section (Decision / Why / Alternatives), creating the section if missing. Keep the rest of each file intact. Do not modify game source files."
     ].join("\n")
 
     try {
