@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const SHAFT_GEO = new THREE.CylinderGeometry(0.045, 0.055, 2.0, 8);
+const SHAFT_GEO = new THREE.CylinderGeometry(0.025, 0.032, 2.5, 8);
 const BLADE_GEO = new THREE.CapsuleGeometry(0.16, 0.55, 4, 8);
 const TIP_GEO = new THREE.SphereGeometry(0.13, 8, 6);
 
@@ -14,7 +14,7 @@ export class Oar {
     this.group = new THREE.Group();
 
     const shaft = new THREE.Mesh(SHAFT_GEO, SHAFT_MAT);
-    shaft.position.y = 0.8;
+    shaft.position.y = 0.55; // spans -0.7..1.8: long inboard handle past the oarlock
     shaft.castShadow = true;
     this.group.add(shaft);
 

@@ -13,9 +13,9 @@ const SHOULDER_LEFT = new THREE.Vector3(-0.3, 1.55, 0);
 const ARM_POLE_RIGHT = new THREE.Vector3(1, 0, 0);
 const ARM_POLE_LEFT = new THREE.Vector3(-1, 0, 0);
 
-// One grip point per oar, along the shaft (+Y).
-const GRIP_RIGHT = new THREE.Vector3(0, 0.15, 0.02);
-const GRIP_LEFT = new THREE.Vector3(0, 0.15, -0.02);
+// One grip point per oar on the inboard handle (-Y of the oarlock), like a real rower.
+const GRIP_RIGHT = new THREE.Vector3(0, -0.55, 0.02);
+const GRIP_LEFT = new THREE.Vector3(0, -0.55, -0.02);
 
 export class BoatOarsman {
   constructor(boat) {

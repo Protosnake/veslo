@@ -54,3 +54,9 @@ flowchart LR
 - Wireframe traverses every cached record so switching sprites keeps the same render mode; shared materials are restored when wireframe is turned off.
 - Rigged sprites return `record.rig` (currently the shared `Soldier` from `soldier-idle`). `setRig()` fills the **Rig joints** panel from `rig.joints` and `rig.jointLabel()`, and hides the panel for every other sprite. A slider writes the joint's Euler angle and calls `soldier.freezePose()`, which snapshots the current rotations into `targets` so the idle blend in `update()` holds the pose instead of snapping back. **Reset pose** calls `setPose('idle', true)`.
 - Parts are catalogued separately from compositions: `boat`, `oar` and `soldier-idle` are raw models; `boat-officer` is a preset that composes them so the join can be reviewed without baking crew into the boat.
+
+- The shared `Soldier` was upgraded from plain boxes to a detailed model (tapered torso, faceted 6-sided limbs with ball joints, face, helmet kit, fingerless gloves, pads, boots). Joint names, pivots and the `arms.*.hand` attach point are unchanged, so poses and props still work. Outfits pick `headgear` (`helmet`, `beanie`, `cap`) and `gloves`.
+
+- `ChestRadio` (`src/entities/ChestRadio.js`) is a standalone model (catalog id `chest-radio`) mounted on the soldier plate carrier; `soldier.chestRadio.led` / `.pttButton` are the hooks for later interactions. The mouth is a single straight line mesh so it can be animated for talking later.
+
+- `AssaultRifle` (`src/entities/AssaultRifle.js`, catalog id `ak-rifle`) is a standalone AK-style rifle. Origin is the pistol grip, +z the muzzle; `magazine` and `muzzleTip` are hooks for reload/firing. It is not yet attached to any soldier.

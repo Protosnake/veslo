@@ -23,6 +23,11 @@ const OAR_REST_R = new THREE.Euler(-1.84, 0, 0.6);
 const OAR_WINDUP_L = new THREE.Euler(1.44, 0, 0.5);
 const OAR_WINDUP_R = new THREE.Euler(-1.44, 0, 0.5);
 
+// Oar pivot in playerGroup space (y 0.2 + 0.56 sits just above the tube top; z 0.8 is the tube centreline); z is mirrored per side.
+const OAR_PIVOT = Object.freeze({ x: -0.625, y: 0.2, z: 0.8 });
+const OARLOCK_POST_GEO = new THREE.CylinderGeometry(0.03, 0.04, 0.12, 8);
+const OARLOCK_COLLAR_GEO = new THREE.TorusGeometry(0.06, 0.02, 6, 10);
+const OARLOCK_MAT = new THREE.MeshLambertMaterial({ color: 0x3a3d40, flatShading: true });
 const OAR_SIDE_SIGN = { left: 1, right: -1 };
 // The closest enemy always gets its side's oar. The other side joins in only
 // when its own enemy is genuinely close, so a distant swimmer on the far side
@@ -40,7 +45,7 @@ export const LIFELINE = Object.freeze({
   xMin: -1.5,
   xMax: 0.7,
   y: 0.68,
-  z: 1.02,
+  z: 0.8,
   sag: 0.02
 });
 
@@ -154,7 +159,7 @@ export class Boat {
 
     const tubeRadius = 0.20;
     const tubeY = 0.45; // elevated so water waves never clip into floor
-    const tubeZ = 1.02;
+    const tubeZ = LIFELINE.z;
 
     // Side pontoon tubes: running from x = -1.5 to x = +0.7 (length 2.2, centered at x = -0.4)
     const sideTubeLength = 2.2;
@@ -276,11 +281,11 @@ export class Boat {
     // Solid hull floor in the same rubber green as the tubes, shaped to the
     // bow taper. No planks on top: the inside of the boat is one green shell.
     const floorShape = new THREE.Shape();
-    floorShape.moveTo(-1.5, 0.82);
-    floorShape.lineTo(0.7, 0.82);
+    floorShape.moveTo(-1.5, 0.62);
+    floorShape.lineTo(0.7, 0.62);
     floorShape.lineTo(2.0, 0);
-    floorShape.lineTo(0.7, -0.82);
-    floorShape.lineTo(-1.5, -0.82);
+    floorShape.lineTo(0.7, -0.62);
+    floorShape.lineTo(-1.5, -0.62);
     floorShape.closePath();
 
     const floorMat = rubberMat.clone();
@@ -292,7 +297,7 @@ export class Boat {
     this.hull.add(floor);
 
     // Solid Transom Board (-X)
-    const transomGeo = new THREE.BoxGeometry(0.12, 0.4, 1.92);
+    const transomGeo = new THREE.BoxGeometry(0.12, 0.4, 1.52);
     const transom = new THREE.Mesh(transomGeo, transomMat);
     transom.position.set(-1.5, 0.46, 0);
     transom.castShadow = true;
@@ -305,8 +310,8 @@ export class Boat {
     // One long rectangular block per bench, floor to seat height, so each seat
     // reads as a plain prolonged rectangle instead of a stacked pyramid.
     const createBench = (x) => {
-      const bench = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.07, 1.9), seatMat);
-      bench.position.set(x, 0.545, 0);
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.12, 1.5), seatMat);
+      bench.position.set(x, 0.58, 0);
       bench.castShadow = true;
       bench.receiveShadow = true;
       this.hull.add(bench);
@@ -319,7 +324,7 @@ export class Boat {
 
     // 2. Outboard Motor mounted on Transom (-X)
     this.motorPivot = new THREE.Group();
-    this.motorPivot.position.set(-1.65, 0.52, 0);
+    this.motorPivot.position.set(-1.65, 0.36, 0);
 
     const engineMount = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.3), metalMat);
     engineMount.position.set(0.1, 0.1, 0);
@@ -427,9 +432,23 @@ export class Boat {
     const rest = (side === 'left' ? OAR_REST_L : OAR_REST_R).clone();
     const windup = (side === 'left' ? OAR_WINDUP_L : OAR_WINDUP_R).clone();
     const pivot = new THREE.Group();
-    pivot.position.set(-0.28, 0.36, sign * 0.34);
+    pivot.position.set(OAR_PIVOT.x, OAR_PIVOT.y, sign * OAR_PIVOT.z);
     pivot.rotation.copy(rest);
     this.playerGroup.add(pivot);
+
+    // Oarlock: a short post up from the tube plus a collar the oar turns in,
+    // so the shaft visibly rests on the boat instead of floating above it.
+    const lock = new THREE.Group();
+    lock.position.set(OAR_PIVOT.x, OAR_PIVOT.y, sign * OAR_PIVOT.z);
+    const post = new THREE.Mesh(OARLOCK_POST_GEO, OARLOCK_MAT);
+    post.position.y = -0.06;
+    post.castShadow = true;
+    lock.add(post);
+    const collar = new THREE.Mesh(OARLOCK_COLLAR_GEO, OARLOCK_MAT);
+    collar.rotation.x = Math.PI / 2;
+    collar.castShadow = true;
+    lock.add(collar);
+    this.playerGroup.add(lock);
 
     return {
       side,
