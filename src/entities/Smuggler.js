@@ -150,6 +150,7 @@ export class Smuggler {
     this.propVulnerable = false;
     this.diveCooldown = 0;
     this.diveCount = 0;
+    this.divesUsed = 0;
     this.diveRecoverTimer = 0;
     this.currentHeading = Math.PI / 2; // facing south
     this.steerX = 0;
@@ -356,6 +357,7 @@ export class Smuggler {
       dive.cooldown * dive.cooldownGrowth ** this.diveCount
     );
     this.diveCount += 1;
+    this.divesUsed += 1;
     this.diveRecoverTimer = 0;
     this.sprintTimer = 0;
 
@@ -812,7 +814,7 @@ export class Smuggler {
           : Infinity;
       const trapped = dist < dive.senseRadius && closing > 4 && lateral < 2.6;
 
-      if (trapped && this.diveCooldown <= 0 && Math.random() < dive.chance) {
+      if (trapped && this.divesUsed < dive.maxDives && this.diveCooldown <= 0 && Math.random() < dive.chance) {
         this.startDive();
       } else if (distToBoat < sprint.senseRadius && this.sprintCooldown <= 0) {
         this.sprintTimer = sprint.duration;

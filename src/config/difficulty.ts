@@ -1,3 +1,9 @@
+function envNumber(raw: unknown, fallback: number): number {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export interface DifficultyTuning {
   speed: {
     /** Maximum extra speed (1.2 = up to +120%). */
@@ -18,6 +24,8 @@ export interface DifficultyTuning {
   dive: {
     /** Probability a trapped swimmer dives instead of trying to sprint. */
     chance: number;
+    /** Dives allowed per swimmer life. */
+    maxDives: number;
     /** Boat distance at which a swimmer starts judging the dodge. */
     senseRadius: number;
     minDuration: number;
@@ -37,6 +45,8 @@ export interface DifficultyTuning {
     recoverySeconds: number;
   };
   spawn: {
+    /** Multiplies every spawn interval; higher means fewer smugglers. */
+    intervalScale: number;
     baseInterval: number;
     pressureDrop: number;
     /** 1.4 keeps the old full-pressure point at 1,400 score. */
@@ -64,6 +74,7 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
   },
   dive: {
     chance: 0.6,
+    maxDives: envNumber(import.meta.env.VITE_SMUGGLER_MAX_DIVES, 1),
     senseRadius: 9,
     minDuration: 1.5,
     maxDuration: 2.8,
@@ -76,6 +87,7 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     recoverySeconds: 6
   },
   spawn: {
+    intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 2.5),
     baseInterval: 9,
     pressureDrop: 3.5,
     pressureGain: 1.4,

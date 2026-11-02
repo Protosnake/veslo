@@ -38,12 +38,12 @@ export class SmugglerManager {
   getSpawnInterval() {
     const tuning = DIFFICULTY_TUNING.spawn;
     if (this.waveCount <= tuning.warmupWaves) {
-      return tuning.warmupMin + Math.random() * (tuning.warmupMax - tuning.warmupMin);
+      return (tuning.warmupMin + Math.random() * (tuning.warmupMax - tuning.warmupMin)) * tuning.intervalScale;
     }
 
     const pressure = tuning.pressureGain * (this.score / (this.score + tuning.pressureMidpoint));
     const baseInterval = Math.max(tuning.minInterval, tuning.baseInterval - pressure * tuning.pressureDrop);
-    return baseInterval * (tuning.jitterMin + Math.random() * (tuning.jitterMax - tuning.jitterMin));
+    return baseInterval * tuning.intervalScale * (tuning.jitterMin + Math.random() * (tuning.jitterMax - tuning.jitterMin));
   }
 
   getGroupSize() {
