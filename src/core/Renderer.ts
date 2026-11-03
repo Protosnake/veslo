@@ -104,7 +104,7 @@ export class GameRenderer {
       lookAhead: 12,
       fov: 62,
       desktop: false,
-      desktopFov: 90,
+      desktopFov: 81,
       headingStiffness: 3,
       bank: 1
     }

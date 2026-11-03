@@ -1091,20 +1091,12 @@ class Game {
   spawnDebugSwimmers() {
     if (INITIAL_SPAWN_COUNT <= 0) return;
 
-    const path = this.world.gravelPath;
-    const z = (path ? path.emergeZ : 0) + 2;
-    const halfWidth = this.world.riverHalfWidth ?? 24;
-    const centerX = this.boat.position.x;
-
+    // Tight cluster right on the boat, all in one group so fright can spread.
+    const { x: bx, z: bz } = this.boat.position;
     for (let i = 0; i < INITIAL_SPAWN_COUNT; i++) {
-      const spread = (i - (INITIAL_SPAWN_COUNT - 1) / 2) * 5;
-      const jitter = (Math.random() - 0.5) * 3;
-      const x = THREE.MathUtils.clamp(
-        centerX + spread + jitter,
-        -halfWidth + 3,
-        halfWidth - 3
-      );
-      this.smugglerManager.spawnSwimmingAt(x, z);
+      const angle = Math.random() * Math.PI * 2;
+      const r = 2 + Math.random() * 6;
+      this.smugglerManager.spawnSwimmingAt(bx + Math.cos(angle) * r, bz + Math.sin(angle) * r, 0);
     }
   }
 

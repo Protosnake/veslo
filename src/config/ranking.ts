@@ -1,3 +1,9 @@
+function envNumber(raw: unknown, fallback: number): number {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export interface RankDefinition {
   key: string;
   sprite: string;
@@ -6,9 +12,10 @@ export interface RankDefinition {
 }
 
 export interface RankCurveConfig {
-  /** threshold(n) = quadratic * n^2 + linear * n */
-  quadratic: number;
-  linear: number;
+  /** Score for the first promotion (one kill ranks you up). */
+  firstRankScore: number;
+  /** Score for the top rank; ranks in between follow a power curve from first to top. */
+  topRankScore: number;
   /** Round each derived threshold down to this multiple; 0 disables rounding. */
   roundDownTo: number;
 }
@@ -42,9 +49,9 @@ export const RANK_DEFINITIONS: RankDefinition[] = [
 ];
 
 export const RANK_CURVE: RankCurveConfig = {
-  quadratic: 70,
-  linear: 500,
-  roundDownTo: 50
+  firstRankScore: envNumber(import.meta.env.VITE_RANK_FIRST_SCORE, 100),
+  topRankScore: envNumber(import.meta.env.VITE_RANK_TOP_SCORE, 10000),
+  roundDownTo: envNumber(import.meta.env.VITE_RANK_ROUND_TO, 50)
 };
 
 export const PROMOTION_TUNING: PromotionConfig = {

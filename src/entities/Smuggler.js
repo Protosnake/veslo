@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
-import { sx, sz } from '../world/Bounds.js';
+import { sx, sz, riverZ } from '../world/Bounds.js';
 import { DIFFICULTY_TUNING } from '../config/difficulty.js';
 import { STREAMING_TUNING } from '../config/world.js';
 import { Soldier, randomSmugglerOutfit } from './Soldier.js';
@@ -103,6 +103,14 @@ export class Smuggler {
   constructor(scene, riverWorld, startX, baseSpeed, spawnDistanceOffset = 0, options = {}) {
     this.scene = scene;
     this.world = riverWorld;
+    this.groupId = options.groupId ?? null;
+    this.frightTimer = 0;
+    this.frightFromX = 0;
+    this.frightFromZ = 0;
+    this.frightened = false;
+    this.retreating = false;
+    this.retreated = false;
+    this.puddles = [];
     this.baseSpeed = baseSpeed;
     this.currentSpeed = baseSpeed;
 
@@ -153,8 +161,13 @@ export class Smuggler {
     this.diveDepth = 0;
     this.propVulnerable = false;
     this.diveCooldown = 0;
+    this.rest = null; // set while climbing / sitting on / leaving a rock
+    this.restCooldown = 0;
+    this.restConsidered = new Set();
     this.diveCount = 0;
     this.divesUsed = 0;
+    // Decided once per swimmer (not per frame): only a fraction ever dive.
+    this.canDive = Math.random() < DIFFICULTY_TUNING.dive.chance;
     this.diveRecoverTimer = 0;
     this.currentHeading = Math.PI / 2; // facing south
     this.steerX = 0;
@@ -177,8 +190,10 @@ export class Smuggler {
     this.escapeElapsed = 0;
     this.escapedAway = false;
     this.reedLineZ = this.path ? this.path.reedLineZ : sz(-16.4);
-    this.emergeZ = this.path ? this.path.emergeZ : sz(-14.7);
+    // Water-entry line, measured from the (bent) centerline; emergeZ is the world Z at emergeX.
+    this.emergeLat = this.path ? this.path.emergeZ : sz(-14.7);
     this.emergeX = this.position.x;
+    this.emergeZ = riverZ(this.emergeX, this.emergeLat);
     this.hideDelay = 0;
 
     this.isDead = false;
@@ -349,6 +364,104 @@ export class Smuggler {
     }
   }
 
+  /** Rock top height: matches the mesh placement in RockField. */
+  rockTopY(rock) {
+    const size = rock.visualRadius;
+    return 0.25 + size * 0.25 + size * (rock.sy ?? 0.8) * 0.85;
+  }
+
+  /** Swimmers passing a big rock may climb it for a breather (rolled once per rock). */
+  considerRockRest(boat) {
+    const R = DIFFICULTY_TUNING.rockRest;
+    if (R.chance <= 0 || this.rest || this.isDiving || this.isDead || this.restCooldown > 0) return;
+    if (this.sprintTimer > 0 || this.isPanicking) return;
+    const rocks = this.world?.rockColliders;
+    if (!rocks) return;
+
+    for (let i = 0; i < rocks.length; i++) {
+      const rock = rocks[i];
+      const size = rock.visualRadius ?? 0;
+      if (size < R.minRockSize || this.restConsidered.has(rock)) continue;
+      const dx = this.position.x - rock.x;
+      const dz = this.position.z - rock.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > size + R.reach) continue;
+
+      this.restConsidered.add(rock);
+      if (Math.random() > R.chance) continue;
+
+      // Climb up the side the swimmer is on, a little off the centre.
+      const ux = distance > 1e-4 ? dx / distance : 0;
+      const uz = distance > 1e-4 ? dz / distance : 1;
+      this.rest = {
+        rock,
+        phase: 'climb',
+        time: 0,
+        hold: R.seconds * (1 + Math.random() * 0.5),
+        from: this.position.clone(),
+        top: new THREE.Vector3(rock.x + ux * size * 0.25, this.rockTopY(rock), rock.z + uz * size * 0.25),
+        exit: new THREE.Vector3(rock.x, 0, rock.z + size + 0.8)
+      };
+      this.swimmerGroup.visible = false;
+      this.walkerGroup.visible = true;
+      this.world.emitSplash(this.position.x, this.position.z, 5, 0xdff2fc);
+      return;
+    }
+  }
+
+  updateRockRest(dt, boat) {
+    const R = DIFFICULTY_TUNING.rockRest;
+    const rest = this.rest;
+    rest.time += dt;
+    this.walkPhase += dt * 7;
+    const ease = (t) => t * t * (3 - 2 * t);
+
+    // A boat charging in makes the swimmer bail out early.
+    if (rest.phase === 'sit' && boat && this.position.distanceTo(boat.position) < R.fleeRadius) {
+      rest.phase = 'leave';
+      rest.time = 0;
+      rest.from = this.position.clone();
+    }
+
+    if (rest.phase === 'climb') {
+      const t = Math.min(1, rest.time / 0.7);
+      this.position.lerpVectors(rest.from, rest.top, ease(t));
+      this.position.y += Math.sin(t * Math.PI) * 0.5;
+      this.applyRunPose(Math.sin(this.walkPhase), 0.3, 0.5);
+      if (t >= 1) {
+        rest.phase = 'sit';
+        rest.time = 0;
+      }
+    } else if (rest.phase === 'sit') {
+      this.position.copy(rest.top);
+      // Panting: slumped forward and bobbing slightly.
+      this.applyRunPose(0, 0.32 + Math.sin(rest.time * 5) * 0.04, 0);
+      if (rest.time >= rest.hold) {
+        rest.phase = 'leave';
+        rest.time = 0;
+        rest.from = this.position.clone();
+      }
+    } else {
+      const t = Math.min(1, rest.time / 0.45);
+      this.position.lerpVectors(rest.from, rest.exit, ease(t));
+      this.position.y = rest.from.y * (1 - ease(t)) + Math.sin(t * Math.PI) * 0.4;
+      this.applyRunPose(Math.sin(this.walkPhase), 0.2, 0.4);
+      if (t >= 1) {
+        this.rest = null;
+        this.restCooldown = R.cooldown;
+        this.position.y = 0;
+        this.swimmerGroup.visible = true;
+        this.walkerGroup.visible = false;
+        this.steerX = 0;
+        this.steerZ = 1;
+        this.world.emitSplash(this.position.x, this.position.z, 8, 0xdff2fc);
+      }
+    }
+
+    this.group.position.copy(this.position);
+    this.group.rotation.y = 0;
+  }
+
   startDive() {
     const dive = DIFFICULTY_TUNING.dive;
     this.isDiving = true;
@@ -405,9 +518,8 @@ export class Smuggler {
   }
 
   pathFrame(distance) {
-    const frame = this.path.frameAt(distance);
-    if (!this.pathShiftX) return frame;
-    return { ...frame, x: frame.x + this.pathShiftX };
+    // The road repeats per chunk and bends with the river; frameAt applies both.
+    return this.path.frameAt(distance, this.pathShiftX);
   }
 
   // Where the swimmer enters the water: never closer than spawnMinDistance to the
@@ -417,14 +529,18 @@ export class Smuggler {
     const { spawnMinDistance: minDist, spawnMaxDistance: maxDist } = STREAMING_TUNING;
     const boatX = boat ? boat.position.x : 0;
     const boatZ = boat ? boat.position.z : 0;
-    const dz = this.emergeZ - boatZ;
+    const dz = riverZ(boatX, this.emergeLat) - boatZ;
     const own = Math.hypot(this.position.x - boatX, dz);
-    if (own >= minDist && own <= maxDist) return this.position.x;
+    // Entry point must also be ahead of the boat's nose (never behind it).
+    const fx = boat ? Math.cos(boat.angle || 0) : 1;
+    const fz = boat ? -Math.sin(boat.angle || 0) : 0;
+    const ownAhead = (this.position.x - boatX) * fx + dz * fz >= 0;
+    if (own >= minDist && own <= maxDist && ownAhead) return this.position.x;
 
     const reach = (r) => Math.sqrt(Math.max(0, r * r - dz * dz));
     const lo = reach(minDist);
     const hi = Math.max(lo, reach(maxDist));
-    const side = Math.random() > 0.5 ? 1 : -1;
+    const side = fx >= 0 ? 1 : -1;
     return boatX + side * (lo + Math.random() * (hi - lo));
   }
 
@@ -617,7 +733,7 @@ export class Smuggler {
       this.resolveRockCollisions();
       this.group.position.copy(this.position);
       this.group.rotation.y = 0;
-      reachedEnd = this.position.z >= this.reedLineZ;
+      reachedEnd = this.position.z >= riverZ(this.position.x, this.reedLineZ);
     }
 
     if (reachedEnd) {
@@ -688,22 +804,60 @@ export class Smuggler {
   }
 
   spawnBloodPuddle() {
+    this.bloodPuddle = this.makePuddle(0x7a0d14);
+  }
+
+  /** A frightened swimmer wets itself and bolts away from the kill. */
+  frighten(fromX, fromZ) {
+    if (this.isDead || this.state !== 'swimming') return;
+    const f = DIFFICULTY_TUNING.fright;
+    this.frightened = true;
+    this.frightTimer = f.seconds;
+    this.frightFromX = fromX;
+    this.frightFromZ = fromZ;
+    this.retreating = Math.random() < f.retreatChance;
+    this.isDiving = false;
+    this.sprintTimer = 0;
+    this.puddles.push(this.makePuddle(0xd8c21a, 3));
+  }
+
+  makePuddle(color, life = 0) {
     const material = new THREE.MeshBasicMaterial({
-      color: 0x7a0d14,
+      color,
       transparent: true,
       opacity: 0,
       depthWrite: false,
       side: THREE.DoubleSide
     });
     const geometry = BLOOD_GEOMETRIES[Math.floor(Math.random() * BLOOD_GEOMETRIES.length)];
-    this.bloodPuddle = new THREE.Mesh(geometry, material);
-    this.bloodPuddle.rotation.x = -Math.PI / 2;
-    this.bloodPuddle.position.set(this.position.x, 0.06, this.position.z);
-    this.bloodPuddle.scale.setScalar(0.9);
-    this.scene.add(this.bloodPuddle);
+    const puddle = new THREE.Mesh(geometry, material);
+    puddle.rotation.x = -Math.PI / 2;
+    puddle.position.set(this.position.x, 0.06, this.position.z);
+    puddle.scale.setScalar(0.9);
+    puddle.userData.life = life; // 0 = driven by the death timer (blood)
+    puddle.userData.age = 0;
+    this.scene.add(puddle);
+    return puddle;
+  }
+
+  updatePuddles(dt) {
+    for (let i = this.puddles.length - 1; i >= 0; i--) {
+      const p = this.puddles[i];
+      p.userData.age += dt;
+      const age = p.userData.age;
+      const life = p.userData.life;
+      p.scale.setScalar(0.9 + Math.min(1, age * 2.5) * 0.7);
+      p.material.opacity = 0.75 * Math.min(1, Math.max(0, (life - age) / 1.2));
+      if (age >= life) {
+        this.scene.remove(p);
+        p.material.dispose();
+        this.puddles.splice(i, 1);
+      }
+    }
   }
 
   update(dt, boat, wildlife = null, smugglers = []) {
+    if (this.puddles.length) this.updatePuddles(dt);
     if (this.isDead) {
       this.deathTimer += dt;
       const sinkProgress = Math.min(1, this.deathTimer / this.deathDuration);
@@ -739,6 +893,7 @@ export class Smuggler {
       this.hideDelay -= dt;
       if (this.hideDelay <= 0) {
         this.emergeX = this.chooseEmergeX(boat);
+        this.emergeZ = riverZ(this.emergeX, this.emergeLat);
         this.state = 'swimming';
         this.group.visible = true;
         this.swimmerGroup.visible = true;
@@ -754,6 +909,12 @@ export class Smuggler {
 
     if (this.state === 'escaping') {
       this.updateEscaping(dt);
+      return;
+    }
+
+    if (this.restCooldown > 0) this.restCooldown = Math.max(0, this.restCooldown - dt);
+    if (this.rest) {
+      this.updateRockRest(dt, boat);
       return;
     }
 
@@ -792,7 +953,7 @@ export class Smuggler {
       this.diveRecoverTimer = 0;
     }
 
-    if (!this.isDiving) {
+    if (!this.isDiving && !(this.retreating && this.frightTimer <= 0)) {
       if (this.sprintCooldown > 0) this.sprintCooldown = Math.max(0, this.sprintCooldown - dt);
       if (this.sprintTimer > 0) this.sprintTimer = Math.max(0, this.sprintTimer - dt);
 
@@ -807,7 +968,7 @@ export class Smuggler {
           : Infinity;
       const trapped = dist < dive.senseRadius && closing > 4 && lateral < 2.6;
 
-      if (trapped && this.divesUsed < dive.maxDives && this.diveCooldown <= 0 && Math.random() < dive.chance) {
+      if (trapped && this.divesUsed < dive.maxDives && this.diveCooldown <= 0 && this.canDive) {
         this.startDive();
       } else if (distToBoat < sprint.senseRadius && this.sprintCooldown <= 0) {
         this.sprintTimer = sprint.duration;
@@ -861,6 +1022,32 @@ export class Smuggler {
       avoidZ += (awayZ / distance) * weight;
     }
 
+    if (this.frightTimer > 0) {
+      this.frightTimer = Math.max(0, this.frightTimer - dt);
+      const awayX = this.position.x - this.frightFromX;
+      const awayZ = this.position.z - this.frightFromZ;
+      const awayDist = Math.hypot(awayX, awayZ) || 1;
+      avoidX += (awayX / awayDist) * 3;
+      avoidZ += (awayZ / awayDist) * 3;
+      this.isPanicking = true;
+    }
+
+    // After the scare, some swimmers give up and head back to the bank they came from.
+    if (this.retreating && this.frightTimer <= 0) {
+      // Head straight for the bank: ignore the boat, wildlife and other swimmers.
+      moveX = 0;
+      moveZ = -1.0;
+      avoidX = 0;
+      avoidZ = 0;
+      this.sprintTimer = 0;
+      this.isPanicking = true;
+      if (this.position.z <= riverZ(this.position.x, this.emergeLat)) {
+        this.retreated = true;
+        this.group.visible = false;
+        return;
+      }
+    }
+
     if (avoidX !== 0 || avoidZ !== 0) {
       const avoidLen = Math.hypot(avoidX, avoidZ) || 1;
       moveX = moveX * 0.25 + (avoidX / avoidLen) * 1.3;
@@ -870,6 +1057,10 @@ export class Smuggler {
     if (this.isDiving) {
       // Submerged: hold position. The dive is a commitment, not a free dodge.
       this.currentSpeed = 0;
+    } else if (this.frightTimer > 0) {
+      this.currentSpeed *= DIFFICULTY_TUNING.fright.speedMultiplier;
+    } else if (this.retreating) {
+      this.currentSpeed = this.baseSpeed * DIFFICULTY_TUNING.fright.retreatSpeedMultiplier;
     } else if (this.sprintTimer > 0) {
       this.currentSpeed *= sprint.multiplier;
     }
@@ -891,7 +1082,7 @@ export class Smuggler {
 
     // River current advection (shared config so weather can change it later)
     if (this.world.getCurrentVelocity) {
-      const current = this.world.getCurrentVelocity();
+      const current = this.world.getCurrentVelocity(this.position.x);
       this.position.x += current.x * dt;
       this.position.z += current.z * dt;
     }
@@ -900,6 +1091,7 @@ export class Smuggler {
       ? -this.diveDepth + Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.03
       : Math.sin(this.world.time * 4 + this.wobbleSeed) * 0.05;
     this.resolveRockCollisions();
+    this.considerRockRest(boat);
 
     // Smooth heading rotation interpolation
     const targetHeading = Math.atan2(this.steerZ, this.steerX);
@@ -913,7 +1105,7 @@ export class Smuggler {
 
     // Breaststroke: panicked swimmers churn faster.
     const strokeRate =
-      this.sprintTimer > 0 ? 2.3 : this.isPanicking || this.wildlifeScareTimer > 0 ? 1.6 : 1.05;
+      this.sprintTimer > 0 || this.frightTimer > 0 || this.retreating ? 2.3 : this.isPanicking || this.wildlifeScareTimer > 0 ? 1.6 : 1.05;
     this.animateSwim(dt, strokeRate);
 
     // Small swimming ripple trail
@@ -932,7 +1124,7 @@ export class Smuggler {
     }
 
     // Crossed the line: get out of the water and keep running up the beach.
-    if (this.position.z >= sz(15.3) && !this.reachedSouth) {
+    if (this.position.z >= riverZ(this.position.x, sz(15.3)) && !this.reachedSouth) {
       this.reachedSouth = true;
       this.state = 'escaping';
       this.swimmerGroup.visible = false;
@@ -985,6 +1177,11 @@ export class Smuggler {
 
   destroy() {
     this.scene.remove(this.group);
+    for (const p of this.puddles) {
+      this.scene.remove(p);
+      p.material.dispose();
+    }
+    this.puddles = [];
     if (this.bloodPuddle) {
       this.scene.remove(this.bloodPuddle);
       this.bloodPuddle.material.dispose();

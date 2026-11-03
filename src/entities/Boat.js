@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
-import { PLAY_MIN_Z, PLAY_MAX_Z } from '../world/Bounds.js';
+import { DIFFICULTY_TUNING } from '../config/difficulty.js';
+import { playMinZ, playMaxZ } from '../world/Bounds.js';
 
 const MAN_OVERBOARD_SPEED_RATIO = 0.8;
 const MAN_OVERBOARD_TURN_RATIO = 0.35;
@@ -746,7 +747,7 @@ export class Boat {
 
     const clampIntoBounds = (x, z, out) => {
       out.x = x;
-      out.z = THREE.MathUtils.clamp(z, PLAY_MIN_Z + 1.2, PLAY_MAX_Z - 1.2);
+      out.z = THREE.MathUtils.clamp(z, playMinZ(x) + 1.2, playMaxZ(x) - 1.2);
       return out;
     };
 
@@ -768,7 +769,7 @@ export class Boat {
         const x = this.position.x + Math.cos(angle) * radius;
         const z = this.position.z + Math.sin(angle) * radius;
 
-        if (z < PLAY_MIN_Z + 1.2 || z > PLAY_MAX_Z - 1.2) continue;
+        if (z < playMinZ(x) + 1.2 || z > playMaxZ(x) - 1.2) continue;
         if (!this.isOverboardSpotClear(x, z)) continue;
 
         spot.set(x, 0, z);
@@ -836,7 +837,7 @@ export class Boat {
   updateOverboardPlayer(dt) {
     this.overboardElapsed += dt;
 
-    const current = this.world.getCurrentVelocity ? this.world.getCurrentVelocity() : null;
+    const current = this.world.getCurrentVelocity ? this.world.getCurrentVelocity(this.overboardPosition.x) : null;
     this.overboardVelocity.multiplyScalar(Math.exp(-1.6 * dt));
 
     this.overboardPosition.x +=
@@ -850,8 +851,8 @@ export class Boat {
 
     this.overboardPosition.z = THREE.MathUtils.clamp(
       this.overboardPosition.z,
-      PLAY_MIN_Z + 1.2,
-      PLAY_MAX_Z - 1.2
+      playMinZ(this.overboardPosition.x) + 1.2,
+      playMaxZ(this.overboardPosition.x) - 1.2
     );
 
     const wave =
@@ -911,14 +912,14 @@ export class Boat {
   }
 
   applyRamImpact() {
-    this.velocity.multiplyScalar(0.35);
+    this.velocity.multiplyScalar(DIFFICULTY_TUNING.ramSpeedKeep);
     this.speed = this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
   }
 
   applyMotorShred() {
-    this.velocity.set(0, 0, 0);
-    this.speed = 0;
-    this.angularVelocity = 0;
+    // Halve speed instead of stopping dead; the engine note cuts briefly.
+    this.velocity.multiplyScalar(DIFFICULTY_TUNING.shredSpeedKeep);
+    this.speed *= DIFFICULTY_TUNING.shredSpeedKeep;
     this.motorStallTimer = 0.5;
     sound.stopEngineSound();
     sound.playRotorThrottle();
@@ -1093,12 +1094,7 @@ export class Boat {
     }
     if (this.motorStallTimer > 0) {
       this.motorStallTimer = Math.max(0, this.motorStallTimer - dt);
-      this.velocity.set(0, 0, 0);
-      this.speed = 0;
-      this.angularVelocity = 0;
       if (this.motorStallTimer <= 0) sound.startEngineSound();
-      if (this.isManOverboard) this.updateOverboardPlayer(dt);
-      return;
     }
 
     let throttle = 0;
@@ -1174,7 +1170,7 @@ export class Boat {
 
     // River current advection (shared config so weather can change it later)
     if (this.world.getCurrentVelocity) {
-      const current = this.world.getCurrentVelocity();
+      const current = this.world.getCurrentVelocity(this.position.x);
       this.position.x += current.x * dt;
       this.position.z += current.z * dt;
     }
@@ -1183,8 +1179,8 @@ export class Boat {
     // the engine/propeller crossing the bank line ends the run.
     const zHalfExtent =
       Math.abs(Math.sin(this.angle)) * 2.2 + Math.abs(Math.cos(this.angle)) * 1.2;
-    const northPenetration = Math.max(0, PLAY_MIN_Z - (this.position.z - zHalfExtent));
-    const southPenetration = Math.max(0, this.position.z + zHalfExtent - PLAY_MAX_Z);
+    const northPenetration = Math.max(0, playMinZ(this.position.x) - (this.position.z - zHalfExtent));
+    const southPenetration = Math.max(0, this.position.z + zHalfExtent - playMaxZ(this.position.x));
     const bankPenetration = Math.max(northPenetration, southPenetration);
 
     if (!this.isCrashed && bankPenetration > 0) {
@@ -1207,8 +1203,8 @@ export class Boat {
 
     const engineX = this.position.x - Math.cos(this.angle) * 1.9;
     const engineZ = this.position.z + Math.sin(this.angle) * 1.9;
-    const engineNorthPenetration = PLAY_MIN_Z - engineZ;
-    const engineSouthPenetration = engineZ - PLAY_MAX_Z;
+    const engineNorthPenetration = playMinZ(engineX) - engineZ;
+    const engineSouthPenetration = engineZ - playMaxZ(engineX);
     const engineInNorthReeds = engineNorthPenetration > 0;
     // Brushing the reeds is survivable. The prop only snags once it is properly
     // buried and still pushing north; backing away always pulls it free.

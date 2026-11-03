@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ROCK_TUNING } from '../config/world.js';
+import { riverZ, riverWidthScale, RIVER_WIDTH_VARIATION } from './Bounds.js';
 
 // Rock clusters scattered at random along the endless river: 1-2 big rocks,
 // 3-6 small rocks around them and three reeds per small rock. A fixed pool of
@@ -46,9 +47,12 @@ export class RockField {
     this.clusters = [];
     this.dir = 1;
 
-    const slotsPerCluster = Math.min(MAX_BIG, Math.ceil(ROCK_TUNING.bigMax)) + Math.min(MAX_SMALL, Math.ceil(ROCK_TUNING.smallMax));
+    const wide = 1 + Math.max(0, ROCK_TUNING.wideBonus);
+    this.maxBig = Math.min(MAX_BIG, Math.ceil(ROCK_TUNING.bigMax * wide));
+    this.maxSmall = Math.min(MAX_SMALL, Math.ceil(ROCK_TUNING.smallMax * wide));
+    const slotsPerCluster = this.maxBig + this.maxSmall;
     this.rockCapacity = ROCK_TUNING.count * slotsPerCluster;
-    this.reedCapacity = ROCK_TUNING.count * Math.min(MAX_SMALL, Math.ceil(ROCK_TUNING.smallMax)) * Math.ceil(ROCK_TUNING.reedsPerSmallRock);
+    this.reedCapacity = ROCK_TUNING.count * this.maxSmall * Math.ceil(ROCK_TUNING.reedsPerSmallRock);
 
     // A few lumpy variants: vertices pushed in/out by a position hash (shared
     // vertices move together, so no cracks) so no two rock shapes look alike.
@@ -101,16 +105,14 @@ export class RockField {
 
   place(cluster, x, animate = true) {
     const T = ROCK_TUNING;
-    const bigCount = randInt(T.bigMin, Math.min(T.bigMax, MAX_BIG));
-    const smallCount = randInt(T.smallMin, Math.min(T.smallMax, MAX_SMALL));
     const reach = 5.5;
-    const limit = Math.max(0, this.riverHalfWidth - T.bankMargin - reach);
 
     let cx = x;
     let cz = 0;
     for (let attempt = 0; attempt < 10; attempt++) {
       cx = x + (attempt > 3 ? (Math.random() - 0.5) * 30 : 0);
-      cz = (Math.random() * 2 - 1) * limit;
+      const limit = Math.max(0, this.riverHalfWidth * riverWidthScale(cx) - T.bankMargin - reach);
+      cz = riverZ(cx, 0) + (Math.random() * 2 - 1) * limit;
       let clear = true;
       for (const other of this.clusters) {
         if (other === cluster || other.x === PARKED_X) continue;
@@ -123,6 +125,12 @@ export class RockField {
     }
     cluster.x = cx;
     cluster.z = cz;
+
+    // Wider river sections get up to `wideBonus` (25%) more rocks per cluster.
+    const widthT = RIVER_WIDTH_VARIATION > 0 ? Math.min(1, Math.max(0, (riverWidthScale(cx) - 1) / RIVER_WIDTH_VARIATION)) : 0;
+    const boost = 1 + Math.max(0, T.wideBonus) * widthT;
+    const bigCount = randInt(T.bigMin, Math.min(Math.round(T.bigMax * boost), this.maxBig));
+    const smallCount = randInt(T.smallMin, Math.min(Math.round(T.smallMax * boost), this.maxSmall));
     cluster.rise = animate ? 0 : 1;
 
     const placed = [];

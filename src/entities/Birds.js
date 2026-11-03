@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { sx, sz } from '../world/Bounds.js';
+import { sx, sz, riverCenterZ, riverSlopeAt } from '../world/Bounds.js';
 import { TUNING } from '../config/tuning.js';
 
 const BODY_GEO = new THREE.SphereGeometry(0.2, 6, 5);
@@ -451,12 +451,12 @@ class BirdGroup {
 
     const leadX = this.x;
     const cruiseY = this.baseY + yDrift;
-    const rawLeadZ = this.baseZ + zDrift;
+    const rawLeadZ = this.baseZ + zDrift + riverCenterZ(leadX);
     const leadY = this.isStork
       ? this.updateStork(dt, cruiseY, leadX, rawLeadZ)
       : cruiseY;
     const leadZ = rawLeadZ + (this.isStork ? this.diveZOffset : 0);
-    const yaw = Math.atan2(-zVelocity, this.dir * this.speed);
+    const yaw = Math.atan2(-(zVelocity + this.dir * this.speed * riverSlopeAt(leadX)), this.dir * this.speed);
     const roll = -zVelocity * 0.12 * this.dir;
 
     let pitch = 0;

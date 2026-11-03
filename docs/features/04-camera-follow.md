@@ -32,5 +32,5 @@ flowchart TD
 
 ## Decisions
 
-- **Decision:** Gameplay camera is zoomed 25% onto the boat at rest and eases out to a view 50% wider than that at top speed. **Why:** requested; close-up at rest, more lookahead when fast. **How:** `Renderer.zoomScale` multiplies the FOV tangent: rest 1/1.25 = 0.8, full speed 1.5/1.25 = 1.2, eased by `VITE_ZOOM_SMOOTHING` (2/s); speed ratio = |boat.speed| / maxSpeed. Knobs `VITE_ZOOM_IN` (0.25), `VITE_ZOOM_OUT_MAX_SPEED` (0.5). **Alternatives:** read "50%" as relative to the original (unzoomed) view.
+- **Decision:** Gameplay camera is zoomed 25% onto the boat at rest and eases out to a view 100% wider than that at top speed (raised from 50%). **Why:** requested; close-up at rest, more lookahead when fast. **How:** `Renderer.zoomScale` multiplies the FOV tangent: rest 1/1.25 = 0.8, full speed 2/1.25 = 1.6, eased by `VITE_ZOOM_SMOOTHING` (2/s); speed ratio = |boat.speed| / maxSpeed. Knobs `VITE_ZOOM_IN` (0.25), `VITE_ZOOM_OUT_MAX_SPEED` (1). **Alternatives:** read "50%" as relative to the original (unzoomed) view.
 

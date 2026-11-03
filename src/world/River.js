@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { sx, sz, RIVER_HALF_WIDTH, WORLD_CHUNK_WIDTH, WORLD_CHUNKS, WORLD_PERIOD, foldChunkX } from './Bounds.js';
+import { sx, sz, RIVER_HALF_WIDTH, WORLD_CHUNK_WIDTH, WORLD_CHUNKS, WORLD_PERIOD, foldChunkX, riverCenterZ, riverSlopeAt, riverZ, riverWidthScale } from './Bounds.js';
 import { RockField } from './RockField.js';
 import { IDLE_DECOR_ENABLED, runWhenIdle } from '../systems/IdleScheduler.js';
 import { QUALITY } from '../config/quality.js';
@@ -94,6 +94,7 @@ export class RiverWorld {
     this.northBankY = NORTH_BANK_Y;
     this.riverSamples = this.buildRiverCenterline();
     this.rockColliders = [];
+    this.bentCurrent = { x: 0, z: 0 };
     this.watchtowers = [];
     this.waterMat = null;
 
@@ -124,6 +125,7 @@ export class RiverWorld {
 
     for (let i = 0; i < this.chunkCount; i++) {
       this.activeChunk = i;
+      this.bentSamples = this.buildBentSamples(i);
       this.createBanks();
       this.createGravelPath();
       this.createWater();
@@ -148,6 +150,7 @@ export class RiverWorld {
   addStatic(object) {
     const chunk = this.activeChunk;
     if (this.foldInstances && object.isInstancedMesh) this.foldInstancedMesh(object);
+    if (!object.userData.noShear) this.shearForBend(object, chunk);
     this.chunkGroups[1][chunk].add(object);
     for (const ring of [0, 2]) {
       const copy = object.clone();
@@ -157,6 +160,33 @@ export class RiverWorld {
       });
       lights.forEach((light) => light.parent.remove(light));
       this.chunkGroups[ring][chunk].add(copy);
+    }
+  }
+
+  // Everything except the centerline-built ribbons is authored on a straight
+  // river; push it sideways by the centerline offset at its own X so it sits
+  // on the bent banks. Chunk i covers world X i*chunkWidth + local x.
+  shearForBend(object, chunk) {
+    const origin = chunk * this.chunkWidth;
+    if (object.isInstancedMesh) {
+      const m = new THREE.Matrix4();
+      for (let i = 0; i < object.count; i++) {
+        object.getMatrixAt(i, m);
+        m.elements[14] = riverZ(origin + m.elements[12], m.elements[14]);
+        object.setMatrixAt(i, m);
+      }
+      object.instanceMatrix.needsUpdate = true;
+      object.boundingSphere = null;
+    } else if (object.userData.shear === 'vertex') {
+      const position = object.geometry.attributes.position;
+      for (let i = 0; i < position.count; i++) {
+        position.setZ(i, riverZ(origin + position.getX(i), position.getZ(i)));
+      }
+      position.needsUpdate = true;
+      object.geometry.computeVertexNormals();
+      object.geometry.computeBoundingSphere();
+    } else {
+      object.position.z = riverZ(origin + object.position.x, object.position.z);
     }
   }
 
@@ -235,11 +265,28 @@ export class RiverWorld {
     return samples;
   }
 
+  // Centerline of chunk `chunk` after the bends: straight samples lifted by
+  // the centerline Z, with the normal tilted to match the local slope.
+  buildBentSamples(chunk) {
+    const origin = chunk * this.chunkWidth;
+    return this.riverSamples.map((s) => {
+      const slope = riverSlopeAt(origin + s.p.x);
+      const len = Math.hypot(1, slope);
+      return {
+        p: new THREE.Vector3(s.p.x, 0, riverCenterZ(origin + s.p.x)),
+        t: new THREE.Vector3(1 / len, 0, slope / len),
+        // Offsets run along Z, stretched by the local width factor so the
+        // banks match the stretched static content.
+        n: new THREE.Vector3(0, 0, riverWidthScale(origin + s.p.x))
+      };
+    });
+  }
+
   // Flat strip that follows the river centerline between two lateral offsets.
   // `along` subdivides each centreline segment, which the water surface needs
   // to resolve short choppy ripples instead of a few huge flat facets.
   buildRibbonGeometry(fromOffset, toOffset, y, across = 1, along = 1) {
-    const baseSamples = this.riverSamples;
+    const baseSamples = this.bentSamples;
     let samples = baseSamples;
 
     if (along > 1) {
@@ -251,7 +298,8 @@ export class RiverWorld {
           const f = k / along;
           samples.push({
             p: a.p.clone().lerp(b.p, f),
-            n: a.n.clone().lerp(b.n, f).normalize()
+            // Not normalised: n.z carries the local width stretch.
+            n: a.n.clone().lerp(b.n, f)
           });
         }
       }
@@ -292,7 +340,7 @@ export class RiverWorld {
 
   // Vertical face along one river bank (used for the high northern border bank).
   buildRiverWallGeometry(offset, topY, bottomY) {
-    const samples = this.riverSamples;
+    const samples = this.bentSamples;
     const positions = [];
     const indices = [];
 
@@ -320,7 +368,7 @@ export class RiverWorld {
   // One half of the world's land mass: everything on one side of the river
   // channel, closed off far beyond the fog.
   buildLandShape(offset, farSide) {
-    const samples = this.riverSamples;
+    const samples = this.bentSamples;
     const points = samples.map((s) => new THREE.Vector2(
       s.p.x + s.n.x * offset,
       -(s.p.z + s.n.z * offset) // shape Y is flipped into world Z
@@ -348,6 +396,7 @@ export class RiverWorld {
     const northBank = new THREE.Mesh(northGeo, northMaterial);
     northBank.position.y = NORTH_BANK_Y;
     northBank.receiveShadow = true;
+    northBank.userData.noShear = true;
     this.scene.add(northBank);
 
     // Southern beach bank (low, where the crowd stands)
@@ -356,21 +405,25 @@ export class RiverWorld {
     const southBank = new THREE.Mesh(southGeo, southMaterial);
     southBank.position.y = 0.0;
     southBank.receiveShadow = true;
+    southBank.userData.noShear = true;
     this.scene.add(southBank);
 
     // Dirt cliff between the water and the high northern plateau
     const wallGeo = this.buildRiverWallGeometry(-this.riverHalfWidth, NORTH_BANK_Y, -0.6);
     const wall = new THREE.Mesh(wallGeo, dirtMaterial);
     wall.receiveShadow = true;
+    wall.userData.noShear = true;
     this.scene.add(wall);
 
     // Dirt lip on top of the cliff, plus the sandy southern shoreline
     const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.5, -this.riverHalfWidth + 0.15, NORTH_BANK_Y + 0.02), lipMaterial);
     dirtLip.receiveShadow = true;
+    dirtLip.userData.noShear = true;
     this.scene.add(dirtLip);
 
     const sand = new THREE.Mesh(this.buildRibbonGeometry(this.riverHalfWidth, this.riverHalfWidth + 2.6, 0.0), sandMaterial);
     sand.receiveShadow = true;
+    sand.userData.noShear = true;
     this.scene.add(sand);
   }
 
@@ -457,6 +510,7 @@ export class RiverWorld {
     const material = new THREE.MeshLambertMaterial({ color: 0x6f5a42, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.receiveShadow = true;
+    mesh.userData.shear = 'vertex';
     this.scene.add(mesh);
 
     const heightAt = (z) => {
@@ -515,10 +569,19 @@ export class RiverWorld {
       totalLength - sz(12)
     );
 
-    path.frameAt = (distance) => {
+    // World-space frame of the road copy shifted by `shift` along X (the road
+    // repeats every chunk). The road is authored on a straight river, so it is
+    // sheared by the centerline offset at its own X to follow the bends.
+    const bentSample = (distance, shift) => {
       const sample = samplePath(distance);
-      const ahead = samplePath(Math.min(totalLength, distance + 0.5));
-      const behind = samplePath(Math.max(0, distance - 0.5));
+      const x = sample.x + shift;
+      return { x, y: sample.y, z: riverZ(x, sample.z) };
+    };
+
+    path.frameAt = (distance, shift = 0) => {
+      const sample = bentSample(distance, shift);
+      const ahead = bentSample(Math.min(totalLength, distance + 0.5), shift);
+      const behind = bentSample(Math.max(0, distance - 0.5), shift);
       let tx = ahead.x - behind.x;
       let tz = ahead.z - behind.z;
       const length = Math.hypot(tx, tz) || 1;
@@ -646,6 +709,7 @@ export class RiverWorld {
     if (this.waterMat.userData.configured) {
       this.waterMesh = new THREE.Mesh(this.waterGeo, this.waterMat);
       this.waterMesh.receiveShadow = true;
+      this.waterMesh.userData.noShear = true;
       this.scene.add(this.waterMesh);
       return;
     }
@@ -739,11 +803,20 @@ gl_FragColor.rgb += (waterDither - 0.5) * (2.5 / 255.0);`
 
     this.waterMesh = new THREE.Mesh(this.waterGeo, this.waterMat);
     this.waterMesh.receiveShadow = true;
+    this.waterMesh.userData.noShear = true;
     this.scene.add(this.waterMesh);
   }
 
-  getCurrentVelocity() {
-    return this.current;
+  // Current at world X: the base (along, across) flow rotated to follow the
+  // bent river, so drift runs down the channel instead of along world X.
+  getCurrentVelocity(x = 0) {
+    const slope = riverSlopeAt(x);
+    const len = Math.hypot(1, slope);
+    const cos = 1 / len;
+    const sin = slope / len;
+    this.bentCurrent.x = this.current.x * cos - this.current.z * sin;
+    this.bentCurrent.z = this.current.x * sin + this.current.z * cos;
+    return this.bentCurrent;
   }
 
   // Signed distance from the river centerline (negative = north bank side).
@@ -1647,7 +1720,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
       }
     }
 
-    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 2.8, 5);
+    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 4.2, 5);
     const pineGeo = new THREE.ConeGeometry(2.3, 6.4, 7);
     const pineTopGeo = new THREE.ConeGeometry(1.5, 4.4, 7);
     const broadleafGeo = new THREE.IcosahedronGeometry(2.5, 0);
@@ -1668,7 +1741,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     const tint = new THREE.Color();
 
     trees.forEach((t, i) => {
-      dummy.position.set(t.x, t.y + 1.4 * t.scale, t.z);
+      dummy.position.set(t.x, t.y + 2.1 * t.scale, t.z);
       dummy.rotation.set(0, t.rotation, 0);
       dummy.scale.setScalar(t.scale);
       dummy.updateMatrix();
@@ -1695,7 +1768,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
     broadleaves.forEach((t, i) => {
       tint.setHSL(0.3 + (Math.random() - 0.5) * 0.03, 0.45, 0.2 + Math.random() * 0.07);
 
-      dummy.position.set(t.x, t.y + 5.0 * t.scale, t.z);
+      dummy.position.set(t.x, t.y + 4.65 * t.scale, t.z);
       dummy.rotation.set(0, t.rotation, 0);
       dummy.scale.set(t.scale * 1.05, t.scale * 0.9, t.scale * 1.05);
       dummy.updateMatrix();
@@ -1803,7 +1876,7 @@ transformed.z += (reedBendZ * reedHeight) / max(length(instanceMatrix[2].xyz), 0
 
     if (this.activeChunk === 0) this.watchtowers.push({
       x,
-      z,
+      z: riverZ(x, z),
       y: towerY,
       floorY: towerY + 9.5 + rise,
       topY: towerY + 13.05 + rise

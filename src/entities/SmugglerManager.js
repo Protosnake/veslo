@@ -60,7 +60,7 @@ export class SmugglerManager {
 
   getBaseSpeed() {
     // Base speed: 0.75 units/sec (takes ~40s to cross river, boat is 30x faster so motor reverse kills are easy!)
-    return 0.75 * this.getSpeedMultiplier() + (Math.random() - 0.5) * 0.1;
+    return (0.75 * this.getSpeedMultiplier() + (Math.random() - 0.5) * 0.1) * DIFFICULTY_TUNING.swim.speedScale;
   }
 
   spawnSmuggler(spawnDistanceOffset = 0, boat = null) {
@@ -69,10 +69,11 @@ export class SmugglerManager {
       ? path.x + (Math.random() - 0.5) * path.halfWidth * 1.2
       : -26 + Math.random() * 52;
     const pathShiftX = boat ? Math.round(boat.position.x / WORLD_CHUNK_WIDTH) * WORLD_CHUNK_WIDTH : 0;
-    const options = { pathShiftX };
+    const options = { pathShiftX, groupId: this.waveCount };
     if (boat && path && path.frameAt) {
       const point = this.pickSpawnPoint(path, boat, spawnDistanceOffset);
-      if (point) Object.assign(options, point);
+      if (!point) return false; // nothing ahead of the nose right now
+      Object.assign(options, point);
     }
     const smuggler = new Smuggler(
       this.scene,
@@ -83,6 +84,7 @@ export class SmugglerManager {
       options
     );
     this.smugglers.push(smuggler);
+    return true;
   }
 
   /**
@@ -105,8 +107,8 @@ export class SmugglerManager {
         let hit = null;
         for (const d of i === 0 ? [base] : [base - i * 2, base + i * 2]) {
           if (d < 0 || d > path.length - 8) continue;
-          const f = path.frameAt(d);
-          const dist = Math.hypot(f.x + shift - boat.position.x, f.z - boat.position.z);
+          const f = path.frameAt(d, shift);
+          const dist = Math.hypot(f.x - boat.position.x, f.z - boat.position.z);
           if (dist >= minDist && dist <= maxDist) { hit = d; break; }
         }
         if (hit !== null) { valid.push({ pathDistance: hit, pathShiftX: shift }); break; }
@@ -114,17 +116,25 @@ export class SmugglerManager {
     }
     if (!valid.length) return null;
     // Prefer road copies in the half-plane the boat is heading toward (forward = (cos a, -sin a) in x/z).
+    // "Ahead" is measured from the boat's nose (not its velocity), so a
+    // stationary boat still gets swimmers in front of it. Only the cone in
+    // front of the nose counts; with no qualifying road point there is no
+    // spawn (the caller retries shortly) rather than a fallback behind.
     const fx = Math.cos(boat.angle || 0);
     const fz = -Math.sin(boat.angle || 0);
+    const cosCone = Math.cos((Math.min(90, Math.max(1, STREAMING_TUNING.spawnAheadConeDeg)) * Math.PI) / 180);
     const ahead = [];
     const behind = [];
     for (const v of valid) {
-      const f = path.frameAt(v.pathDistance);
-      const dot = (f.x + v.pathShiftX - boat.position.x) * fx + (f.z - boat.position.z) * fz;
-      (dot >= 0 ? ahead : behind).push(v);
+      const f = path.frameAt(v.pathDistance, v.pathShiftX);
+      const dx = f.x - boat.position.x;
+      const dz = f.z - boat.position.z;
+      const dist = Math.hypot(dx, dz) || 1;
+      ((dx * fx + dz * fz) / dist >= cosCone ? ahead : behind).push(v);
     }
     const preferAhead = Math.random() < STREAMING_TUNING.spawnAheadBias;
-    const pool = (preferAhead ? ahead : behind).length ? (preferAhead ? ahead : behind) : (preferAhead ? behind : ahead);
+    const pool = preferAhead ? ahead : behind;
+    if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
@@ -143,8 +153,8 @@ export class SmugglerManager {
     return smuggler;
   }
 
-  spawnSwimmingAt(x, z) {
-    const smuggler = new Smuggler(this.scene, this.world, x, this.getBaseSpeed());
+  spawnSwimmingAt(x, z, groupId = null) {
+    const smuggler = new Smuggler(this.scene, this.world, x, this.getBaseSpeed(), 0, { groupId });
     smuggler.startSwimmingAt(x, z);
     this.smugglers.push(smuggler);
     return smuggler;
@@ -184,11 +194,30 @@ export class SmugglerManager {
     return target;
   }
 
+  /**
+   * Group-mates of a fresh kill may panic: chance falls linearly with
+   * distance (baseChance at 0, none at `radius`) and is multiplied for a
+   * rotor kill. Panicked swimmers bolt away and leave a yellow puddle.
+   */
+  scareGroup(victim, byRotor = false) {
+    if (victim.groupId == null) return;
+    const f = DIFFICULTY_TUNING.fright;
+    const mult = byRotor ? f.rotorMultiplier : 1;
+    for (const s of this.smugglers) {
+      if (s === victim || s.isDead || s.groupId !== victim.groupId) continue;
+      const d = Math.hypot(s.position.x - victim.position.x, s.position.z - victim.position.z);
+      if (d >= f.radius) continue;
+      const chance = f.baseChance * (1 - d / f.radius) * mult;
+      if (Math.random() < chance) s.frighten(victim.position.x, victim.position.z);
+    }
+  }
+
   fireAkShot(boat) {
     const target = this.findAkTarget(boat);
     if (!target) return null;
 
     target.ak();
+    this.scareGroup(target);
     this.totalSmacked++;
     this.onScore(0, target.position, '???', 'ak');
     return target;
@@ -223,13 +252,19 @@ export class SmugglerManager {
       const groupSize = Math.min(this.getGroupSize(), Math.max(0, DIFFICULTY_TUNING.spawn.maxAlive - alive));
       let spawnDistanceOffset = 0;
 
+      let spawned = 0;
       for (let i = 0; i < groupSize; i++) {
-        this.spawnSmuggler(spawnDistanceOffset, boat);
+        if (this.spawnSmuggler(spawnDistanceOffset, boat)) spawned++;
         spawnDistanceOffset += 1.4 + Math.random() * 1.8;
       }
 
-      this.waveCount += 1;
-      this.spawnTimer = this.getSpawnInterval();
+      if (groupSize > 0 && spawned === 0) {
+        // No road point ahead of the nose is in the spawn band yet: retry soon.
+        this.spawnTimer = 1;
+      } else {
+        this.waveCount += 1;
+        this.spawnTimer = this.getSpawnInterval();
+      }
     }
 
     this.peakScore = Math.max(this.peakScore, this.score);
@@ -269,6 +304,13 @@ export class SmugglerManager {
 
       s.update(dt, boat, wildlife, this.smugglers);
 
+      // Scared swimmers that made it back to their start bank just leave (no penalty).
+      if (s.retreated) {
+        s.destroy();
+        this.smugglers.splice(i, 1);
+        continue;
+      }
+
       // A smuggler reaching the south shore costs rank, not the run.
       if ((s.state === 'swimming' || s.state === 'escaping') && s.reachedSouth && !s.isDead && !s.breached) {
         s.breached = true;
@@ -297,6 +339,7 @@ export class SmugglerManager {
           const distWhack = Math.hypot(s.position.x - whackHitbox.center.x, s.position.z - whackHitbox.center.z);
           if (distWhack <= whackHitbox.radius) {
             s.smack();
+            this.scareGroup(s);
             this.totalSmacked++;
             this.score += 100;
             sound.playSmack();
@@ -311,6 +354,7 @@ export class SmugglerManager {
         const distMotor = Math.hypot(s.position.x - motorHitbox.center.x, s.position.z - motorHitbox.center.z);
         if (distMotor <= motorHitbox.radius && (!s.isDiving || s.propVulnerable)) {
           s.shred();
+          this.scareGroup(s, true);
           boat.applyMotorShred();
           this.totalSmacked++;
           this.score += 500;
@@ -323,6 +367,7 @@ export class SmugglerManager {
         const distHull = Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z);
         if (distHull <= hullHitbox.radius && !s.isDiving) {
           s.ram();
+          this.scareGroup(s);
           boat.applyRamImpact();
           this.totalSmacked++;
           this.score += 50;

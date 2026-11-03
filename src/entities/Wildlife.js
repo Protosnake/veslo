@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
-import { sx, sz } from '../world/Bounds.js';
+import { sx, sz, riverZ } from '../world/Bounds.js';
 
 const FROG_BODY_GEO = new THREE.SphereGeometry(0.5, 8, 6);
 const FROG_HEAD_GEO = new THREE.SphereGeometry(0.3, 8, 6);
@@ -20,17 +20,22 @@ const PUPIL_MAT = new THREE.MeshBasicMaterial({ color: 0x111111 });
 const TONGUE_MAT = new THREE.MeshLambertMaterial({ color: 0xd94040 });
 
 class WildlifeCreature {
+  get startZ() { return riverZ(this.position.x, this.startLat); }
+  get crossZ() { return riverZ(this.position.x, this.crossLat); }
+
   constructor(scene, world, type, side, x) {
     this.scene = scene;
     this.world = world;
     this.type = type;
     this.side = side;
 
-    this.startZ = side < 0 ? sz(-15.1) : sz(15.1);
-    this.crossZ = side < 0 ? sz(15.1) : sz(-15.1);
+    // Bank lines are measured from the (bent) river centerline at the
+    // creature's current X; see the startZ / crossZ getters below.
+    this.startLat = side < 0 ? sz(-15.1) : sz(15.1);
+    this.crossLat = side < 0 ? sz(15.1) : sz(-15.1);
     this.baseX = x;
-
-    this.position = new THREE.Vector3(x, 0, this.startZ);
+    this.position = new THREE.Vector3(x, 0, 0);
+    this.position.z = this.startZ;
     this.speed = type === 'frog' ? 2.0 + Math.random() * 0.5 : 1.35 + Math.random() * 0.35;
     this.radius = type === 'frog' ? 0.75 : 0.9;
     this.baseScale = type === 'frog' ? 0.2 : 1 / 3;

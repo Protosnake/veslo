@@ -21,8 +21,30 @@ export interface DifficultyTuning {
     /** Boat distance that triggers the burst. */
     senseRadius: number;
   };
+  swim: {
+    /** Multiplier on every swimmer's speed (0.75 = 25% slower than the original). */
+    speedScale: number;
+  };
+  rockRest: {
+    /** Chance a swimmer climbs a big rock it passes (rolled once per rock; 0 disables). */
+    chance: number;
+    /** Only rocks at least this big (visual radius) can be climbed. */
+    minRockSize: number;
+    /** A rock this close to the swimmer's edge (world units) counts as passed. */
+    reach: number;
+    /** Seconds spent resting on top (randomised +50%). */
+    seconds: number;
+    /** Seconds before the same swimmer may climb another rock. */
+    cooldown: number;
+    /** Boat distance that makes a resting swimmer jump back into the water. */
+    fleeRadius: number;
+  };
+  /** Fraction of boat speed kept after the propeller shreds a swimmer (1 = no slowdown). */
+  shredSpeedKeep: number;
+  /** Fraction of boat speed kept after ramming a swimmer or corpse (1 = no slowdown). */
+  ramSpeedKeep: number;
   dive: {
-    /** Probability a trapped swimmer dives instead of trying to sprint. */
+    /** Fraction of swimmers (rolled once at spawn) that are able to dive; the rest sprint. */
     chance: number;
     /** Dives allowed per swimmer life. */
     maxDives: number;
@@ -43,6 +65,22 @@ export interface DifficultyTuning {
     maxCooldown: number;
     /** Seconds away from the boat needed to recover one exhaustion step. */
     recoverySeconds: number;
+  };
+  fright: {
+    /** Group-mates within this distance of a kill may panic. */
+    radius: number;
+    /** Panic chance at distance 0; falls linearly to 0 at `radius`. */
+    baseChance: number;
+    /** Chance multiplier when the kill was a propeller shred. */
+    rotorMultiplier: number;
+    /** Seconds spent fleeing away from the kill. */
+    seconds: number;
+    /** Speed multiplier while fleeing. */
+    speedMultiplier: number;
+    /** Chance a frightened swimmer then swims back to the bank it spawned on. */
+    retreatChance: number;
+    /** Swim speed multiplier while retreating to the start bank. */
+    retreatSpeedMultiplier: number;
   };
   spawn: {
     /** Multiplies every spawn interval; higher means fewer smugglers. */
@@ -81,8 +119,21 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     cooldown: 2.5,
     senseRadius: 6.5
   },
+  swim: {
+    speedScale: envNumber(import.meta.env.VITE_SWIM_SPEED_SCALE, 0.75)
+  },
+  rockRest: {
+    chance: envNumber(import.meta.env.VITE_ROCK_REST_CHANCE, 0.5),
+    minRockSize: envNumber(import.meta.env.VITE_ROCK_REST_MIN_SIZE, 1.2),
+    reach: envNumber(import.meta.env.VITE_ROCK_REST_REACH, 2.5),
+    seconds: envNumber(import.meta.env.VITE_ROCK_REST_SECONDS, 1.5),
+    cooldown: envNumber(import.meta.env.VITE_ROCK_REST_COOLDOWN, 5),
+    fleeRadius: envNumber(import.meta.env.VITE_ROCK_REST_FLEE_RADIUS, 7)
+  },
+  shredSpeedKeep: envNumber(import.meta.env.VITE_SHRED_SPEED_KEEP, 0.5),
+  ramSpeedKeep: envNumber(import.meta.env.VITE_RAM_SPEED_KEEP, 0.8),
   dive: {
-    chance: 0.6,
+    chance: envNumber(import.meta.env.VITE_SMUGGLER_DIVE_CHANCE, 0.1),
     maxDives: envNumber(import.meta.env.VITE_SMUGGLER_MAX_DIVES, 1),
     senseRadius: 9,
     minDuration: 1.5,
@@ -94,6 +145,15 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     cooldownGrowth: 1.8,
     maxCooldown: 18,
     recoverySeconds: 6
+  },
+  fright: {
+    radius: envNumber(import.meta.env.VITE_FRIGHT_RADIUS, 100),
+    baseChance: envNumber(import.meta.env.VITE_FRIGHT_CHANCE, 0.5),
+    rotorMultiplier: envNumber(import.meta.env.VITE_FRIGHT_ROTOR_MULTIPLIER, 2),
+    seconds: envNumber(import.meta.env.VITE_FRIGHT_SECONDS, 3),
+    speedMultiplier: envNumber(import.meta.env.VITE_FRIGHT_SPEED_MULTIPLIER, 1.8),
+    retreatChance: envNumber(import.meta.env.VITE_FRIGHT_RETREAT_CHANCE, 0.5),
+    retreatSpeedMultiplier: envNumber(import.meta.env.VITE_FRIGHT_RETREAT_SPEED, 2)
   },
   spawn: {
     intervalScale: envNumber(import.meta.env.VITE_SMUGGLER_SPAWN_INTERVAL_SCALE, 3.2),

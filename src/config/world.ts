@@ -26,6 +26,8 @@ export const ROCK_TUNING = {
   smallMax: envNumber(import.meta.env.VITE_ROCK_SMALL_MAX, 6),
   smallMinSize: envNumber(import.meta.env.VITE_ROCK_SMALL_MIN_SIZE, 0.5),
   smallMaxSize: envNumber(import.meta.env.VITE_ROCK_SMALL_MAX_SIZE, 0.9),
+  /** Extra rocks per cluster at the widest river sections (0.25 = +25%, scaled by local width). */
+  wideBonus: envNumber(import.meta.env.VITE_ROCK_WIDE_BONUS, 0.25),
   /** Reeds per small rock around each cluster. */
   reedsPerSmallRock: envNumber(import.meta.env.VITE_ROCK_REEDS_PER_SMALL, 3),
   /** Minimum centre-to-centre gap between clusters. */
@@ -49,8 +51,10 @@ export const STREAMING_TUNING = {
   spawnMinDistance: envNumber(import.meta.env.VITE_SPAWN_MIN_DISTANCE, 100),
   /** ...and no farther than this. Keep below despawnDistance. */
   spawnMaxDistance: envNumber(import.meta.env.VITE_SPAWN_MAX_DISTANCE, 250),
-  /** Chance (0-1) a new swimmer spawns in the half-plane the boat is heading toward; 0.5 = no bias. */
-  spawnAheadBias: envNumber(import.meta.env.VITE_SPAWN_AHEAD_BIAS, 0.9)
+  /** Chance (0-1) a new swimmer spawns ahead of the boat's nose (1 = always; below 1 the rest spawn behind). */
+  spawnAheadBias: envNumber(import.meta.env.VITE_SPAWN_AHEAD_BIAS, 1),
+  /** Half-angle (degrees) of the cone in front of the boat's nose that spawns must land in; 90 = the whole forward half-plane. */
+  spawnAheadConeDeg: envNumber(import.meta.env.VITE_SPAWN_AHEAD_CONE_DEG, 75)
 };
 
 export const MARKER_TUNING = {
@@ -81,8 +85,8 @@ export const MARKER_TUNING = {
 export const ZOOM_TUNING = {
   /** Gameplay camera zooms in this fraction on the boat at rest (0.25 = 25% closer). */
   zoomIn: envNumber(import.meta.env.VITE_ZOOM_IN, 0.25),
-  /** Extra view widening at full speed, relative to the resting view (0.5 = up to 50% zoom out). */
-  zoomOutAtMaxSpeed: envNumber(import.meta.env.VITE_ZOOM_OUT_MAX_SPEED, 0.5),
+  /** Extra view widening at full speed, relative to the resting view (1 = up to 100% zoom out). */
+  zoomOutAtMaxSpeed: envNumber(import.meta.env.VITE_ZOOM_OUT_MAX_SPEED, 1),
   /** How fast the zoom eases toward its target (per second). */
   smoothing: envNumber(import.meta.env.VITE_ZOOM_SMOOTHING, 2)
 };

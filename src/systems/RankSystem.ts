@@ -13,17 +13,23 @@ export interface RankInfo {
   index: number;
 }
 
-function thresholdFor(index: number): number {
+/**
+ * threshold(n) = first * n^p, with p chosen so the top rank lands on topRankScore
+ * (gradual growth from the first rank to the top). Rank 0 is 0.
+ */
+function thresholdFor(index: number, topIndex: number): number {
   if (index === 0) return 0;
-  const raw = RANK_CURVE.quadratic * index * index + RANK_CURVE.linear * index;
-  return RANK_CURVE.roundDownTo > 0
-    ? Math.floor(raw / RANK_CURVE.roundDownTo) * RANK_CURVE.roundDownTo
-    : Math.round(raw);
+  const { firstRankScore: first, topRankScore: top, roundDownTo } = RANK_CURVE;
+  if (index === topIndex) return top;
+  if (index === 1 || topIndex <= 1) return first;
+  const power = Math.log(top / first) / Math.log(topIndex);
+  const raw = first * Math.pow(index, power);
+  return roundDownTo > 0 ? Math.max(first, Math.floor(raw / roundDownTo) * roundDownTo) : Math.round(raw);
 }
 
 export const RANKS: Rank[] = RANK_DEFINITIONS.map((definition, index) => ({
   ...definition,
-  minScore: definition.minScore ?? thresholdFor(index)
+  minScore: definition.minScore ?? thresholdFor(index, RANK_DEFINITIONS.length - 1)
 }));
 
 export class RankSystem {
