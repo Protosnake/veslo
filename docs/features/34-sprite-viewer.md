@@ -1,6 +1,6 @@
 # 34 — Dev sprite viewer
 
-Sources: `src/dev/SpriteViewer.js` (`SpriteViewer`), `src/dev/sprites.js` (`SPRITE_GROUPS`, build adapters), `src/entities/Soldier.js` (joint rig + `SOLDIER_JOINT_LABELS`), `src/entities/Birds.js` (`createPreviewBird`), `src/main.js` (enable check / mount branch), `src/config/tuning.ts` (`TUNING.dev.spriteViewer`).
+Sources: `src/dev/SpriteViewer.js` (`SpriteViewer`), `src/dev/sprites.js` (`SPRITE_GROUPS`, build adapters), `src/entities/Soldier.js` (joint rig + `SOLDIER_JOINT_LABELS`), `src/entities/Birds.js` (`createPreviewBird`), `src/entities/Beaver.js` (model-only beaver), `src/main.js` (enable check / mount branch), `src/config/tuning.ts` (`TUNING.dev.spriteViewer`).
 
 Per-sprite review checklist and model inventory: [docs/sprite-review.md](../sprite-review.md).
 

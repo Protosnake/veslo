@@ -9,6 +9,7 @@ import { AssaultRifle } from '../entities/AssaultRifle.js';
 import { Smuggler } from '../entities/Smuggler.js';
 import { Frog, Snake } from '../entities/Wildlife.js';
 import { createPreviewBird } from '../entities/Birds.js';
+import { Beaver } from '../entities/Beaver.js';
 import { Drone } from '../entities/Drone.js';
 import { Minivan } from '../entities/Minivan.js';
 import { WatchtowerSoldier } from '../entities/WatchtowerSoldier.js';
@@ -122,6 +123,11 @@ function buildFrog(stage) {
 function buildSnake(stage) {
   const snake = new Snake(stage, STUB_WORLD, 1, 0);
   return { roots: [snake.group] };
+}
+
+function buildBeaver(stage) {
+  const beaver = new Beaver(stage);
+  return { roots: [beaver.group], update: (dt, time) => beaver.animate(time) };
 }
 
 function buildBird(stage, variant) {
@@ -255,6 +261,13 @@ export const SPRITE_GROUPS = [
         note: 'Prey for storks and oar practice.',
         source: 'src/entities/Wildlife.js',
         build: buildSnake
+      },
+      {
+        id: 'beaver',
+        label: 'Beaver',
+        note: 'Model only for now: chunky brown body, buck teeth, flat paddle tail.',
+        source: 'src/entities/Beaver.js',
+        build: buildBeaver
       }
     ]
   },

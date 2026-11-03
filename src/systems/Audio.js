@@ -4,6 +4,14 @@ import wildlifeMp3Url from '../assets/wildlife.mp3?url';
 import akReloadUrl from '../assets/ak-reload.mp3?url';
 import akShotUrl from '../assets/ak-shot.mp3?url';
 
+// Beaver calls live in public/ (bobr_1..3.mp3) and are fetched at runtime; a
+// missing file is skipped, so the game runs fine without them.
+const BEAVER_CLIP_COUNT = 3;
+const beaverUrls = Array.from(
+  { length: BEAVER_CLIP_COUNT },
+  (_, i) => `${import.meta.env.BASE_URL}bobr_${i + 1}.mp3`
+);
+
 class SoundSystem {
   constructor() {
     this.ctx = null;
@@ -21,6 +29,9 @@ class SoundSystem {
     this.akReloadSample = null;
     this.akShotSample = null;
     this.akPromise = null;
+    this.beaverSamples = new Array(BEAVER_CLIP_COUNT).fill(null);
+    this.beaverPromise = null;
+    this.lastBeaverClip = -1;
   }
 
   init() {
@@ -35,6 +46,7 @@ class SoundSystem {
     }
     this.loadWildlife();
     this.loadAkSamples();
+    this.loadBeaverSamples();
     this.startEngineSound();
   }
 
@@ -86,6 +98,49 @@ class SoundSystem {
     });
 
     return this.akPromise;
+  }
+
+  loadBeaverSamples() {
+    if (!this.ctx) return null;
+    if (this.beaverPromise) return this.beaverPromise;
+    const decode = (url) => (url ? fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then((data) => new Promise((resolve, reject) => {
+        this.ctx.decodeAudioData(data, resolve, reject);
+      }))
+      .catch(() => null) : Promise.resolve(null));
+    this.beaverPromise = Promise.all(beaverUrls.map(decode)).then((samples) => {
+      this.beaverSamples = samples;
+    });
+    return this.beaverPromise;
+  }
+
+  /** Plays a random loaded beaver clip, never the same one twice in a row. */
+  playBeaver(volume = 0.2) {
+    if (!this.ctx || this.isMuted) return;
+    const play = () => {
+      const loaded = this.beaverSamples
+        .map((buffer, i) => (buffer ? i : -1))
+        .filter((i) => i >= 0);
+      if (!loaded.length) return;
+      const pool = loaded.length > 1 ? loaded.filter((i) => i !== this.lastBeaverClip) : loaded;
+      const index = pool[Math.floor(Math.random() * pool.length)];
+      this.lastBeaverClip = index;
+      try {
+        const source = this.ctx.createBufferSource();
+        const gain = this.ctx.createGain();
+        source.buffer = this.beaverSamples[index];
+        gain.gain.value = volume;
+        source.connect(gain);
+        gain.connect(this.ctx.destination);
+        source.start();
+      } catch (e) {}
+    };
+    if (this.beaverSamples.some(Boolean)) play();
+    else this.loadBeaverSamples()?.then(play);
   }
 
   startWildlife() {

@@ -5,6 +5,7 @@ import { Boat, OAR_TARGET_RANGE } from './entities/Boat.js';
 import { BoatCrew } from './entities/BoatCrew.js';
 import { SmugglerManager } from './entities/SmugglerManager.js';
 import { WildlifeManager } from './entities/WildlifeManager.js';
+import { BeaverManager } from './entities/BeaverManager.js';
 import { BirdManager } from './entities/Birds.js';
 import { Skybox } from './world/Skybox.js';
 import { Minivan } from './entities/Minivan.js';
@@ -495,6 +496,7 @@ class Game {
       (type, kills) => this.onWildlifeKilled(type, kills)
     );
 
+    this.beaverManager = new BeaverManager(this.renderer.scene, this.world);
     this.birdManager = new BirdManager(this.renderer.scene, this.world, this.wildlifeManager);
     this.skybox = new Skybox(this.renderer.scene);
     this.proximityMarkers = new ProximityMarkers(this.renderer.scene);
@@ -837,6 +839,7 @@ class Game {
     this.world.rockField.reset(this.boat.position.x);
     this.smugglerManager.reset();
     this.wildlifeManager.reset();
+    this.beaverManager.reset();
     rankSystem.reset();
     clearTimeout(this.rankUpTimer);
     this.rankUpQueue.length = 0;
@@ -2051,6 +2054,7 @@ class Game {
       this.proximityMarkers.update(dt, this.boat, this.smugglerManager.smugglers);
       this.smugglerManager.update(dt, this.boat, this.wildlifeManager.creatures);
       this.wildlifeManager.update(dt, this.boat, this.smugglerManager.smugglers);
+      this.beaverManager.update(dt, this.boat, this.smugglerManager.smugglers);
     } else if (this.state !== 'PAUSED') {
       this.boat.update(dt, this.idleInput);
     }
