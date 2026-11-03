@@ -36,8 +36,10 @@ export interface DifficultyTuning {
     seconds: number;
     /** Seconds before the same swimmer may climb another rock. */
     cooldown: number;
-    /** Boat distance that makes a resting swimmer jump back into the water. */
-    fleeRadius: number;
+    /** Resting swimmers only climb down once the boat is at least this far away... */
+    leaveDistance: number;
+    /** ...or moving away from them faster than this (m/s). */
+    awaySpeed: number;
   };
   /** Fraction of boat speed kept after the propeller shreds a swimmer (1 = no slowdown). */
   shredSpeedKeep: number;
@@ -68,6 +70,13 @@ export interface DifficultyTuning {
   };
   /** Seconds a rammed swimmer stays stunned (floating, helpless) instead of dying. */
   ramStunSeconds: number;
+  /** Seconds a rammed swimmer is held underwater at the start of the stun. */
+  ramUnderwaterSeconds: number;
+  /** Chance the oarsman is thrown overboard when ramming / rotor-hitting a swimmer at speed. */
+  overboardOnHit: {
+    /** Rotor hit at >= (full speed - ram slowdown), i.e. speed ratio >= ramSpeedKeep. */
+    rotorChance: number;
+  };
   fright: {
     /** Group-mates within this distance of a kill may panic. */
     radius: number;
@@ -130,11 +139,16 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     reach: envNumber(import.meta.env.VITE_ROCK_REST_REACH, 2.5),
     seconds: envNumber(import.meta.env.VITE_ROCK_REST_SECONDS, 1.5),
     cooldown: envNumber(import.meta.env.VITE_ROCK_REST_COOLDOWN, 5),
-    fleeRadius: envNumber(import.meta.env.VITE_ROCK_REST_FLEE_RADIUS, 7)
+    leaveDistance: envNumber(import.meta.env.VITE_ROCK_REST_LEAVE_DISTANCE, 100),
+    awaySpeed: envNumber(import.meta.env.VITE_ROCK_REST_AWAY_SPEED, 0.5)
   },
   shredSpeedKeep: envNumber(import.meta.env.VITE_SHRED_SPEED_KEEP, 0.5),
   ramSpeedKeep: envNumber(import.meta.env.VITE_RAM_SPEED_KEEP, 0.8),
   ramStunSeconds: envNumber(import.meta.env.VITE_RAM_STUN_SECONDS, 5),
+  ramUnderwaterSeconds: envNumber(import.meta.env.VITE_RAM_UNDERWATER_SECONDS, 2),
+  overboardOnHit: {
+    rotorChance: envNumber(import.meta.env.VITE_ROTOR_OVERBOARD_CHANCE, 0.5)
+  },
   dive: {
     chance: envNumber(import.meta.env.VITE_SMUGGLER_DIVE_CHANCE, 0.1),
     maxDives: envNumber(import.meta.env.VITE_SMUGGLER_MAX_DIVES, 1),

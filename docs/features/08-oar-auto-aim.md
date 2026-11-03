@@ -31,7 +31,7 @@ flowchart TD
     S -->|no| U{"motor distance <= 2.2?"}
     U -->|yes| V["shred target, +500 points, motor stall"]
     U -->|no| W{"hull distance <= 2.6?"}
-    W -->|yes| X["ram target, +50 points"]
+    W -->|yes| X["ram target, stun only, no points"]
     W -->|no| Y["no hit"]
 ```
 
@@ -41,7 +41,7 @@ flowchart TD
 - `findWhackTarget` only considers live, visible smugglers in the `swimming` state within 6 m.
 - `updateOarAim` converts the target to boat-local coordinates, aims at the head (`group.y + 0.3`) from the oar pivot (`y + 1.5`), and scales the oar length to the distance.
 - The hitbox follows the visible blade tip (`oarTip`) when a target is locked; without a target it uses the fixed swing arc.
-- Hit priority is oar whack (+100), then motor shred (+500), then hull ram (+50).
+- Hit priority is oar whack (+100), then motor shred (+500), then hull ram (stun, no points).
 - Successful whacks are accumulated per swing and flushed together by `SmugglerManager`; `main.js` registers the cosmetic streak with the batch count (see [16-kill-streak.md](16-kill-streak.md)). Points per kill are unchanged.
 - While the oarsman is overboard, `getWhackHitbox()` returns `null`, so the detached oar cannot hit anything.
 - Cross-cutting lifecycle wiring in `main.js` (screen wake lock #20, offline service worker #22) is orthogonal to the strike/aim flow above and does not change it.
@@ -55,3 +55,4 @@ flowchart TD
 - Crew anchoring: `officerGroup` and `playerGroup` (oarsman, oar pivots) are children of `Boat.hull`, so the banking roll carries both soldiers with their benches. Man-overboard detaches `playerGroup` to the scene; recovery re-parents it to the hull.
 - **Decision:** The swimmer the oarsman is looking at decides which oar swings. **Why:** requested; the left oar sometimes swung while the crew's heads were turned to an enemy on the right (nearest-per-side logic ignored the gaze). **How:** `BoatCrew.updateGaze` makes the oarsman prefer swimmers within 6 m (`OAR_TARGET_RANGE`) and exposes `strikeTarget`; `Boat.findWhackTargets` assigns it to its side and `closestSide` follows it. The other oar still joins only when its own enemy is within 4.5 m. **Alternatives:** keep nearest-per-side.
 - **Decision:** No on-water hit cue ring (a yellow ring under the watched swimmer was tried and removed). **Why:** requested; the crew's head turn is the cue.
+- **Decision:** With nobody in oar reach, the swing uses the side of the watched swimmer up to `OAR_AWARE_RANGE` (50, `VITE_OAR_AWARE_RANGE`) away. **Why:** reported misses; the rower always swung the right oar when the swimmer was still beyond 6 m, so it was often the wrong one. **Alternatives:** keep the fixed right-oar default; lock the side at 6 m only.

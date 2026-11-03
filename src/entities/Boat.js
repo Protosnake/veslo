@@ -35,6 +35,10 @@ const OAR_SIDE_SIGN = { left: 1, right: -1 };
 // does not trigger a pointless second swing.
 export const OAR_TARGET_RANGE = 6;
 const OAR_BOTH_RANGE = 4.5;
+// The rower commits to the watched swimmer's side from this far out, so a swing
+// with nobody in reach yet still goes toward the side the swimmer is on.
+const parsedAware = Number(import.meta.env.VITE_OAR_AWARE_RANGE);
+export const OAR_AWARE_RANGE = Number.isFinite(parsedAware) && parsedAware > 0 ? parsedAware : 50;
 
 const smooth = (t) => t * t * (3 - 2 * t);
 
@@ -911,12 +915,21 @@ export class Boat {
     if (this.onManRecovered) this.onManRecovered();
   }
 
+  /** Roll for the oarsman being thrown off by a hit taken at speed (call before slowing). */
+  rollOverboardOnHit(chance, minSpeedRatio) {
+    if (this.isManOverboard || this.speed <= 0) return;
+    if (this.speed / this.maxSpeed < minSpeedRatio) return;
+    if (Math.random() < chance) this.fallOverboard();
+  }
+
   applyRamImpact() {
     this.velocity.multiplyScalar(DIFFICULTY_TUNING.ramSpeedKeep);
     this.speed = this.velocity.x * Math.cos(this.angle) - this.velocity.z * Math.sin(this.angle);
   }
 
   applyMotorShred() {
+    const o = DIFFICULTY_TUNING.overboardOnHit;
+    this.rollOverboardOnHit(o.rotorChance, DIFFICULTY_TUNING.ramSpeedKeep);
     // Halve speed instead of stopping dead; the engine note cuts briefly.
     this.velocity.multiplyScalar(DIFFICULTY_TUNING.shredSpeedKeep);
     this.speed *= DIFFICULTY_TUNING.shredSpeedKeep;
@@ -1350,6 +1363,15 @@ export class Boat {
           ? this.oarSideOf(this.focusTarget)
           : distances.left <= distances.right ? 'left' : 'right';
 
+        // Nobody in reach: swing on the side of the swimmer being watched (up to
+        // OAR_AWARE_RANGE away) instead of a fixed default oar.
+        const focus = this.focusTarget;
+        const awareSide =
+          !anyTarget && focus && !focus.isDead && focus.state === 'swimming' &&
+          Math.hypot(focus.position.x - this.position.x, focus.position.z - this.position.z) <= OAR_AWARE_RANGE
+            ? this.oarSideOf(focus)
+            : null;
+
         for (const side of ['left', 'right']) {
           const mount = this.oars[side];
           if (!mount) continue;
@@ -1358,7 +1380,7 @@ export class Boat {
           const inRange = distance <= OAR_TARGET_RANGE;
           mount.active =
             (inRange && (side === closestSide || distance <= OAR_BOTH_RANGE)) ||
-            (!anyTarget && side === 'right');
+            (!anyTarget && side === (awareSide ?? 'right'));
         }
         this.whackTargetAcquired = true;
       }

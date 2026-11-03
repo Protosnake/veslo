@@ -1,13 +1,13 @@
 # 40 — Tide spawning
 
-Source: `src/systems/TideSystem.ts`, `src/entities/SmugglerManager.js` (`pickSpawnPoint`), `src/config/world.ts` (`TIDE_TUNING`), `src/main.js` (indicator, partner lines), `src/style.css`.
+Source: `src/systems/TideSystem.ts`, `src/entities/SmugglerManager.js` (`pickSpawnPoint`), `src/config/world.ts` (`TIDE_TUNING`), `src/style.css`.
 
 ```mermaid
 flowchart TD
     A["run starts (beginAfterIntro)"] --> B["tide.reset: direction = boat facing X (or VITE_TIDE_START_DIRECTION)<br/>phase = random 60-180 s"]
     B --> C["every frame: tide.update(dt)"]
     C --> D{"secondsLeft <= 8 s?"}
-    D -->|"once per phase"| E["warning: partner line + blinking HUD"]
+    D -->|"once per phase"| E["warning flag only (nothing shown to the player)"]
     C --> F{"secondsLeft <= 0?"}
     F -->|yes| G["flip direction, new random phase, partner line<br/>(no slack pause, current untouched)"]
     H["wave timer fires"] --> I["pickSpawnPoint: road points in 100-250 m band"]
@@ -22,7 +22,7 @@ flowchart TD
 ## Logic
 
 - Direction is along world X (the river axis). Swimmers already alive when the tide flips keep playing out; the dormant/despawn streaming rules clean up ones left behind.
-- HUD: an arrow (projected through the camera so it points at the spawn side on screen) with seconds to the flip; blinks yellow during the warning.
+- **Decision:** the tide is not shown to the player (no HUD arrow/countdown, no partner warning lines). **Why:** requested; the player should read the swimmers, not a UI. **Alternatives:** HUD arrow + countdown, partner warnings (both removed).
 - Knobs: `VITE_TIDE_ENABLED` / `?tide=0`, `VITE_TIDE_MIN_SECONDS` / `_MAX_SECONDS` (60/180; `?tideSeconds=N` sets both), `VITE_TIDE_WARNING_SECONDS` (8), `VITE_TIDE_START_DIRECTION` / `?tideStart=` (0).
 
 ## Decisions

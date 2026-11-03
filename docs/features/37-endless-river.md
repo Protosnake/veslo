@@ -25,7 +25,7 @@ flowchart TD
     BN --> BG["bank limits, rocks, wildlife, birds, road, breach line,<br/>current all use the bent centerline"]
     BN --> WD["width varies 50%-150%: lateral offsets x riverWidthScale(x)<br/>(VITE_RIVER_WIDTH_VARIATION)"]
     H --> RR{"passes big rock? (roll once per rock, 50%)"}
-    RR -->|yes| RK["climb on top, rest ~1.5 s, hop off south<br/>boat within 7 -> bail out early; oar/AK can still hit"]
+    RR -->|yes| RK["climb on top, rest ~1.5 s, hop off south only when boat is 100+ m away or moving away<br/>(no early bail-out); oar/AK can still hit"]
     H --> L{"engine hits rock / bank?"}
     L -->|yes| N["crash game over (unchanged)"]
 ```
@@ -73,3 +73,4 @@ flowchart TD
 - **Decision:** Spawns only occur in a cone (`VITE_SPAWN_AHEAD_CONE_DEG` 75) ahead of the boat's nose; `VITE_SPAWN_AHEAD_BIAS` default 1 (was 0.9) and no fallback behind. **Why:** requested; you only turn around if you were sitting still while swimmers emerged. **How:** direction is `boat.angle` (nose), not velocity, so it works when stationary; `chooseEmergeX` also keeps the water entry ahead of the nose. If no road copy qualifies the wave is skipped and retried after 1 s. **Alternatives:** keep a small behind chance (set the bias below 1).
 - **Decision:** Wide river sections get up to 25% more rocks per cluster (`VITE_ROCK_WIDE_BONUS`, 0.25). **Why:** requested; wide water felt empty. **How:** `RockField.place` scales the big/small count ranges by `1 + bonus * (width-1)/widthVariation`, clamped 0-1, so narrow/average water is unchanged; pool capacity is sized for the maximum. **Alternatives:** more clusters (`VITE_ROCK_COUNT`) everywhere.
 - **Decision:** River width swing raised from ±35% to ±50% (`VITE_RIVER_WIDTH_VARIATION` 0.5, cap 0.8). **Why:** requested; wide and narrow strips should differ more. **Alternatives:** a third width harmonic for more frequent pinches. **Trade-off:** the narrowest pinch is 50% of nominal width, so tight gaps get harder.
+- **Decision:** A resting swimmer stays on the rock until the boat is `VITE_ROCK_REST_LEAVE_DISTANCE` (100 m) away or moving away from them faster than `VITE_ROCK_REST_AWAY_SPEED` (0.5 m/s) (after the minimum rest time). The old 7 m early bail-out (`VITE_ROCK_REST_FLEE_RADIUS`) is removed. **Why:** requested; a rock is a safe perch while the boat approaches. **Alternatives:** bail out when the boat gets close (previous).

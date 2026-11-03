@@ -421,13 +421,6 @@ export class Smuggler {
     this.walkPhase += dt * 7;
     const ease = (t) => t * t * (3 - 2 * t);
 
-    // A boat charging in makes the swimmer bail out early.
-    if (rest.phase === 'sit' && boat && this.position.distanceTo(boat.position) < R.fleeRadius) {
-      rest.phase = 'leave';
-      rest.time = 0;
-      rest.from = this.position.clone();
-    }
-
     if (rest.phase === 'climb') {
       const t = Math.min(1, rest.time / 0.7);
       this.position.lerpVectors(rest.from, rest.top, ease(t));
@@ -441,7 +434,16 @@ export class Smuggler {
       this.position.copy(rest.top);
       // Panting: slumped forward and bobbing slightly.
       this.applyRunPose(0, 0.32 + Math.sin(rest.time * 5) * 0.04, 0);
-      if (rest.time >= rest.hold) {
+      // Stay put until the boat is far off or heading away from the rock.
+      let safe = true;
+      if (boat) {
+        const toX = this.position.x - boat.position.x;
+        const toZ = this.position.z - boat.position.z;
+        const dist = Math.hypot(toX, toZ) || 1;
+        const closing = (boat.velocity.x * toX + boat.velocity.z * toZ) / dist;
+        safe = dist >= R.leaveDistance || closing < -R.awaySpeed;
+      }
+      if (rest.time >= rest.hold && safe) {
         rest.phase = 'leave';
         rest.time = 0;
         rest.from = this.position.clone();
@@ -780,10 +782,15 @@ export class Smuggler {
     if (this.isDead || this.stunTimer > 0) return;
     this.stunTimer = DIFFICULTY_TUNING.ramStunSeconds;
     this.stunAge = 0;
+    this.stunSubmerged = true;
     this.frightTimer = 0;
     this.frightened = false;
     this.retreating = false;
     if (this.isDiving) this.endDive();
+    // Pushed under by the hull, then pops up floating; the rotor ignores him
+    // for the whole stun (see SmugglerManager).
+    this.isDiving = true;
+    this.propVulnerable = false;
     this.world.emitSplash(this.position.x, this.position.z, 26, 0xd8eeff);
   }
 
@@ -868,6 +875,16 @@ export class Smuggler {
     if (!this.isDead && this.stunTimer > 0) {
       this.stunTimer = Math.max(0, this.stunTimer - dt);
       this.stunAge += dt;
+      const under = DIFFICULTY_TUNING.ramUnderwaterSeconds;
+      if (this.stunSubmerged && this.stunAge >= under) {
+        this.stunSubmerged = false;
+        this.endDive();
+      }
+      if (this.stunSubmerged) {
+        const sink = Math.min(1, this.stunAge / 0.25, (under - this.stunAge) / 0.25 + 0.0);
+        this.group.position.y = -0.9 * Math.max(0, sink);
+        return;
+      }
       this.group.position.y = 0.08 + Math.sin(this.stunAge * 2.4 + this.wobbleSeed) * 0.05;
       this.group.rotation.z = Math.sin(this.stunAge * 1.3 + this.wobbleSeed) * 0.12;
       return;

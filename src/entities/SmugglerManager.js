@@ -361,7 +361,7 @@ export class SmugglerManager {
 
         // Priority 2: Outboard Engine / Propeller Chop (+500 pts!)
         const distMotor = Math.hypot(s.position.x - motorHitbox.center.x, s.position.z - motorHitbox.center.z);
-        if (distMotor <= motorHitbox.radius && (!s.isDiving || s.propVulnerable)) {
+        if (distMotor <= motorHitbox.radius && s.stunTimer <= 0 && (!s.isDiving || s.propVulnerable)) {
           s.shred();
           this.scareGroup(s, true);
           boat.applyMotorShred();
@@ -372,16 +372,14 @@ export class SmugglerManager {
           continue;
         }
 
-        // Priority 3: Boat Hull Ramming (+50 pts)
+        // Priority 3: Boat Hull Ramming (stun only, no points)
         const distHull = Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z);
         if (distHull <= hullHitbox.radius && !s.isDiving && s.stunTimer <= 0) {
           s.ram();
           this.scareGroup(s);
           boat.applyRamImpact();
-          this.totalSmacked++;
-          this.score += 50;
           sound.playRam();
-          this.onScore(50, s.position, t('score.ram'), 'ram');
+          this.onScore(0, s.position, t('score.ram'), 'ram');
           continue;
         }
       }

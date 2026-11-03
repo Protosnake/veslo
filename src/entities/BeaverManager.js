@@ -209,14 +209,15 @@ export class BeaverManager {
   }
 
   /**
-   * One beaver sound at most every sfxThrottle seconds, whichever beaver. A beaver
-   * held back by the throttle is not marked as heard, so it triggers once the
-   * throttle ends if it is still in range.
+   * Called when a beaver first comes into range: it counts as seen right away,
+   * so it never plays again, even if the boat sits still beside it. The sound
+   * itself is throttled to one per sfxThrottle seconds across all beavers, so a
+   * beaver sighted during the throttle stays silent.
    */
   playSightingSound(beaver) {
+    beaver.sfxPlayed = true;
     if (this.time - this.lastSfxTime < B.sfxThrottle) return;
     this.lastSfxTime = this.time;
-    beaver.sfxPlayed = true;
     sound.playBeaver(B.sfxVolume);
   }
 

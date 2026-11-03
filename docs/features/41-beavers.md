@@ -15,7 +15,9 @@ flowchart TD
     H --> I["after fleeSeconds: dive, despawn"]
     J["boat within 50 m of a beaver"] --> T{"10 s since last beaver sound?"}
     T -->|yes| K["play random bobr_1..3.mp3<br/>(not the previous one)"]
-    T -->|no| Q["silent, retry next frame while in range"]
+    T -->|no| Q["silent"]
+    K --> S["beaver marked seen: never plays again"]
+    Q --> S
     L["rock recycled or beaver 320 m away"] --> M["despawn silently"]
 ```
 
@@ -25,3 +27,4 @@ flowchart TD
 - Decision: beavers only fear smugglers (swimming nearby, or resting on their rock), not the boat. Why: requested behaviour. Alternatives: dive from the boat like frogs.
 - Decision: the sound clips are optional files in `public/` (`bobr_1..3.mp3`) fetched at runtime. Why: the YouTube source was age-gated, so the clips are user-supplied; the game runs silently if they are removed.
 - Decision: one beaver sound at most every 10 s across all beavers, random of 3 clips, never the same twice in a row, volume 0.2. Why: several beavers in range would otherwise spam. Alternatives: per-beaver cooldown; a second-sighting clip (dropped when the user supplied 3 clips).
+- Decision: a beaver is marked seen the first time it enters range, whether or not the throttle let the sound play. Why: stationary boat next to several beavers would otherwise play one sound per beaver every 10 s. Alternatives: retry throttled beavers when the throttle ends (previous behaviour).

@@ -15,6 +15,8 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
+    H2["rotor hit at speed >= 80% max<br/>(full speed minus ram slowdown)"] --> R2{"50% roll"}
+    R2 -->|hit| A
     A["fallOverboard()"] --> B["drop active oar swing"]
     B --> C["throw toward outside of turn<br/>fall offset = 2.6 m"]
     C --> D["findSafeOverboardSpot()"]
@@ -44,3 +46,11 @@ flowchart TD
 - **Recovery:** after a 0.7 s minimum air time, driving the hull within 2.4 m picks him up. The boat then has a 10 s cooldown before another fall can start.
 - Losing him also costs 8% of boat velocity and cancels any active oar strike. `main.js` receives the `onManOverboard` / `onManRecovered` callbacks from the `Boat` constructor and shows the danger/men-recovered alerts, partner line, screen shake, splash, and alert sound.
 - Cross-cutting lifecycle wiring in `main.js` (screen wake lock #20, offline service worker #22) is orthogonal to the fall/drift/recovery flow above and leaves it unchanged.
+- **Hit path:** `rollOverboardOnHit` runs before the rotor hit's slowdown: at >= `VITE_RAM_SPEED_KEEP` (0.8) of max speed (full speed minus a ram's slowdown, so a rotor pass right after a ram qualifies) there is a `VITE_ROTOR_OVERBOARD_CHANCE` (0.5) chance. Ramming itself no longer rolls; instead the rammed swimmer is held underwater `VITE_RAM_UNDERWATER_SECONDS` (2) and the rotor ignores a rammed (stunned) swimmer for the whole stun.
+
+## Decisions
+
+- **Decision:** "full speed minus ramming speed" is the ram speed-keep ratio (0.8). **Why:** that is exactly the speed left after a full-speed ram. **Alternatives:** separate threshold knob (more config, same result).
+- **Decision:** the ram-overboard roll was removed; ramming submerges the swimmer 2 s instead. **Why:** requested. **Alternatives:** keep a 10% ram roll.
+- **Decision:** a rammed swimmer cannot be rotored during the stun. **Why:** requested. **Alternatives:** only while submerged.
+- **Decision:** corpse bumps do not roll for overboard. **Why:** only live ram/rotor hits were requested. **Alternatives:** roll on all `applyRamImpact` calls.
