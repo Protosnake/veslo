@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { sound } from '../systems/Audio.js';
 import { DIFFICULTY_TUNING } from '../config/difficulty.js';
 import { playMinZ, playMaxZ } from '../world/Bounds.js';
+import { riverSwellAt } from '../world/River.js';
+import { BOAT_TUNING } from '../config/boat.js';
 
 const MAN_OVERBOARD_SPEED_RATIO = 0.8;
 const MAN_OVERBOARD_TURN_RATIO = 0.35;
@@ -72,9 +74,13 @@ export class Boat {
     // Kinematics & Physics
     this.position = new THREE.Vector3(0, 0, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
+    this.prevPropPos = new THREE.Vector3();
     this.angle = 0; // heading angle matching group.rotation.y
     this.angularVelocity = 0;
     this.speed = 0;
+    this.pitch = 0; // bow-up trim (rad) about the hull's local Z
+    this.prevSpeed = 0;
+    this.heave = BOAT_TUNING.rideHeight;
 
     // Heavier, momentum-driven handling
     this.maxSpeed = 26;
@@ -527,6 +533,8 @@ export class Boat {
 
     this.group.position.copy(this.position);
     this.group.rotation.set(0, 0, 0);
+    this.pitch = 0;
+    this.prevSpeed = 0;
     sound.startEngineSound();
   }
 
@@ -1012,17 +1020,127 @@ export class Boat {
     this.position.z = rock.z + (dz / distance) * minDistance;
   }
 
+  /** Drops expanding rings at the bow and stern; successive rings form the V wake. */
+  emitWakeRipples(dt, forwardX, forwardZ) {
+    const ratio = Math.abs(this.speed) / this.maxSpeed;
+    if (!this.world.addRipple || ratio < 0.08) return;
+    this.rippleTimer = (this.rippleTimer || 0) - dt;
+    if (this.rippleTimer > 0) return;
+    this.rippleTimer = Math.max(-dt, this.rippleTimer) + BOAT_TUNING.rippleInterval;
+    const dir = this.speed >= 0 ? 1 : -1;
+    const bow = dir * BOAT_TUNING.bowOffset;
+    this.world.addRipple(
+      this.position.x + forwardX * bow,
+      this.position.z + forwardZ * bow,
+      0.5 + ratio * 0.7
+    );
+    this.world.addRipple(
+      this.position.x - forwardX * 1.6 * dir,
+      this.position.z - forwardZ * 1.6 * dir,
+      0.4 + ratio * 0.6
+    );
+  }
+
+  /** Bow wave and hull-side foam; spray kicks outward and falls back onto the swell. */
+  emitBowSpray(dt, forwardX, forwardZ, t) {
+    const ratio = Math.max(0, this.speed) / this.maxSpeed;
+    if (BOAT_TUNING.sprayRate <= 0 || ratio < BOAT_TUNING.sprayMinRatio || !this.world.emitParticle) return;
+    this.sprayBudget = (this.sprayBudget || 0) + dt * BOAT_TUNING.sprayRate * ratio;
+    const perpX = -forwardZ;
+    const perpZ = forwardX;
+    const sprayCount = Math.floor(this.sprayBudget);
+    this.sprayBudget -= sprayCount;
+    for (let n = 0; n < sprayCount; n++) {
+      const f = (n + Math.random()) / sprayCount;
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const bow = Math.random() < 0.55;
+      // Bow: at the tip, thrown sideways and up. Hull: along the tube, low foam.
+      const along = bow ? BOAT_TUNING.bowOffset : BOAT_TUNING.bowOffset - Math.random() * 3.2;
+      const lateral = bow ? 0.15 * side : 0.85 * side;
+      const jitterA = (Math.random() - 0.5) * (bow ? 0.5 : 1.2);
+      const jitterL = (Math.random() - 0.5) * (bow ? 0.5 : 0.35);
+      const x = this.position.x + forwardX * (along + jitterA) + perpX * (lateral + jitterL);
+      const z = this.position.z + forwardZ * (along + jitterA) + perpZ * (lateral + jitterL);
+      const out = bow ? 0.6 + Math.random() * 3 : 0.1 + Math.random() * 0.9;
+      const scatter = (Math.random() - 0.5) * 0.6;
+      this.world.emitParticle(
+        x - this.velocity.x * dt * (1 - f),
+        riverSwellAt(x, z, t) + 0.08,
+        z - this.velocity.z * dt * (1 - f),
+        this.velocity.x * 0.9 + perpX * side * out + forwardX * scatter,
+        bow ? 1.2 + Math.random() * 1.6 * ratio : 0.15,
+        this.velocity.z * 0.9 + perpZ * side * out + forwardZ * scatter,
+        0xeaf6ff,
+        bow ? 0.7 + Math.random() * 0.5 : 0.9 + Math.random() * 0.5,
+        bow ? 0.5 + Math.random() * 0.35 : 0.7 + Math.random() * 0.4,
+        { preAge: (1 - f) * dt, drag: bow ? BOAT_TUNING.sprayDrag : 1.5 }
+      );
+    }
+  }
+
+  /** Outer-hull fan of spray and a stern churn while carving a turn at speed. */
+  emitTurnSpray(dt, forwardX, forwardZ, t) {
+    const speedRatio = Math.max(0, this.speed) / this.maxSpeed;
+    const turnRatio = Math.min(1, Math.abs(this.angularVelocity) / this.turnSpeed);
+    if (
+      BOAT_TUNING.turnSprayRate <= 0 ||
+      turnRatio < BOAT_TUNING.turnSprayMinRatio ||
+      speedRatio < BOAT_TUNING.sprayMinRatio ||
+      !this.world.emitParticle
+    ) return;
+    const intensity = turnRatio * speedRatio;
+    this.turnSprayBudget = (this.turnSprayBudget || 0) + dt * BOAT_TUNING.turnSprayRate * intensity;
+    const perpX = -forwardZ;
+    const perpZ = forwardX;
+    // Positive angularVelocity turns toward -perp, so the hull skids out toward +perp.
+    const side = this.angularVelocity >= 0 ? 1 : -1;
+    const turnCount = Math.floor(this.turnSprayBudget);
+    this.turnSprayBudget -= turnCount;
+    for (let n = 0; n < turnCount; n++) {
+      const f = (n + Math.random()) / turnCount;
+      // Mostly the stern quarter, which swings widest, up to amidships.
+      const along = -1.9 + Math.random() * 2.6;
+      const lateral = 0.9 + Math.random() * 0.3;
+      const x = this.position.x - this.velocity.x * dt * (1 - f) + forwardX * along + perpX * side * lateral;
+      const z = this.position.z - this.velocity.z * dt * (1 - f) + forwardZ * along + perpZ * side * lateral;
+      const out = 1 + Math.random() * 3.5 * intensity + turnRatio;
+      const scatter = (Math.random() - 0.5) * 1.4;
+      this.world.emitParticle(
+        x,
+        riverSwellAt(x, z, t) + 0.08,
+        z,
+        this.velocity.x * 0.8 + perpX * side * out + forwardX * scatter,
+        0.6 + Math.random() * 2.2 * intensity,
+        this.velocity.z * 0.8 + perpZ * side * out + forwardZ * scatter,
+        Math.random() < 0.35 ? 0xffffff : 0xeaf6ff,
+        0.8 + Math.random() * 0.6,
+        0.55 + Math.random() * 0.4,
+        { preAge: (1 - f) * dt, drag: BOAT_TUNING.sprayDrag }
+      );
+    }
+    // Rings off the outer quarter so the skid also shows in the surface.
+    this.turnRippleTimer = (this.turnRippleTimer || 0) - dt;
+    if (this.turnRippleTimer <= 0 && this.world.addRipple) {
+      this.turnRippleTimer = Math.max(-dt, this.turnRippleTimer) + BOAT_TUNING.rippleInterval;
+      this.world.addRipple(
+        this.position.x - forwardX * 1.2 + perpX * side * 1.1,
+        this.position.z - forwardZ * 1.2 + perpZ * side * 1.1,
+        0.3 + intensity * 0.7
+      );
+    }
+  }
+
   holdCrashedPose() {
     this.velocity.set(0, 0, 0);
     this.speed = 0;
     this.angularVelocity = 0;
 
     this.group.position.copy(this.position);
-    const waveAtBoat =
-      Math.sin(this.position.x * 0.35 + this.world.time * 2.2) * 0.22 +
-      Math.cos(this.position.z * 0.4 + this.world.time * 1.8) * 0.16;
-    this.group.position.y = Math.max(0, waveAtBoat) * 0.5 + 0.16;
+    this.group.position.y =
+      riverSwellAt(this.position.x, this.position.z, this.world.time) + BOAT_TUNING.rideHeight;
     this.group.rotation.y = this.angle;
+    this.pitch *= 0.9;
+    this.group.rotation.z = this.pitch;
     this.motorPivot.rotation.y = THREE.MathUtils.lerp(
       this.motorPivot.rotation.y,
       0,
@@ -1308,7 +1426,12 @@ export class Boat {
       this.propWorldPos.copy(this.position).add(this.propOffset);
       this.wakeForward.set(forwardX, 0, forwardZ);
       if (this.world.emitEngineWake) {
-        this.world.emitEngineWake(this.propWorldPos, this.wakeForward, this.speed, this.speed < 0);
+        this.world.emitEngineWake(
+          this.propWorldPos, this.wakeForward, this.speed, this.speed < 0, dt,
+          this.prevPropPos.set(
+            this.propWorldPos.x - this.velocity.x * dt, 0, this.propWorldPos.z - this.velocity.z * dt
+          )
+        );
       } else if (this.world.emitWake) {
         this.world.emitWake(this.position.x, this.position.z, this.angle, Math.abs(this.speed));
       }
@@ -1317,14 +1440,47 @@ export class Boat {
     this.group.position.copy(this.position);
     this.group.rotation.y = this.angle;
 
-    // Dynamic wave riding: boat rides ON TOP of water waves so water never clips into the floor!
-    const waveAtBoat = Math.sin(this.position.x * 0.35 + this.world.time * 2.2) * 0.22 +
-                       Math.cos(this.position.z * 0.4 + this.world.time * 1.8) * 0.16;
-    this.group.position.y = Math.max(0, waveAtBoat) * 0.5 + 0.16;
+    // Ride the same swell the water shader draws.
+    const t = this.world.time;
+    const span = BOAT_TUNING.waveSampleSpan;
+    const waveAtBoat = riverSwellAt(this.position.x, this.position.z, t);
+    const waveBow = riverSwellAt(this.position.x + forwardX * span, this.position.z + forwardZ * span, t);
+    const waveStern = riverSwellAt(this.position.x - forwardX * span, this.position.z - forwardZ * span, t);
+    // At speed the hull skims over the chop, so the faster it goes the less of
+    // the swell it follows, and the pitch is low-passed so crossing short waves
+    // does not buzz the hull.
+    const speedAbs = Math.min(1, Math.abs(this.speed) / this.maxSpeed);
+    const waveFollow = 1 - speedAbs * (1 - BOAT_TUNING.waveFollowAtSpeed);
+    const waveSlopeRaw = Math.atan2(waveBow - waveStern, span * 2) * waveFollow;
+    this.waveSlopeSmooth = (this.waveSlopeSmooth ?? waveSlopeRaw);
+    this.waveSlopeSmooth += (waveSlopeRaw - this.waveSlopeSmooth) * (1 - Math.exp(-BOAT_TUNING.wavePitchResponse * dt));
+    const waveSlope = this.waveSlopeSmooth;
+
+    // Low-pass the height so wave crests lift the hull instead of snapping it.
+    const heaveTarget = waveAtBoat * waveFollow + BOAT_TUNING.rideHeight;
+    this.heave += (heaveTarget - this.heave) * (1 - Math.exp(-BOAT_TUNING.heaveResponse * dt));
+
+    // Planing trim: an inflatable lifts its bow as speed builds, with an extra
+    // lift while accelerating that settles once speed is held.
+    const forwardRatio = Math.max(0, this.speed) / this.maxSpeed;
+    const planing = THREE.MathUtils.smoothstep(forwardRatio, BOAT_TUNING.planingStartRatio, 1);
+    const accel = dt > 0 ? (this.speed - this.prevSpeed) / dt : 0;
+    const squat = THREE.MathUtils.clamp(accel / 6, -1, 1) * planing;
+    this.prevSpeed = this.speed;
+    const targetPitch = THREE.MathUtils.degToRad(
+      BOAT_TUNING.planingPitchDegrees * planing + BOAT_TUNING.accelSquatDegrees * squat
+    );
+    this.pitch += (targetPitch - this.pitch) * (1 - Math.exp(-BOAT_TUNING.pitchResponse * dt));
+    this.group.rotation.z = this.pitch + waveSlope;
+    this.group.position.y = this.heave + Math.sin(this.pitch) * 0.35;
+
+    this.emitBowSpray(dt, forwardX, forwardZ, t);
+    this.emitTurnSpray(dt, forwardX, forwardZ, t);
+    this.emitWakeRipples(dt, forwardX, forwardZ);
 
     // Banking roll
     const targetRoll = -this.angularVelocity * 0.12;
-    this.hull.rotation.x = THREE.MathUtils.lerp(this.hull.rotation.x, targetRoll, 0.2);
+    this.hull.rotation.x += (targetRoll - this.hull.rotation.x) * (1 - Math.exp(-12 * dt));
 
     // Motor tiller steering animation
     const targetMotorAngle = steer * 0.45;

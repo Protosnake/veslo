@@ -372,6 +372,22 @@ export class SmugglerManager {
           continue;
         }
 
+        // Priority 3a: second ram on a floating stunned swimmer drowns him (+100)
+        if (
+          s.stunTimer > 0 &&
+          !s.stunSubmerged &&
+          Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z) <= hullHitbox.radius
+        ) {
+          s.drown();
+          this.scareGroup(s);
+          boat.applyRamImpact();
+          sound.playRam();
+          this.totalSmacked++;
+          this.score += 100;
+          this.onScore(100, s.position, t('score.drown'), 'drown');
+          continue;
+        }
+
         // Priority 3: Boat Hull Ramming (stun only, no points)
         const distHull = Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z);
         if (distHull <= hullHitbox.radius && !s.isDiving && s.stunTimer <= 0) {

@@ -146,6 +146,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
     // ── Floating Score Popups ──
     'score.shred': 'РІЗНЯ! +500',
     'score.ram': 'ТАРАН!',
+    'score.drown': 'ВТОПИВСЯ! +100',
     'score.breach': 'ПРОРИВ КОРДОНУ! ⚠️',
 
     // ── Oar Kill Streak ──
@@ -327,6 +328,7 @@ const translations: Record<LocaleCode, TranslationTable> = {
     // ── Floating Score Popups ──
     'score.shred': 'PROPELLER! +500',
     'score.ram': 'RAM!',
+    'score.drown': 'DROWNED! +100',
     'score.breach': 'BORDER BREACH! ⚠️',
 
     // ── Oar Kill Streak ──

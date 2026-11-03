@@ -31,14 +31,18 @@ export const BEAVER_TUNING = {
   /** Swim speed (m/s) and flee speed multiplier. */
   swimSpeed: envNumber(import.meta.env.VITE_BEAVER_SWIM_SPEED, 1.6),
   fleeSpeedMultiplier: envNumber(import.meta.env.VITE_BEAVER_FLEE_SPEED_MULTIPLIER, 2.2),
+  /** Body height while swimming (world Y; water surface is 0, lower = sunk deeper). */
+  swimY: envNumber(import.meta.env.VITE_BEAVER_SWIM_Y, -0.25),
   /** Seconds the climb-up animation takes. */
   climbSeconds: envNumber(import.meta.env.VITE_BEAVER_CLIMB_SECONDS, 0.9),
   /** A swimming smuggler this close scares a beaver (world units). */
   fearRadius: envNumber(import.meta.env.VITE_BEAVER_FEAR_RADIUS, 9),
   /** Seconds a fleeing beaver swims before diving out of sight. */
   fleeSeconds: envNumber(import.meta.env.VITE_BEAVER_FLEE_SECONDS, 5),
-  /** The boat getting this close to a beaver plays the beaver sound once. */
-  sfxRadius: envNumber(import.meta.env.VITE_BEAVER_SFX_RADIUS, 50),
+  /** The boat getting this close to a swimming beaver plays the beaver sound once. */
+  sfxSwimRadius: envNumber(import.meta.env.VITE_BEAVER_SFX_SWIM_RADIUS, 25),
+  /** Same, for a beaver sitting on (or climbing onto) a rock. */
+  sfxSitRadius: envNumber(import.meta.env.VITE_BEAVER_SFX_SIT_RADIUS, 25),
   /** After a beaver sound, no beaver sound plays for this many seconds (any beaver). */
   sfxThrottle: envNumber(import.meta.env.VITE_BEAVER_SFX_THROTTLE, 10),
   /** Beaver sound volume (0-1). */

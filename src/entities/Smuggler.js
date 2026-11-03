@@ -794,6 +794,19 @@ export class Smuggler {
     this.world.emitSplash(this.position.x, this.position.z, 26, 0xd8eeff);
   }
 
+  /** Rammed again while floating stunned: held under until he drowns. */
+  drown() {
+    if (this.isDead) return;
+    this.stunTimer = 0;
+    this.isDead = true;
+    this.deathType = 'drown';
+    this.deathTimer = 0;
+    this.deathDuration = 5;
+    this.corpseHit = false;
+    if (this.isDiving) this.endDive();
+    this.world.emitSplash(this.position.x, this.position.z, 30, 0xd8eeff);
+  }
+
   shred() {
     if (this.isDead) return;
     this.isDead = true;

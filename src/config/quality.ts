@@ -30,19 +30,19 @@ const PRESETS: Record<QualityTier, QualityPreset> = {
   low: {
     pixelRatioCap: 1,
     shadowMapSize: 512,
-    particleBudget: 90,
+    particleBudget: 20000,
     antialias: false
   },
   medium: {
     pixelRatioCap: 1.25,
     shadowMapSize: 1024,
-    particleBudget: 160,
+    particleBudget: 30000,
     antialias: true
   },
   high: {
     pixelRatioCap: 1.5,
     shadowMapSize: 1024,
-    particleBudget: 220,
+    particleBudget: 40000,
     antialias: true
   }
 };

@@ -5,7 +5,7 @@ import { BEAVER_TUNING as B } from '../config/beaver.js';
 import { STREAMING_TUNING } from '../config/world.js';
 import { riverZ } from '../world/Bounds.js';
 
-const WATER_Y = -0.1; // body half submerged while swimming
+const WATER_Y = B.swimY; // body height while swimming (sunk into the water)
 const SIT_OFFSET = 0.12; // sink a little into the rock so the feet touch it
 
 /** Same top height the smugglers use when climbing a rock (see RockField). */
@@ -115,7 +115,7 @@ class BeaverActor {
     this.world.emitParticle?.(bx, 0.03, bz, 0, 0.05, 0, 0xdff2fc, 0.55, 0.4);
   }
 
-  update(dt, time) {
+  update(dt, time, boat = null) {
     if (this.state === 'swim') {
       this.position.y = WATER_Y + Math.sin(time * 3 + this.seed) * 0.03;
       // Aim for the rock edge on the sit side, then climb.
@@ -139,8 +139,12 @@ class BeaverActor {
       if (k >= 1) this.state = 'sit';
     } else if (this.state === 'sit') {
       this.position.copy(this.sitPos);
-      // Look out over the water, with a slow sniffing sway.
-      this.turnTo(this.sitAngle + Math.sin(time * 0.6 + this.seed) * 0.35, dt);
+      // Watch the boat, with a slow sniffing sway; look out over the water without one.
+      const sway = Math.sin(time * 0.6 + this.seed) * 0.12;
+      const look = boat
+        ? Math.atan2(boat.position.x - this.position.x, boat.position.z - this.position.z)
+        : this.sitAngle;
+      this.turnTo(look + sway, dt);
     } else if (this.state === 'flee') {
       this.timer -= dt;
       this.position.y = WATER_Y + Math.sin(time * 5 + this.seed) * 0.03;
@@ -257,12 +261,14 @@ export class BeaverManager {
       }
 
       // Boat close: beaver call (throttled, see playSightingSound).
-      if (!beaver.sfxPlayed) {
+      // Range depends on state: swimming 25 m, sitting/climbing 50 m, fleeing silent.
+      if (!beaver.sfxPlayed && beaver.state !== 'flee') {
+        const radius = beaver.state === 'swim' ? B.sfxSwimRadius : B.sfxSitRadius;
         const d = Math.hypot(beaver.position.x - boat.position.x, beaver.position.z - boat.position.z);
-        if (d <= B.sfxRadius) this.playSightingSound(beaver);
+        if (d <= radius) this.playSightingSound(beaver);
       }
 
-      beaver.update(dt, this.time);
+      beaver.update(dt, this.time, boat);
     }
   }
 }

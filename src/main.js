@@ -261,6 +261,14 @@ const KILL_STREAK_WINDOW =
   ?? readSeconds(import.meta.env.VITE_KILL_STREAK_SECONDS)
   ?? TUNING.killStreakSeconds;
 
+const KILL_STREAK_FREEZE_RATIO = (() => {
+  const raw = Number(import.meta.env.VITE_KILL_STREAK_FREEZE_SPEED_RATIO);
+  return Number.isFinite(raw) && import.meta.env.VITE_KILL_STREAK_FREEZE_SPEED_RATIO !== ''
+    && import.meta.env.VITE_KILL_STREAK_FREEZE_SPEED_RATIO != null
+    ? raw
+    : TUNING.killStreakFreezeSpeedRatio;
+})();
+
 function installPromptDismissed() {
   try {
     return localStorage.getItem(INSTALL_PROMPT_KEY) === '1';
@@ -1246,7 +1254,7 @@ class Game {
   onSmugglerSmacked(points, worldPos, text, type = 'whack', count = 1) {
     if (type === 'shred') {
       this.renderer.triggerScreenShake(0.95);
-    } else if (type === 'ram') {
+    } else if (type === 'ram' || type === 'drown') {
       this.renderer.triggerScreenShake(0.35);
     } else {
       this.renderer.triggerScreenShake(0.55 + Math.min(count, 4) * 0.12);
@@ -1254,7 +1262,11 @@ class Game {
 
     let displayText = text;
     const countsForStreak =
-      type === 'whack' || type === 'shred' || type === 'ak';
+      type === 'whack' || type === 'shred' || type === 'ak' || type === 'drown';
+    if (type === 'ram') {
+      // Ram stuns (no kill, no points) but still feeds the streak.
+      this.registerKillStreak(count);
+    }
     if (countsForStreak) {
       this.enemyKillCount += count;
       if (type === 'whack') {
@@ -1362,6 +1374,9 @@ class Game {
 
   updateKillStreak(dt) {
     if (this.killStreakTimer <= 0) return;
+    // At (near) max speed the streak timer holds instead of ticking down.
+    const atMaxSpeed = this.boat.speed >= this.boat.maxSpeed * KILL_STREAK_FREEZE_RATIO;
+    if (atMaxSpeed) return;
     this.killStreakTimer = Math.max(0, this.killStreakTimer - dt);
     if (this.killStreakBanner) {
       const progress = this.killStreakTimer / this.killStreakWindow;

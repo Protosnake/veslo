@@ -140,6 +140,8 @@ export interface TuningConfig {
   initialSpawnCount: number;
   /** Kill-streak window in seconds. */
   killStreakSeconds: number;
+  /** Boat speed ratio (0-1 of max speed) at or above which the kill-streak timer stops ticking. */
+  killStreakFreezeSpeedRatio: number;
   /** Request a screen wake lock for the duration of a run. */
   wakeLock: boolean;
   stork: StorkTuning;
@@ -203,7 +205,8 @@ export const TUNING: TuningConfig = {
   },
   akEnabled: false,
   initialSpawnCount: 0,
-  killStreakSeconds: 5,
+  killStreakSeconds: 10,
+  killStreakFreezeSpeedRatio: 0.98,
   wakeLock: true,
   stork: {
     alwaysDive: false,

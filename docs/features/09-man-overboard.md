@@ -54,3 +54,16 @@ flowchart TD
 - **Decision:** the ram-overboard roll was removed; ramming submerges the swimmer 2 s instead. **Why:** requested. **Alternatives:** keep a 10% ram roll.
 - **Decision:** a rammed swimmer cannot be rotored during the stun. **Why:** requested. **Alternatives:** only while submerged.
 - **Decision:** corpse bumps do not roll for overboard. **Why:** only live ram/rotor hits were requested. **Alternatives:** roll on all `applyRamImpact` calls.
+
+## Decisions
+
+- **Decision:** A second hull ram on a swimmer still floating from a ram stun drowns him for +100 (blue "DROWNED!" popup, feeds kill streak).
+  **Why:** Rewards re-ramming helpless swimmers instead of leaving the stun as a dead end.
+  **Alternatives:** Re-stun (no payoff); award more points (competes with +500 propeller).
+
+```mermaid
+flowchart LR
+  R[Hull ram] --> S{Already stunned & surfaced?}
+  S -- no --> St[Stun, 0 pts, RAM!]
+  S -- yes --> D[Drown +100, blue DROWNED!]
+```

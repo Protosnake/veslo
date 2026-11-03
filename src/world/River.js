@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { sx, sz, RIVER_HALF_WIDTH, WORLD_CHUNK_WIDTH, WORLD_CHUNKS, WORLD_PERIOD, foldChunkX, riverCenterZ, riverSlopeAt, riverZ, riverWidthScale } from './Bounds.js';
+import { BOAT_TUNING } from '../config/boat.js';
+import { WATER_TUNING } from '../config/water.js';
 import { RockField } from './RockField.js';
 import { IDLE_DECOR_ENABLED, runWhenIdle } from '../systems/IdleScheduler.js';
 import { QUALITY } from '../config/quality.js';
@@ -21,6 +23,22 @@ const RIVER_SWELL = [
   [0.65, -0.45, 0.045, 2.70, 3.0], // oblique chop
   [0.20, 0.80, 0.050, -1.60, 0.9]  // bank reflection chop
 ];
+
+/** CPU twin of the shader's `riverSwellHeight` so floating things sit on the drawn surface. */
+export function riverSwellAt(x, z, t) {
+  let h = 0;
+  for (const [kx, kz, amp, speed, phase] of RIVER_SWELL) {
+    h += amp * Math.sin(kx * x + kz * z + speed * t + phase);
+  }
+  return h;
+}
+
+// Expanding ripple rings (boat wake, splashes) shared by every River instance:
+// the water material is cached, so its uniform array must be too.
+// Vector4 = (x, z, age seconds, strength); strength 0 = free slot.
+const MAX_RIPPLES = 48;
+const RIPPLES = Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, 0, 0));
+let rippleCursor = 0;
 
 function waveAngleGLSL(kx, kz, speed, phase) {
   return [
@@ -74,6 +92,7 @@ export class RiverWorld {
     this.time = 0;
     this.particles = [];
     this.particleIndex = 0;
+    this.fleckAcc = 0;
 
     this.reedsWind = { value: 0 };
     this.crowdTime = { value: 0 };
@@ -229,7 +248,6 @@ export class RiverWorld {
     const tasks = [];
     for (let i = 0; i < this.chunkCount; i++) {
       tasks.push(buildAll(i, () => this.createForests()));
-      tasks.push(buildAll(i, () => this.createAppalledCrowd()));
     }
 
     if (!IDLE_DECOR_ENABLED) {
@@ -383,11 +401,43 @@ export class RiverWorld {
     return new THREE.Shape(points);
   }
 
+  // Bent samples with one extra sample past each chunk end, so neighbouring
+  // chunks' banks overlap instead of meeting edge to edge. Edge-to-edge seams
+  // leave a sub-pixel crack (sky shows through) that flickers at high speed.
+  padBentSamples(chunk, pad = 0.6) {
+    const origin = chunk * this.chunkWidth;
+    const make = (x) => {
+      const slope = riverSlopeAt(origin + x);
+      const len = Math.hypot(1, slope);
+      return {
+        p: new THREE.Vector3(x, 0, riverCenterZ(origin + x)),
+        t: new THREE.Vector3(1 / len, 0, slope / len),
+        n: new THREE.Vector3(0, 0, riverWidthScale(origin + x))
+      };
+    };
+    const base = this.bentSamples;
+    return [make(base[0].p.x - pad), ...base, make(base[base.length - 1].p.x + pad)];
+  }
+
   createBanks() {
+    const unpadded = this.bentSamples;
+    this.bentSamples = this.padBentSamples(this.activeChunk);
+    try {
+      this.createBankMeshes();
+    } finally {
+      this.bentSamples = unpadded;
+    }
+  }
+
+  createBankMeshes() {
     const northMaterial = new THREE.MeshLambertMaterial({ color: 0x3d6630, side: THREE.DoubleSide });
     const southMaterial = new THREE.MeshLambertMaterial({ color: 0x4f8339, side: THREE.DoubleSide });
     const dirtMaterial = new THREE.MeshLambertMaterial({ color: 0x557a37, emissive: 0x1b2a12, side: THREE.DoubleSide });
-    const lipMaterial = new THREE.MeshLambertMaterial({ color: 0x4f7333, emissive: 0x16230f, side: THREE.DoubleSide });
+    // polygonOffset keeps the lip from z-fighting with the plateau at grazing angles.
+    const lipMaterial = new THREE.MeshLambertMaterial({
+      color: 0x4f7333, emissive: 0x16230f, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+    });
     const sandMaterial = new THREE.MeshLambertMaterial({ color: 0xbdb07d, side: THREE.DoubleSide });
 
     // Northern bank plateau (high border side)
@@ -409,19 +459,25 @@ export class RiverWorld {
     this.scene.add(southBank);
 
     // Dirt cliff between the water and the high northern plateau
-    const wallGeo = this.buildRiverWallGeometry(-this.riverHalfWidth, NORTH_BANK_Y, -0.6);
+    const wallGeo = this.buildRiverWallGeometry(-this.riverHalfWidth, NORTH_BANK_Y + 0.06, -0.6);
     const wall = new THREE.Mesh(wallGeo, dirtMaterial);
     wall.receiveShadow = true;
     wall.userData.noShear = true;
     this.scene.add(wall);
 
     // Dirt lip on top of the cliff, plus the sandy southern shoreline
-    const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.5, -this.riverHalfWidth + 0.15, NORTH_BANK_Y + 0.02), lipMaterial);
+    const dirtLip = new THREE.Mesh(this.buildRibbonGeometry(-this.riverHalfWidth - 2.5, -this.riverHalfWidth + 0.3, NORTH_BANK_Y + 0.03), lipMaterial);
     dirtLip.receiveShadow = true;
     dirtLip.userData.noShear = true;
     this.scene.add(dirtLip);
 
-    const sand = new THREE.Mesh(this.buildRibbonGeometry(this.riverHalfWidth, this.riverHalfWidth + 2.6, 0.0), sandMaterial);
+    // The beach slopes down into the water (inner edge below the surface) so the
+    // water laps up it and the waterline is a natural intersection, not a gap.
+    const sandGeo = this.buildRibbonGeometry(this.riverHalfWidth, this.riverHalfWidth + 2.6, 0.0);
+    const sandPos = sandGeo.attributes.position;
+    for (let i = 0; i < sandPos.count; i += 2) sandPos.setY(i, -0.35);
+    sandGeo.computeVertexNormals();
+    const sand = new THREE.Mesh(sandGeo, sandMaterial);
     sand.receiveShadow = true;
     sand.userData.noShear = true;
     this.scene.add(sand);
@@ -655,7 +711,7 @@ export class RiverWorld {
     const segAlong = 3;
     // Let the surface run a little under the banks so wave crests lap against
     // the sand/cliff instead of ending on a hard geometric seam.
-    const shoreOverlap = 0.6;
+    const shoreOverlap = 1.6;
 
     this.waterGeo = this.buildRibbonGeometry(
       -this.riverHalfWidth - shoreOverlap,
@@ -696,6 +752,14 @@ export class RiverWorld {
     const waterWidth = (this.riverHalfWidth + shoreOverlap) * 2;
     this.waterWidth = waterWidth;
 
+    // Centreline length, so the flow streaks can be laid out in (across, along)
+    // metres and follow the river bends instead of running along world X.
+    let waterLength = 0;
+    for (let i = 1; i < this.bentSamples.length; i++) {
+      waterLength += this.bentSamples[i].p.distanceTo(this.bentSamples[i - 1].p);
+    }
+    waterLength = Math.max(waterLength, 1);
+
     this.waterMat = this.waterMat || new THREE.MeshStandardMaterial({
       color: 0xffffff,
       vertexColors: true,
@@ -718,6 +782,7 @@ export class RiverWorld {
 
     this.waterMat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = { value: 0 };
+      shader.uniforms.uRipples = { value: RIPPLES };
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -754,7 +819,27 @@ vWaterUv = uv;`
 varying vec3 vWaterWorldPos;
 varying vec2 vWaterUv;
 uniform float uTime;
-${RIVER_NORMAL_GLSL}`
+uniform vec4 uRipples[${MAX_RIPPLES}];
+${RIVER_NORMAL_GLSL}
+float waterHash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+float waterVNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(waterHash(i), waterHash(i + vec2(1.0, 0.0)), f.x),
+             mix(waterHash(i + vec2(0.0, 1.0)), waterHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+// Two stretched noise layers sliding downstream at different speeds; p = (across, along) metres.
+float waterFlowStreaks(vec2 p, float t) {
+  float scale = ${WATER_TUNING.flowScale.toFixed(3)};
+  float stretch = ${WATER_TUNING.flowStretch.toFixed(3)};
+  float speed = ${WATER_TUNING.flowSpeed.toFixed(3)};
+  float a = waterVNoise(vec2(p.x * scale, (p.y - t * speed) * scale / stretch));
+  float b = waterVNoise(vec2(p.x * scale * 1.9 + 7.3, (p.y - t * speed * 1.4) * scale * 1.9 / stretch));
+  return smoothstep(0.55, 0.95, a * 0.6 + b * 0.4);
+}`
         )
         .replace(
           '#include <color_fragment>',
@@ -768,6 +853,25 @@ float waterFoam = 1.0 - smoothstep(waterFoamBand * 0.55 - waterFoamAA, waterFoam
 float waterEndFade = smoothstep(0.0, 0.01, min(vWaterUv.y, 1.0 - vWaterUv.y));
 waterFoam *= waterEndFade;
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.88, 0.86), waterFoam * 0.35);
+vec2 waterFlowP = vec2(vWaterUv.x * ${waterWidth.toFixed(2)}, vWaterUv.y * ${waterLength.toFixed(2)});
+float waterFlow = waterFlowStreaks(waterFlowP, uTime);
+float waterFlowMask = smoothstep(0.4, 2.5, waterBankDist);
+diffuseColor.rgb += vec3(0.55, 0.68, 0.62) * waterFlow * ${WATER_TUNING.flowStrength.toFixed(3)} * waterFlowMask;
+vec2 waterRippleGrad = vec2(0.0);
+float waterWakeFoam = 0.0;
+for (int i = 0; i < ${MAX_RIPPLES}; i++) {
+  vec4 rp = uRipples[i];
+  if (rp.w <= 0.0) continue;
+  vec2 dv = vWaterWorldPos.xz - rp.xy;
+  float d = length(dv) + 0.0001;
+  float life = max(0.0, 1.0 - rp.z / ${BOAT_TUNING.rippleLifetime.toFixed(3)});
+  float w = d - rp.z * ${BOAT_TUNING.rippleSpeed.toFixed(3)};
+  float width = 0.5 + rp.z * 0.45;
+  float env = exp(-(w * w) / (width * width)) * rp.w * life * life / (1.0 + d * 0.25);
+  waterRippleGrad += (dv / d) * cos(w * 4.5) * env * ${WATER_TUNING.rippleGain.toFixed(3)};
+  waterWakeFoam += (exp(-d * d / 3.0) * rp.w * life * life * exp(-rp.z * 1.2) * 0.6 + max(0.0, env) * 0.12) * ${WATER_TUNING.wakeFoamGain.toFixed(3)};
+}
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.94, 0.93), clamp(waterWakeFoam, 0.0, 0.9));
 float waterShoreAlpha = smoothstep(0.0, 0.9, waterBankDist);
 diffuseColor.a *= mix(0.55, 1.0, waterShoreAlpha);`
         )
@@ -776,6 +880,7 @@ diffuseColor.a *= mix(0.55, 1.0, waterShoreAlpha);`
           `#include <normal_fragment_maps>
 float waterShoreCalm = smoothstep(0.2, 3.0, waterBankDist);
 vec3 waterWorldNormal = normalize(mix(vec3(0.0, 1.0, 0.0), riverWaveNormal(vWaterWorldPos.xz, uTime, waterPixelSize), waterShoreCalm));
+waterWorldNormal = normalize(waterWorldNormal + vec3(-waterRippleGrad.x, 0.0, -waterRippleGrad.y) * 0.6);
 normal = normalize((viewMatrix * vec4(waterWorldNormal, 0.0)).xyz);`
         )
         .replace(
@@ -789,7 +894,9 @@ vec3 waterReflection = mix(
   smoothstep(-0.05, 0.65, waterReflectDir.y)
 );
 float waterFresnel = 0.02 + 0.98 * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 5.0);
-totalEmissiveRadiance += waterReflection * waterFresnel;`
+totalEmissiveRadiance += waterReflection * waterFresnel;
+float waterGlint = pow(max(0.0, dot(waterReflectDir, normalize(vec3(-0.35, 0.55, -0.4)))), 90.0);
+totalEmissiveRadiance += vec3(1.0, 0.95, 0.8) * waterGlint * ${WATER_TUNING.sparkleStrength.toFixed(3)} * smoothstep(0.2, 3.0, waterBankDist);`
         )
         .replace(
           '#include <dithering_fragment>',
@@ -2016,7 +2123,9 @@ gl_Position = projectionMatrix * mvPosition;`
     this.maxParticles = QUALITY.particleBudget;
     this.particleIndex = 0;
 
-    const pGeo = new THREE.SphereGeometry(0.2, 5, 4);
+    // Camera-facing soft discs (billboarded in the vertex shader) instead of hard
+    // faceted spheres, so dense foam blends into one soft sheet.
+    const pGeo = new THREE.PlaneGeometry(0.4, 0.4);
     this.particleOpacity = new Float32Array(this.maxParticles);
     this.particleOpacityAttr = new THREE.InstancedBufferAttribute(this.particleOpacity, 1);
     this.particleOpacityAttr.setUsage(THREE.DynamicDrawUsage);
@@ -2026,7 +2135,8 @@ gl_Position = projectionMatrix * mvPosition;`
       color: 0xffffff,
       transparent: true,
       opacity: 0.85,
-      depthWrite: false
+      depthWrite: false,
+      side: THREE.DoubleSide
     });
     pMat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
@@ -2034,23 +2144,33 @@ gl_Position = projectionMatrix * mvPosition;`
           '#include <common>',
           `#include <common>
 attribute float aOpacity;
-varying float vParticleOpacity;`
+varying float vParticleOpacity;
+varying vec2 vParticleUv;`
         )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
-vParticleOpacity = aOpacity;`
+vParticleOpacity = aOpacity;
+vParticleUv = uv;`
+        )
+        .replace(
+          '#include <project_vertex>',
+          `vec4 mvPosition = modelViewMatrix * (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0));
+mvPosition.xy += position.xy * length(instanceMatrix[0].xyz);
+gl_Position = projectionMatrix * mvPosition;`
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
           `#include <common>
-varying float vParticleOpacity;`
+varying float vParticleOpacity;
+varying vec2 vParticleUv;`
         )
         .replace(
           '#include <dithering_fragment>',
           `#include <dithering_fragment>
-gl_FragColor.a *= vParticleOpacity;`
+float particleR = length(vParticleUv - 0.5) * 2.0;
+gl_FragColor.a *= vParticleOpacity * (1.0 - smoothstep(0.15, 1.0, particleR));`
         );
     };
     pMat.customProgramCacheKey = () => 'particle-alpha';
@@ -2077,6 +2197,8 @@ gl_FragColor.a *= vParticleOpacity;`
         life: 0,
         maxLife: 1,
         baseScale: 1,
+        drag: 0,
+        gravity: 9.8,
         x: 0,
         y: 0,
         z: 0
@@ -2088,7 +2210,7 @@ gl_FragColor.a *= vParticleOpacity;`
     this.sceneRoot.add(this.particleMesh);
   }
 
-  emitParticle(x, y, z, vx, vy, vz, color = 0xffffff, size = 1, maxLife = 0.8) {
+  emitParticle(x, y, z, vx, vy, vz, color = 0xffffff, size = 1, maxLife = 0.8, opts = null) {
     const index = this.particleIndex;
     this.particleIndex = (this.particleIndex + 1) % this.maxParticles;
     const p = this.particlePool[index];
@@ -2097,20 +2219,23 @@ gl_FragColor.a *= vParticleOpacity;`
     p.x = x;
     p.y = y;
     p.z = z;
-    p.baseScale = size;
+    p.baseScale = size * BOAT_TUNING.particleScale;
     p.vx = vx;
     p.vy = vy;
     p.vz = vz;
-    p.life = 0;
+    // opts.preAge back-dates a particle emitted mid-frame; drag is 1/s velocity decay.
+    p.life = opts?.preAge ?? 0;
     p.maxLife = maxLife;
-    this.particleOpacity[index] = 0.85;
+    p.drag = opts?.drag ?? 0;
+    p.gravity = opts?.gravity ?? 9.8;
+    this.particleOpacity[index] = 0;
     this.particleOpacityAttr.needsUpdate = true;
 
     this.particleMesh.setColorAt(index, this._particleColor.setHex(color));
     this.particleMesh.instanceColor.needsUpdate = true;
   }
 
-  emitEngineWake(motorPos, forwardVector, speed, isReverse = false) {
+  emitEngineWake(motorPos, forwardVector, speed, isReverse = false, dt = 1 / 60, prevPos = null) {
     // Exact wake generated at the outboard motor location!
     // Streams strictly in the opposite direction of motion
     const streamX = isReverse ? forwardVector.x : -forwardVector.x;
@@ -2118,27 +2243,38 @@ gl_FragColor.a *= vParticleOpacity;`
     const perpX = -streamZ; // lateral spreading vector
     const perpZ = streamX;
 
-    const count = Math.min(3, Math.floor(Math.abs(speed) * 0.12) + 1);
+    const ratio = Math.min(1, Math.abs(speed) / 26);
+    this.wakeAcc = (this.wakeAcc || 0) + dt * BOAT_TUNING.wakeRate * ratio;
+    const count = Math.floor(this.wakeAcc);
+    this.wakeAcc -= count;
+    // Boat displacement this frame, to spread emissions along the path.
+    const backX = prevPos ? motorPos.x - prevPos.x : 0;
+    const backZ = prevPos ? motorPos.z - prevPos.z : 0;
     for (let i = 0; i < count; i++) {
-      // V-shaped wake pattern
-      const lateral = (i === 0 ? 0 : (i === 1 ? 0.38 : -0.38));
-      const px = motorPos.x + streamX * 0.4 + perpX * lateral;
-      const pz = motorPos.z + streamZ * 0.4 + perpZ * lateral;
+      // Scattered cloud: random spot behind the prop and across the stern, random
+      // outward kick in every direction, so no streaks or rows form.
+      const back = 0.2 + Math.random() * 1.4;
+      const lateral = (Math.random() - 0.5) * 1.3;
+      const f = (i + Math.random()) / Math.max(1, count);
+      const px = motorPos.x - backX * (1 - f) + streamX * back + perpX * lateral;
+      const pz = motorPos.z - backZ * (1 - f) + streamZ * back + perpZ * lateral;
 
-      const spd = 0.6 + Math.random() * 0.7;
-      const vx = streamX * spd + perpX * (lateral * 0.5);
-      const vz = streamZ * spd + perpZ * (lateral * 0.5);
+      const spd = 0.2 + Math.random() * 1.4;
+      const kick = (Math.random() - 0.5) * 1.8;
+      const vx = streamX * spd + perpX * (lateral * 0.5 + kick) + (Math.random() - 0.5) * 0.5;
+      const vz = streamZ * spd + perpZ * (lateral * 0.5 + kick) + (Math.random() - 0.5) * 0.5;
 
       this.emitParticle(
         px,
-        0.04,
+        0.03 + Math.random() * 0.08,
         pz,
         vx,
-        0.1 + Math.random() * 0.2,
+        0.05 + Math.random() * 0.5,
         vz,
-        0xd8eeff, // frothy aerated water foam
-        1.1 + Math.random() * 0.7,
-        0.7 + Math.random() * 0.35
+        Math.random() < 0.3 ? 0xffffff : 0xd8eeff, // frothy aerated water foam
+        0.6 + Math.random() * 1.4,
+        0.6 + Math.random() * 0.9,
+        { preAge: (1 - f) * dt, drag: 1.2, gravity: 0 }
       );
     }
   }
@@ -2149,7 +2285,45 @@ gl_FragColor.a *= vParticleOpacity;`
     this.emitEngineWake(propPos, fwdVec, speed, speed < 0);
   }
 
+  /** Drop an expanding ripple ring on the water. strength ~0..1. */
+  addRipple(x, z, strength = 1) {
+    const amount = strength * BOAT_TUNING.rippleStrength;
+    if (amount <= 0) return;
+    RIPPLES[rippleCursor].set(x, z, 0, amount);
+    rippleCursor = (rippleCursor + 1) % MAX_RIPPLES;
+  }
+
+  // Ambient foam flecks riding the current, so the flow reads from the drone
+  // view. They reuse the shared particle pool (no extra draw calls).
+  emitFlecks(dt, focusX) {
+    const rate = WATER_TUNING.fleckRate;
+    if (rate <= 0) return;
+    this.fleckAcc = (this.fleckAcc || 0) + rate * dt;
+    const n = Math.floor(this.fleckAcc);
+    this.fleckAcc -= n;
+    for (let i = 0; i < n; i++) {
+      const x = focusX + (Math.random() * 2 - 1) * WATER_TUNING.fleckRange;
+      const lateral = (Math.random() * 2 - 1) * (this.riverHalfWidth - 1.2);
+      const z = riverZ(x, lateral / riverWidthScale(x));
+      const slope = riverSlopeAt(x);
+      const len = Math.hypot(1, slope);
+      const speed = WATER_TUNING.flowSpeed * (0.8 + Math.random() * 0.4);
+      this.emitParticle(
+        x, 0.06, z,
+        (speed / len) + (Math.random() - 0.5) * 0.1,
+        0,
+        (speed * slope / len) + (Math.random() - 0.5) * 0.1,
+        0xe4f2ee,
+        WATER_TUNING.fleckSize * (0.6 + Math.random() * 0.8),
+        WATER_TUNING.fleckLife * (0.6 + Math.random() * 0.4),
+        { gravity: 0 }
+      );
+    }
+  }
+
   emitSplash(x, z, count = 14, color = 0xeeffff) {
+    this.addRipple(x, z, 0.9);
+    count = Math.round(count * BOAT_TUNING.splashDensity);
     for (let i = 0; i < count; i++) {
       const ang = Math.random() * Math.PI * 2;
       const spd = 2 + Math.random() * 4;
@@ -2176,6 +2350,11 @@ gl_FragColor.a *= vParticleOpacity;`
     // uploads two scalar uniforms per frame instead of rewriting thousands of
     // vertex positions/normals and per-stalk transforms.
     this.reedsWind.value = this.time;
+    for (const r of RIPPLES) {
+      if (r.w <= 0) continue;
+      r.z += dt;
+      if (r.z >= BOAT_TUNING.rippleLifetime) r.w = 0;
+    }
 
     const waterShader = this.waterMat.userData.shader;
     if (waterShader) {
@@ -2189,6 +2368,8 @@ gl_FragColor.a *= vParticleOpacity;`
     this.crowdTime.value = this.time;
     this.crowdShock.value =
       this.crowdShockTime > 0 ? Math.sin(this.crowdShockTime * 15) * 0.4 : 0;
+
+    this.emitFlecks(dt, focusX);
 
     const dummy = this.particleDummy;
     for (let i = 0; i < this.maxParticles; i++) {
@@ -2206,20 +2387,39 @@ gl_FragColor.a *= vParticleOpacity;`
         continue;
       }
 
+      if (p.drag > 0) {
+        const k = Math.exp(-p.drag * dt);
+        p.vx *= k;
+        p.vz *= k;
+      }
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
+      p.vy -= p.gravity * dt;
 
-      p.vy -= 9.8 * dt;
-      if (p.y < 0.04) {
-        p.y = 0.04;
-        p.vy = 0;
+      // Ride the drawn swell: spray that lands becomes surface foam that slows
+      // and bobs with the waves instead of snapping to a flat plane.
+      if (p.y < 0.7) {
+        const floorY = riverSwellAt(p.x, p.z, this.time) + 0.03;
+        if (p.y < floorY) {
+          p.y = floorY;
+          if (p.vy < 0) {
+            p.vy = 0;
+            const k = Math.exp(-4 * dt);
+            p.vx *= k;
+            p.vz *= k;
+          }
+        }
       }
 
       const progress = p.life / p.maxLife;
-      this.particleOpacity[i] = (1 - progress) * 0.85;
+      const fadeIn = Math.min(1, progress / 0.12);
+      const fadeOut = Math.min(1, Math.max(0, (progress - 0.5) / 0.5));
+      this.particleOpacity[i] =
+        fadeIn * fadeIn * (3 - 2 * fadeIn) * (1 - fadeOut * fadeOut * (3 - 2 * fadeOut)) * 0.85;
+      const grow = 1 - (1 - progress) * (1 - progress) * (1 - progress);
       dummy.position.set(p.x, p.y, p.z);
-      dummy.scale.setScalar(p.baseScale * (1 + progress * 0.9));
+      dummy.scale.setScalar(p.baseScale * (1 + grow * 1.2));
       dummy.updateMatrix();
       this.particleMesh.setMatrixAt(i, dummy.matrix);
     }
