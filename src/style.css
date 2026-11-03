@@ -1114,6 +1114,7 @@ body.game-over .hud-header,
 body.game-over .hud-footer,
 body.game-over .touch-controls,
 body.game-over .mobile-pause-btn,
+body.game-over .fullscreen-btn,
 body.game-over .rank-up-popup,
 body.game-over .partner-bubble,
 body.game-over .osd-heading {
@@ -2292,6 +2293,7 @@ body.intro .hud-header,
 body.intro .hud-footer,
 body.intro .touch-controls,
 body.intro .mobile-pause-btn,
+body.intro .fullscreen-btn,
 body.intro .drone-osd {
   display: none !important;
 }
@@ -2406,6 +2408,21 @@ body.intro .drone-osd {
 @media (pointer: coarse) {
   .mobile-pause-btn {
     display: flex;
+  }
+}
+
+/* Fullscreen button: always visible; sits beside the pause button on touch, in its slot on desktop. */
+.fullscreen-btn {
+  display: flex;
+}
+
+.touch-device .fullscreen-btn {
+  right: calc(max(clamp(40px, 6.2vw, 80px), env(safe-area-inset-right)) + var(--pause-size) + 10px);
+}
+
+@media (pointer: coarse) {
+  .fullscreen-btn {
+    right: calc(max(clamp(40px, 6.2vw, 80px), env(safe-area-inset-right)) + var(--pause-size) + 10px);
   }
 }
 
@@ -2891,6 +2908,15 @@ body.intro .drone-osd {
 .portrait-play .mobile-pause-btn {
   top: calc(var(--pt-row-y) - var(--pause-size) / 2);
   right: var(--pt-gutter-r);
+}
+
+.portrait-play .fullscreen-btn {
+  top: calc(var(--pt-row-y) - var(--pause-size) / 2);
+  right: var(--pt-gutter-r);
+}
+
+.portrait-play.touch-device .fullscreen-btn {
+  right: calc(var(--pt-gutter-r) + var(--pause-size) + 10px);
 }
 
 /* Thumb controls share the HUD gutter. */

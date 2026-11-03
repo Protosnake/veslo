@@ -660,6 +660,16 @@ class Game {
       });
     }
 
+    const fsBtn = document.getElementById('fullscreen-btn');
+    if (fsBtn) {
+      fsBtn.addEventListener('click', () => {
+        sound.init();
+        if (document.fullscreenElement) document.exitFullscreen?.();
+        else document.documentElement.requestFullscreen?.().catch(() => {});
+      });
+      if (!document.documentElement.requestFullscreen) fsBtn.style.display = 'none';
+    }
+
     window.addEventListener('blur', () => this.clearInput());
     window.addEventListener('orientationchange', () => this.clearInput());
     document.addEventListener('visibilitychange', () => {
