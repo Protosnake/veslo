@@ -105,6 +105,7 @@ export class Smuggler {
     this.world = riverWorld;
     this.groupId = options.groupId ?? null;
     this.frightTimer = 0;
+    this.stunTimer = 0;
     this.frightFromX = 0;
     this.frightFromZ = 0;
     this.frightened = false;
@@ -774,13 +775,15 @@ export class Smuggler {
     this.world.emitSplash(this.position.x, this.position.z, 22, 0xffffff);
   }
 
+  /** Ramming stuns instead of killing: they float helpless, then recover. */
   ram() {
-    if (this.isDead) return;
-    this.isDead = true;
-    this.deathType = 'ram';
-    this.deathTimer = 0;
-    this.deathDuration = 5;
-    this.corpseHit = false;
+    if (this.isDead || this.stunTimer > 0) return;
+    this.stunTimer = DIFFICULTY_TUNING.ramStunSeconds;
+    this.stunAge = 0;
+    this.frightTimer = 0;
+    this.frightened = false;
+    this.retreating = false;
+    if (this.isDiving) this.endDive();
     this.world.emitSplash(this.position.x, this.position.z, 26, 0xd8eeff);
   }
 
@@ -862,6 +865,13 @@ export class Smuggler {
 
   update(dt, boat, wildlife = null, smugglers = []) {
     if (this.puddles.length) this.updatePuddles(dt);
+    if (!this.isDead && this.stunTimer > 0) {
+      this.stunTimer = Math.max(0, this.stunTimer - dt);
+      this.stunAge += dt;
+      this.group.position.y = 0.08 + Math.sin(this.stunAge * 2.4 + this.wobbleSeed) * 0.05;
+      this.group.rotation.z = Math.sin(this.stunAge * 1.3 + this.wobbleSeed) * 0.12;
+      return;
+    }
     if (this.isDead) {
       this.deathTimer += dt;
       const sinkProgress = Math.min(1, this.deathTimer / this.deathDuration);

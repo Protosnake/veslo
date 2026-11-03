@@ -66,6 +66,8 @@ export interface DifficultyTuning {
     /** Seconds away from the boat needed to recover one exhaustion step. */
     recoverySeconds: number;
   };
+  /** Seconds a rammed swimmer stays stunned (floating, helpless) instead of dying. */
+  ramStunSeconds: number;
   fright: {
     /** Group-mates within this distance of a kill may panic. */
     radius: number;
@@ -132,6 +134,7 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
   },
   shredSpeedKeep: envNumber(import.meta.env.VITE_SHRED_SPEED_KEEP, 0.5),
   ramSpeedKeep: envNumber(import.meta.env.VITE_RAM_SPEED_KEEP, 0.8),
+  ramStunSeconds: envNumber(import.meta.env.VITE_RAM_STUN_SECONDS, 5),
   dive: {
     chance: envNumber(import.meta.env.VITE_SMUGGLER_DIVE_CHANCE, 0.1),
     maxDives: envNumber(import.meta.env.VITE_SMUGGLER_MAX_DIVES, 1),

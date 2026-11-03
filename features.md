@@ -56,6 +56,7 @@ Implemented features have a Mermaid logic diagram under `docs/features/`. The pr
 - [x] Widen play area to 125% x 150% with configurable scale (`src/world/Bounds.ts`).
 - [x] Simplified camera follow to remove rubberbanding (`src/core/Renderer.ts`).
 - [x] Bank ramming rules and smuggler ram slowdown (`src/entities/Boat.js`, `SmugglerManager.js`).
+- [x] **Done** — Hull ram stuns a swimmer instead of killing: it floats helpless for `VITE_RAM_STUN_SECONDS` (5, `src/config/difficulty.ts`), cannot be re-rammed meanwhile, then resumes; still scores +50 and frightens the group (`src/entities/Smuggler.js`, `src/entities/SmugglerManager.js`).
 - [x] Non-fatal rock collisions with partner swearing (`src/entities/Boat.js`, `src/main.js`).
 - [x] AK battery mode, rotor stall, and floating corpses (`src/entities/Boat.js`, `Smuggler.js`, `main.js`).
 - [x] Whack oar tracks and strikes the closest swimming smuggler's head (`src/entities/Boat.js`).

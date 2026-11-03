@@ -4,7 +4,7 @@ When a swimmer dies, living members of the same spawn wave (group) within 100 m 
 
 ```mermaid
 flowchart TD
-    A["Swimmer killed (oar / hull / rotor / AK)"] --> B["SmugglerManager.scareGroup(victim, byRotor)"]
+    A["Swimmer killed (oar / rotor / AK) or rammed (hull: stunned 5 s, then resumes)"] --> B["SmugglerManager.scareGroup(victim, byRotor)"]
     B --> C{"for each living group-mate within radius"}
     C --> D["chance = 0.5 x (1 - dist/100) x (rotor ? 2 : 1)"]
     D -->|roll fails| E["keeps swimming"]
@@ -23,5 +23,6 @@ flowchart TD
 - **Decision:** Chance is rolled once per group-mate per kill, linear falloff to 0 at the radius, doubled for propeller shreds (can exceed 1 near the kill, which just means certain). **Why:** matches the spec; shreds are the most gruesome kill.
 - **Decision:** Fleeing is away from the kill point and ignores the usual southward drift for `VITE_FRIGHT_SECONDS`. A swimmer can be re-frightened by every later kill: the flee timer, flee direction and retreat roll are recalculated each time (a retreating swimmer can turn back to crossing, or start retreating). **Why:** avoids endless re-scares and lets them resume crossing afterwards.
 - **Decision:** After fleeing, 50% of frightened swimmers retreat to the bank they spawned on at 2x swim speed and despawn on arrival. **Why:** a scared pack should thin out instead of all resuming the crossing. **Alternatives:** keep crossing (original behaviour).
+- **Decision:** A hull ram stuns the swimmer for `VITE_RAM_STUN_SECONDS` (5) instead of killing; it still scores +50 and frightens the group, and cannot be re-rammed while stunned. **Why:** requested; ramming becomes a non-lethal option. **Alternatives:** kill on ram (previous behaviour).
 
 Tunables (`src/config/difficulty.ts`): `VITE_FRIGHT_RADIUS` 100, `VITE_FRIGHT_CHANCE` 0.5, `VITE_FRIGHT_ROTOR_MULTIPLIER` 2, `VITE_FRIGHT_SECONDS` 3, `VITE_FRIGHT_SPEED_MULTIPLIER` 1.8., `VITE_FRIGHT_RETREAT_CHANCE` 0.5, `VITE_FRIGHT_RETREAT_SPEED` 2.

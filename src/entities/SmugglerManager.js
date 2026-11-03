@@ -374,7 +374,7 @@ export class SmugglerManager {
 
         // Priority 3: Boat Hull Ramming (+50 pts)
         const distHull = Math.hypot(s.position.x - hullHitbox.center.x, s.position.z - hullHitbox.center.z);
-        if (distHull <= hullHitbox.radius && !s.isDiving) {
+        if (distHull <= hullHitbox.radius && !s.isDiving && s.stunTimer <= 0) {
           s.ram();
           this.scareGroup(s);
           boat.applyRamImpact();
