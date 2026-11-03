@@ -2900,3 +2900,36 @@ body.intro .drone-osd {
     max(28px, env(safe-area-inset-bottom))
     var(--pt-gutter-l);
 }
+
+/* Tide: arrow toward the side swimmers spawn from (relative to the boat's heading) + seconds to the flip */
+.tide-indicator {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 52;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 2px solid #7fe8a0;
+  background: rgba(0, 0, 0, 0.55);
+  color: #7fe8a0;
+  font-size: clamp(11px, 1.8vmin, 16px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.tide-indicator.visible { opacity: 1; visibility: visible; }
+.tide-indicator.warning { border-color: #ffe14a; color: #ffe14a; animation: tide-blink 0.5s steps(2) infinite; }
+.tide-arrow {
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 16px solid currentColor;
+  transition: transform 0.15s linear;
+}
+@keyframes tide-blink { 50% { opacity: 0.35; } }

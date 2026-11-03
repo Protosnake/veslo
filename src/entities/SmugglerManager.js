@@ -5,6 +5,8 @@ import { DIFFICULTY_TUNING } from '../config/difficulty.js';
 import { BREACH_TUNING, STREAMING_TUNING } from '../config/world.js';
 import { rankSystem } from '../systems/RankSystem.js';
 import { WORLD_CHUNK_WIDTH } from '../world/Bounds.js';
+import { tide } from '../systems/TideSystem.js';
+import { TIDE_TUNING } from '../config/world.js';
 
 export class SmugglerManager {
   constructor(scene, riverWorld, onScore, onBreach) {
@@ -123,6 +125,11 @@ export class SmugglerManager {
     const fx = Math.cos(boat.angle || 0);
     const fz = -Math.sin(boat.angle || 0);
     const cosCone = Math.cos((Math.min(90, Math.max(1, STREAMING_TUNING.spawnAheadConeDeg)) * Math.PI) / 180);
+    if (TIDE_TUNING.enabled) {
+      // Tide: only the side the tide dictates, whichever way the boat faces.
+      const side = valid.filter((v) => (path.frameAt(v.pathDistance, v.pathShiftX).x - boat.position.x) * tide.direction > 0);
+      return side.length ? side[Math.floor(Math.random() * side.length)] : null;
+    }
     const ahead = [];
     const behind = [];
     for (const v of valid) {
@@ -166,7 +173,8 @@ export class SmugglerManager {
     }
   }
 
-  beginAfterIntro() {
+  beginAfterIntro(boat = null) {
+    tide.reset(boat ? Math.cos(boat.angle || 0) : 1);
     this.firstWave = false;
     this.waveCount = Math.max(this.waveCount, 1);
     this.spawnTimer = 3 + Math.random() * 2;
@@ -244,6 +252,7 @@ export class SmugglerManager {
 
     // Spawn timer
     this.elapsed += dt;
+    tide.update(dt);
     this.spawnTimer -= dt;
     this.updateIdleCatchUp(dt, boat);
     if (this.spawnTimer <= 0) {

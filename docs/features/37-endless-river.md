@@ -9,7 +9,7 @@ flowchart TD
     C --> V["reeds: clumps + patches x VITE_REED_DENSITY (0.4)<br/>instanced, so fewer triangles, same draw calls"]
     C --> D["RockField: 9 random clusters (1-2 big rocks, 3-6 small, 3 reeds per small rock)<br/>far clusters re-rolled ahead, rise from the water"]
     C --> E["spawns use boat X: smugglers walk the road copy<br/>nearest the boat, wildlife spawn near boat,<br/>birds fly relative to boat"]
-    E --> E2["pickSpawnPoint: 100% of spawns in a 75 deg cone ahead of the nose<br/>(VITE_SPAWN_AHEAD_BIAS / _CONE_DEG); none -> retry in 1 s"]
+    E --> E2["pickSpawnPoint: spawns only on the tide side (see 40)<br/>(tide off: 75 deg cone ahead of the nose); none -> retry in 1 s"]
     E --> E3["idle catch-up: nothing living within 150 m for 4 s<br/>-> next wave fires now (maxAlive still caps)"]
     E --> F{"swimmer > 320 from boat?"}
     F -->|"320-600"| D2["dormant: hidden + frozen, no update/collision,<br/>arrow still shown; wakes if boat returns"]

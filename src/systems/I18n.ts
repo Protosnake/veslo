@@ -61,6 +61,8 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'osd.alert.derank': 'ПРОРИВ! ПОНИЖЕНО ДО {title}',
     'osd.alert.breachNoRank': 'ПРОРИВ! РАХУНОК ОБНУЛЕНО',
     'partner.breach': 'Він пройшов! Ловимо наступного!',
+    'partner.tideTurning': 'Течія міняється! Розвертайся!',
+    'partner.tideFlipped': 'Тепер вони йдуть з іншого боку!',
     'osd.alert.manRecovered': 'ВЕСЛУНАРА ПІДІБРАНО',
     'osd.alert.targetLost': 'ЦІЛЬ ВТРАЧЕНО',
 
@@ -242,6 +244,8 @@ const translations: Record<LocaleCode, TranslationTable> = {
     'osd.alert.derank': 'BREACH! DEMOTED TO {title}',
     'osd.alert.breachNoRank': 'BREACH! SCORE WIPED',
     'partner.breach': 'He got through! Get the next one!',
+    'partner.tideTurning': 'Tide is turning! Get ready to swing around!',
+    'partner.tideFlipped': 'They come from the other side now!',
     'osd.alert.manRecovered': 'OARSMAN RECOVERED',
     'osd.alert.targetLost': 'TARGET LOST',
 

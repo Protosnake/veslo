@@ -22,6 +22,8 @@ import { PROMOTION_TUNING } from './config/ranking.js';
 import { TUNING } from './config/tuning.js';
 import { ChaseCamera } from './core/ChaseCamera.js';
 import { ProximityMarkers } from './systems/ProximityMarkers.js';
+import { tide } from './systems/TideSystem.js';
+import { TIDE_TUNING } from './config/world.js';
 import { MountCamera } from './core/MountCamera.js';
 
 function isTouchDevice() {
@@ -455,6 +457,12 @@ class Game {
     this.partnerBubble.setAttribute('aria-live', 'polite');
     document.getElementById('ui-layer')?.appendChild(this.partnerBubble);
     this.partnerBubbleAnchor = new THREE.Vector3();
+    this.tideIndicator = document.createElement('div');
+    this.tideIndicator.className = 'tide-indicator';
+    this.tideIndicator.innerHTML = '<span class="tide-arrow"></span><span class="tide-label"></span>';
+    document.getElementById('ui-layer')?.appendChild(this.tideIndicator);
+    tide.onWarning = () => this.showPartnerLine(t('partner.tideTurning'), 4);
+    tide.onFlip = () => this.showPartnerLine(t('partner.tideFlipped'), 3);
     this.partnerSwearTimer = 0;
     this.partnerSwearCooldown = 0;
     this.partnerSwearIndex = -1;
@@ -1085,7 +1093,7 @@ class Game {
       });
     });
 
-    this.smugglerManager.beginAfterIntro();
+    this.smugglerManager.beginAfterIntro(this.boat);
   }
 
   spawnDebugSwimmers() {
@@ -1509,6 +1517,25 @@ class Game {
     logger.log('CREW', 'Oarsman recovered');
   }
 
+  updateTideIndicator() {
+    const el = this.tideIndicator;
+    if (!el) return;
+    const show = this.state === 'PLAYING' && TIDE_TUNING.enabled;
+    el.classList.toggle('visible', show);
+    if (!show) return;
+    // Arrow points (on screen) toward the side swimmers will come from.
+    const a = this.tideProbeA || (this.tideProbeA = new THREE.Vector3());
+    const b = this.tideProbeB || (this.tideProbeB = new THREE.Vector3());
+    a.copy(this.boat.position).project(this.renderer.camera);
+    b.copy(this.boat.position);
+    b.x += tide.direction * 20;
+    b.project(this.renderer.camera);
+    const deg = (Math.atan2(b.x - a.x, b.y - a.y) * 180) / Math.PI;
+    el.firstChild.style.transform = `rotate(${deg}deg)`;
+    el.classList.toggle('warning', tide.warning);
+    el.lastChild.textContent = `${Math.max(0, Math.ceil(tide.secondsLeft))}s`;
+  }
+
   showPartnerLine(text, duration = 2.4) {
     if (!this.partnerBubble) return;
     this.partnerBubble.textContent = text;
@@ -1539,6 +1566,7 @@ class Game {
   }
 
   updatePartnerBubble(dt) {
+    this.updateTideIndicator();
     if (this.partnerSwearCooldown > 0) this.partnerSwearCooldown -= dt;
     if (!this.partnerBubble || this.partnerSwearTimer <= 0) return;
 

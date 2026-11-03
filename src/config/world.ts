@@ -51,10 +51,31 @@ export const STREAMING_TUNING = {
   spawnMinDistance: envNumber(import.meta.env.VITE_SPAWN_MIN_DISTANCE, 100),
   /** ...and no farther than this. Keep below despawnDistance. */
   spawnMaxDistance: envNumber(import.meta.env.VITE_SPAWN_MAX_DISTANCE, 250),
-  /** Chance (0-1) a new swimmer spawns ahead of the boat's nose (1 = always; below 1 the rest spawn behind). */
+  /** Used only when the tide is disabled: chance (0-1) a swimmer spawns ahead of the nose (rest behind). */
   spawnAheadBias: envNumber(import.meta.env.VITE_SPAWN_AHEAD_BIAS, 1),
-  /** Half-angle (degrees) of the cone in front of the boat's nose that spawns must land in; 90 = the whole forward half-plane. */
+  /** Used only when the tide is disabled: half-angle (degrees) of the cone ahead of the nose. */
   spawnAheadConeDeg: envNumber(import.meta.env.VITE_SPAWN_AHEAD_CONE_DEG, 75)
+};
+
+function queryParam(name: string): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get(name);
+  } catch {
+    return null;
+  }
+}
+
+/** Tide: swimmers spawn on one side of the boat (along X) and the side flips every phase. */
+export const TIDE_TUNING = {
+  /** 0 disables the tide (spawns follow the boat's nose again). */
+  enabled: envNumber(queryParam('tide') ?? import.meta.env.VITE_TIDE_ENABLED, 1) !== 0,
+  /** Phase length is random between these (seconds); set equal for a fixed length. `?tideSeconds=` sets both. */
+  minSeconds: envNumber(queryParam('tideSeconds') ?? import.meta.env.VITE_TIDE_MIN_SECONDS, 60),
+  maxSeconds: envNumber(queryParam('tideSeconds') ?? import.meta.env.VITE_TIDE_MAX_SECONDS, 180),
+  /** Warning shown this many seconds before the flip. */
+  warningSeconds: envNumber(import.meta.env.VITE_TIDE_WARNING_SECONDS, 8),
+  /** 1 = +X first, -1 = -X first, 0 = whichever way the boat faces at run start. */
+  startDirection: envNumber(queryParam('tideStart') ?? import.meta.env.VITE_TIDE_START_DIRECTION, 0)
 };
 
 export const MARKER_TUNING = {
