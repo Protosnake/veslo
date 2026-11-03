@@ -48,7 +48,9 @@ export const STREAMING_TUNING = {
   /** New swimmers appear at least this far from the boat (world units / metres). */
   spawnMinDistance: envNumber(import.meta.env.VITE_SPAWN_MIN_DISTANCE, 100),
   /** ...and no farther than this. Keep below despawnDistance. */
-  spawnMaxDistance: envNumber(import.meta.env.VITE_SPAWN_MAX_DISTANCE, 250)
+  spawnMaxDistance: envNumber(import.meta.env.VITE_SPAWN_MAX_DISTANCE, 250),
+  /** Chance (0-1) a new swimmer spawns in the half-plane the boat is heading toward; 0.5 = no bias. */
+  spawnAheadBias: envNumber(import.meta.env.VITE_SPAWN_AHEAD_BIAS, 0.9)
 };
 
 export const MARKER_TUNING = {

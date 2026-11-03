@@ -1,9 +1,9 @@
 // World / play-area configuration. The original design was a 100% x 100% box;
-// the default is now 125% long (X) and 150% wide (Z). All world positions and
+// the default is now 125% long (X) and 225% wide (Z). All world positions and
 // gameplay limits derive from these so the river, banks, props and AI stay in
 // sync. Tweak the defaults here, or override per-load with ?worldX= & ?worldZ=.
 const DEFAULT_WORLD_X_SCALE = 1.25;
-const DEFAULT_WORLD_Z_SCALE = 1.5;
+const DEFAULT_WORLD_Z_SCALE = 2.25;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3;
 

@@ -9,6 +9,8 @@ flowchart TD
     C --> V["reeds: clumps + patches x VITE_REED_DENSITY (0.4)<br/>instanced, so fewer triangles, same draw calls"]
     C --> D["RockField: 9 random clusters (1-2 big rocks, 3-6 small, 3 reeds per small rock)<br/>far clusters re-rolled ahead, rise from the water"]
     C --> E["spawns use boat X: smugglers walk the road copy<br/>nearest the boat, wildlife spawn near boat,<br/>birds fly relative to boat"]
+    E --> E2["pickSpawnPoint: 90% of spawns ahead of boat heading<br/>(VITE_SPAWN_AHEAD_BIAS), else behind; empty side falls back"]
+    E --> E3["idle catch-up: nothing living within 150 m for 4 s<br/>-> next wave fires now (maxAlive still caps)"]
     E --> F{"swimmer > 320 from boat?"}
     F -->|"320-600"| D2["dormant: hidden + frozen, no update/collision,<br/>arrow still shown; wakes if boat returns"]
     F -->|"> 600 or dead"| G["despawn silently, no penalty"]
@@ -55,3 +57,5 @@ flowchart TD
 - **Decision:** Shoreline reeds scaled to 40% (`VITE_REED_DENSITY`, 1 = original). **Why:** requested perf trim; reeds are instanced so the saving is triangles and instance uploads, not draw calls. **How to judge:** run with `?perf=1` or `VITE_PERF_HUD=1` (shows fps, draw calls, k triangles, `render()` CPU ms) and compare `VITE_REED_DENSITY=1` vs the default, ideally with `?quality=low` or CPU throttling since a fast GPU hides it behind the vsync cap. **Alternatives:** remove reeds entirely (`0`); cull by distance from the boat.
 
 - **Decision:** Rock clusters spawn at 320 m (recycle 360 m, 16 clusters) and the rise animation is effectively off (0.01 s). **Why:** at speed the boat outran the 1.4 s rise, so rocks visibly emerged from the water; at 320 m scene fog (exp 0.007) hides them fully. **Alternatives:** speed-scaled spawn distance (more complex), denser fog (changes the look).
+- **Decision:** Spawns favour the half-plane ahead of the boat (`VITE_SPAWN_AHEAD_BIAS` 0.9) and the next wave fires early when no living swimmer is within `VITE_SPAWN_IDLE_RANGE` (150) for `VITE_SPAWN_IDLE_SECONDS` (4; 0 disables). **Why:** uniform placement put half the swimmers behind the boat, forcing ~300 m back-and-forth trips and dead time. **Alternatives:** speed-scaled band, recycling stragglers, raw rate increase. **How:** `pickSpawnPoint` splits candidates by dot product with the heading and falls back to the other side if empty; `updateIdleCatchUp` zeroes the spawn timer, respecting `maxAlive`.
+- **Decision:** River 50% wider by raising the default `WORLD_Z_SCALE` 1.5 to 2.25 (half width 24 to 36). **Why:** every Z position derives from `sz()`, so one scale widens banks, play bounds, road and props consistently. **Alternatives:** change only `RIVER_HALF_WIDTH` (would leave props and bounds mismatched). Spawn ahead-bias raised to 0.9.

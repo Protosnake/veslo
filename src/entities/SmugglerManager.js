@@ -27,6 +27,7 @@ export class SmugglerManager {
     this.smugglers.forEach((s) => s.destroy());
     this.smugglers = [];
     this.spawnTimer = 0.7;
+    this.idleTimer = 0;
     this.elapsed = 0;
     this.waveCount = 0;
     this.totalSmacked = 0;
@@ -111,7 +112,20 @@ export class SmugglerManager {
         if (hit !== null) { valid.push({ pathDistance: hit, pathShiftX: shift }); break; }
       }
     }
-    return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null;
+    if (!valid.length) return null;
+    // Prefer road copies in the half-plane the boat is heading toward (forward = (cos a, -sin a) in x/z).
+    const fx = Math.cos(boat.angle || 0);
+    const fz = -Math.sin(boat.angle || 0);
+    const ahead = [];
+    const behind = [];
+    for (const v of valid) {
+      const f = path.frameAt(v.pathDistance);
+      const dot = (f.x + v.pathShiftX - boat.position.x) * fx + (f.z - boat.position.z) * fz;
+      (dot >= 0 ? ahead : behind).push(v);
+    }
+    const preferAhead = Math.random() < STREAMING_TUNING.spawnAheadBias;
+    const pool = (preferAhead ? ahead : behind).length ? (preferAhead ? ahead : behind) : (preferAhead ? behind : ahead);
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   spawnSmugglerAt(pathDistance, pathOffset = 0) {
@@ -180,6 +194,20 @@ export class SmugglerManager {
     return target;
   }
 
+  /** Fires the next wave early when no live swimmer has been near the boat for a while. */
+  updateIdleCatchUp(dt, boat) {
+    const { idleRange, idleSeconds } = DIFFICULTY_TUNING.spawn;
+    if (idleSeconds <= 0 || this.spawnTimer <= 0) return;
+    const nearby = this.smugglers.some(
+      (s) => !s.isDead && !s.reachedSouth && Math.hypot(s.position.x - boat.position.x, s.position.z - boat.position.z) <= idleRange
+    );
+    this.idleTimer = nearby ? 0 : (this.idleTimer || 0) + dt;
+    if (this.idleTimer >= idleSeconds) {
+      this.spawnTimer = 0;
+      this.idleTimer = 0;
+    }
+  }
+
   update(dt, boat, wildlife = null) {
     if (!this.isRunning) return;
 
@@ -188,6 +216,7 @@ export class SmugglerManager {
     // Spawn timer
     this.elapsed += dt;
     this.spawnTimer -= dt;
+    this.updateIdleCatchUp(dt, boat);
     if (this.spawnTimer <= 0) {
       const alive = this.smugglers.reduce((n, s) => n + (s.isDead ? 0 : 1), 0);
       // Never exceed the alive cap: trim the group, or skip the wave when full.

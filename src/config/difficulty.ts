@@ -63,6 +63,10 @@ export interface DifficultyTuning {
     maxGroupSize: number;
     /** Living smugglers at once; waves are skipped while at the cap, so cruising away cannot pile them up. */
     maxAlive: number;
+    /** A swimmer within this distance of the boat counts as "something to chase". */
+    idleRange: number;
+    /** Seconds with nothing in idleRange before the next wave fires early (0 disables). */
+    idleSeconds: number;
   };
 }
 
@@ -100,6 +104,8 @@ export const DIFFICULTY_TUNING: DifficultyTuning = {
     startGroupSize: envNumber(import.meta.env.VITE_SPAWN_START_GROUP, 1),
     wavesPerExtra: envNumber(import.meta.env.VITE_SPAWN_WAVES_PER_EXTRA, 4),
     maxGroupSize: envNumber(import.meta.env.VITE_SPAWN_MAX_GROUP, 2),
-    maxAlive: envNumber(import.meta.env.VITE_SPAWN_MAX_ALIVE, 5)
+    maxAlive: envNumber(import.meta.env.VITE_SPAWN_MAX_ALIVE, 5),
+    idleRange: envNumber(import.meta.env.VITE_SPAWN_IDLE_RANGE, 150),
+    idleSeconds: envNumber(import.meta.env.VITE_SPAWN_IDLE_SECONDS, 4)
   }
 };
