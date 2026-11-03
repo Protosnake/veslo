@@ -333,18 +333,20 @@ export class Smuggler {
     soldier.joints.spine.add(chestStrap);
   }
 
-  resolveRockCollisions(radius = 0.4) {
+  resolveRockCollisions(radius = 0.4, pos = this.position) {
     const rocks = this.world?.rockColliders;
     if (!rocks || !rocks.length) return;
 
-    for (let pass = 0; pass < 3; pass++) {
+    // Cluster rocks overlap each other, so pushing out of one can push into
+    // the next; iterate until stable (many passes) instead of giving up at 3.
+    for (let pass = 0; pass < 10; pass++) {
       let collided = false;
 
       for (let i = 0; i < rocks.length; i++) {
         const rock = rocks[i];
         const minDistance = (rock.visualRadius ?? rock.radius) + radius;
-        let dx = this.position.x - rock.x;
-        let dz = this.position.z - rock.z;
+        let dx = pos.x - rock.x;
+        let dz = pos.z - rock.z;
         let distance = Math.hypot(dx, dz);
 
         if (distance >= minDistance) continue;
@@ -355,8 +357,8 @@ export class Smuggler {
           distance = 1;
         }
 
-        this.position.x = rock.x + (dx / distance) * minDistance;
-        this.position.z = rock.z + (dz / distance) * minDistance;
+        pos.x = rock.x + (dx / distance) * minDistance;
+        pos.z = rock.z + (dz / distance) * minDistance;
         collided = true;
       }
 
@@ -402,6 +404,8 @@ export class Smuggler {
         top: new THREE.Vector3(rock.x + ux * size * 0.25, this.rockTopY(rock), rock.z + uz * size * 0.25),
         exit: new THREE.Vector3(rock.x, 0, rock.z + size + 0.8)
       };
+      // The exit spot may sit inside a neighbouring rock of the cluster.
+      this.resolveRockCollisions(0.4, this.rest.exit);
       this.swimmerGroup.visible = false;
       this.walkerGroup.visible = true;
       this.world.emitSplash(this.position.x, this.position.z, 5, 0xdff2fc);
